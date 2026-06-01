@@ -1,0 +1,3 @@
+// Deprecated wrapper — migrated to src/proxy.ts (Next.js 16).
+// Safe to delete this file once no longer needed.
+export { proxy as middleware, config } from "./proxy"

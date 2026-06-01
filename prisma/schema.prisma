@@ -1,0 +1,199 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+enum Department {
+  VENDAS
+  FINANCEIRO
+  GERENCIA
+}
+
+enum ChatStatus {
+  IDLE
+  IN_URA
+  WAITING_AGENT
+  IN_SERVICE
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum CampaignStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum CampaignLogStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+// Usuários do sistema. Acesso revogado via isActive=false (nunca hard-delete).
+model User {
+  id           String      @id @default(cuid())
+  name         String
+  email        String      @unique
+  passwordHash String      @map("password")
+  role         Role        @default(AGENT)
+  department   Department?
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  messages         Message[]
+  assignedContacts Contact[] @relation("AssignedContacts")
+
+  @@map("users")
+}
+
+// Contato externo identificado pelo número WhatsApp.
+model Contact {
+  id              String    @id @default(cuid())
+  whatsappId      String    @unique
+  name            String
+  profilePhotoUrl String?
+  chatStatus      ChatStatus @default(IDLE)
+  assignedUserId  String?
+  assignedUser    User?      @relation("AssignedContacts", fields: [assignedUserId], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  messages     Message[]
+  campaignLogs CampaignLog[]
+
+  @@map("contacts")
+}
+
+// Mensagem trocada entre um Contact e um User (agente).
+model Message {
+  id        String           @id @default(cuid())
+  body      String
+  direction MessageDirection
+  status    MessageStatus    @default(PENDING)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  mediaUrl  String?
+  mediaType String?
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id])
+
+  agentId String?
+  agent   User?   @relation(fields: [agentId], references: [id])
+
+  @@map("messages")
+}
+
+// Configuração singleton da URA (IVR). Criada automaticamente no primeiro uso.
+model UraConfig {
+  id                 String   @id @default(cuid())
+  greetingText       String   @default("Olá! 👋 Como podemos te ajudar?\n\nResponda com o número da opção desejada.")
+  isActive           Boolean  @default(true)
+  outOfOfficeMessage String   @default("")
+  lunchMessage       String   @default("")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  options       UraMenuOption[]
+  businessHours BusinessHour[]
+
+  @@map("ura_config")
+}
+
+// Cada linha do menu da URA (dígito → label → departamento).
+model UraMenuOption {
+  id               String    @id @default(cuid())
+  digit            String
+  label            String
+  targetDepartment String
+  order            Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  configId String
+  config   UraConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, digit])
+  @@map("ura_menu_options")
+}
+
+// Horário de atendimento por dia da semana (0=Dom … 6=Sáb).
+model BusinessHour {
+  id            String    @id @default(cuid())
+  dayOfWeek     Int
+  isClosed      Boolean   @default(false)
+  openTime      String    @default("08:00")
+  closeTime     String    @default("18:00")
+  hasLunchBreak Boolean   @default(false)
+  lunchStart    String    @default("12:00")
+  lunchEnd      String    @default("13:00")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  configId String
+  config   UraConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, dayOfWeek])
+  @@map("business_hours")
+}
+
+// Campanha de disparo em massa.
+model Campaign {
+  id          String         @id @default(cuid())
+  name        String
+  messageText String
+  status      CampaignStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+
+  logs CampaignLog[]
+
+  @@map("campaigns")
+}
+
+// Log individual de envio por contato em uma campanha.
+model CampaignLog {
+  id         String            @id @default(cuid())
+  status     CampaignLogStatus @default(PENDING)
+  sentAt     DateTime?
+  errorMsg   String?
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_logs")
+}
