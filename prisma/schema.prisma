@@ -176,6 +176,15 @@ model Campaign {
   messageText String
   status      CampaignStatus @default(PENDING)
   createdAt   DateTime       @default(now())
+  
+  // Proteções e limites
+  maxPerDay   Int            @default(200)
+  maxPerHour  Int            @default(30)
+  delayMin    Int            @default(3)  // segundos
+  delayMax    Int            @default(8)  // segundos
+  pausedAt    DateTime?
+  errorCount  Int            @default(0)
+  deliveryRate Float         @default(0)  // % de entregas bem-sucedidas
 
   logs CampaignLog[]
 
@@ -187,7 +196,10 @@ model CampaignLog {
   id         String            @id @default(cuid())
   status     CampaignLogStatus @default(PENDING)
   sentAt     DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
   errorMsg   String?
+  blockedByContact Boolean       @default(false)
 
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
