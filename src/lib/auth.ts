@@ -28,7 +28,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 
 export const SESSION_COOKIE_OPTS = {
   httpOnly: true,
-  secure: false, // TODO: Enable when using HTTPS
+  secure: process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
   path: "/",
   maxAge: 8 * 60 * 60,
