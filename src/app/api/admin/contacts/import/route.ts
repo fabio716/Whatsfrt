@@ -83,11 +83,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const phoneCol = findCol(headers, [
     "telefone", "phone", "celular", "cel", "whatsapp",
     "numero",   "fone",  "mobile",  "tel",
+    "phone 1 - value", "phone 2 - value", "phone 3 - value", // Google Contacts
   ])
 
-  if (!nameCol || !phoneCol) {
+  // Google Contacts columns
+  const firstNameCol = findCol(headers, ["first name", "nome"])
+  const middleNameCol = findCol(headers, ["middle name"])
+  const lastNameCol = findCol(headers, ["last name", "sobrenome"])
+
+  if (!phoneCol) {
     return NextResponse.json({
-      error: `Colunas não encontradas. Esperado: nome + telefone. Encontrado: ${headers.join(", ")}`,
+      error: `Coluna de telefone não encontrada. Esperado: telefone, phone, celular, etc. Encontrado: ${headers.join(", ")}`,
     }, { status: 422 })
   }
 
@@ -97,7 +103,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const skipped: string[] = []
 
   for (const record of parsed.data) {
-    const rawName  = record[nameCol]?.trim()
+    // Try to get name from different sources
+    let rawName = ""
+    
+    if (nameCol && record[nameCol]?.trim()) {
+      rawName = record[nameCol].trim()
+    } else if (firstNameCol || lastNameCol) {
+      // Google Contacts format: combine First + Middle + Last
+      const parts = [
+        record[firstNameCol || ""]?.trim(),
+        record[middleNameCol || ""]?.trim(),
+        record[lastNameCol || ""]?.trim(),
+      ].filter(Boolean)
+      rawName = parts.join(" ")
+    }
+
     const rawPhone = record[phoneCol]?.trim()
     if (!rawName || !rawPhone) continue
     const jid = normalizePhone(rawPhone)
