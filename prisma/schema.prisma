@@ -21,6 +21,13 @@ enum Department {
   VENDAS
   FINANCEIRO
   GERENCIA
+  SUPORTE
+  ATENDIMENTO
+  COBRANCA
+  MARKETING
+  TI
+  RH
+  COMERCIAL
 }
 
 enum ChatStatus {
