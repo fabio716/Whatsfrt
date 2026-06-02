@@ -79,6 +79,7 @@ model User {
 
   messages         Message[]
   assignedContacts Contact[] @relation("AssignedContacts")
+  cooperatives     Cooperative[] @relation("CooperativeAssignments")
 
   @@map("users")
 }
@@ -128,13 +129,25 @@ model UraConfig {
   id                 String   @id @default(cuid())
   greetingText       String   @default("Olá! 👋 Como podemos te ajudar?\n\nResponda com o número da opção desejada.")
   isActive           Boolean  @default(true)
-  outOfOfficeMessage String   @default("")
-  lunchMessage       String   @default("")
+  outOfOfficeMessage String   @default("No momento estamos fora do horário de atendimento. Deixe sua mensagem que retornaremos em breve!")
+  lunchMessage       String   @default("Estamos em horário de almoço. Retornaremos às 13h.")
+  
+  // Mensagens do fluxo comercial
+  askNameMessage     String   @default("Por favor, digite seu nome completo:")
+  askProfileMessage  String   @default("Você é:\n1️⃣ Pessoa Física\n2️⃣ Pessoa Jurídica")
+  askSectorMessage   String   @default("Qual setor deseja?\n1️⃣ Financeiro\n2️⃣ Suporte\n3️⃣ Vendas\n0️⃣ Voltar")
+  
+  // Mensagens do fluxo noturno
+  nightAskNameMessage    String @default("Obrigado por entrar em contato! Por favor, informe seu nome:")
+  nightAskSectorMessage  String @default("Qual o setor de interesse?\n1️⃣ Financeiro\n2️⃣ Suporte\n3️⃣ Vendas")
+  nightAskSubjectMessage String @default("Por favor, descreva brevemente o assunto:")
+  
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   options       UraMenuOption[]
   businessHours BusinessHour[]
+  nightOffer    NightOffer?
 
   @@map("ura_config")
 }
@@ -215,4 +228,82 @@ model CampaignLog {
   contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@map("campaign_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Motor da URA - State Machine
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Sessão da URA (State Machine) armazenada no Redis e persistida no BD
+model UraSession {
+  id            String   @id @default(cuid())
+  whatsappId    String   @unique
+  currentNode   String   // ex: "greeting", "ask_profile", "ask_sector", etc
+  previousNode  String?  // Para navegação com "0" (voltar)
+  isNightFlow   Boolean  @default(false)
+  
+  // Dados coletados durante o fluxo
+  collectedName    String?
+  collectedProfile String? // "PF" ou "PJ"
+  collectedSector  String? // "FINANCEIRO", "SUPORTE", "VENDAS"
+  collectedSubject String? // Assunto (fluxo noturno)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  expiresAt     DateTime // TTL para limpeza automática
+
+  @@index([whatsappId])
+  @@index([expiresAt])
+  @@map("ura_sessions")
+}
+
+// Cooperativas (B2B) - Tab 3
+model Cooperative {
+  id          String   @id @default(cuid())
+  name        String   // ex: "Sicoob", "Sicredi", "Cresol"
+  cnpjBase    String?  // CNPJ base (8 primeiros dígitos)
+  isActive    Boolean  @default(true)
+  
+  // Atendente B2B responsável
+  assignedUserId String?
+  assignedUser   User?   @relation("CooperativeAssignments", fields: [assignedUserId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("cooperatives")
+}
+
+// Territórios de Vendas (Geográfico) - Tab 4
+model Territory {
+  id       String   @id @default(cuid())
+  uf       String   @unique // UF do Brasil (ex: "SP", "RJ", "MG")
+  isActive Boolean  @default(true)
+  
+  // Atendentes de vendas (pode ter múltiplos - Round Robin)
+  assignedUserIds String[] // Array de IDs de usuários
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("territories")
+}
+
+// Oferta Noturna (Cupom de Desconto) - Tab 2
+model NightOffer {
+  id             String   @id @default(cuid())
+  isActive       Boolean  @default(false)
+  couponCode     String   @default("")
+  discountType   String   @default("percentage") // "percentage" ou "fixed"
+  discountValue  Float    @default(0)
+  storeUrl       String   @default("")
+  offerMessage   String   @default("🎁 Oferta especial! Use o cupom {coupon} e ganhe {discount} de desconto!\n\nAcesse: {url}")
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  configId String  @unique
+  config   UraConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@map("night_offers")
 }
