@@ -45,7 +45,7 @@ export class BusinessHoursValidator {
         return {
           isOpen: false,
           isLunchTime: false,
-          nextOpenTime: this.getNextOpenTime(now),
+          nextOpenTime: await this.getNextOpenTime(now),
         }
       }
 
@@ -64,7 +64,7 @@ export class BusinessHoursValidator {
         return {
           isOpen: false,
           isLunchTime: false,
-          nextOpenTime: this.getNextOpenTime(now),
+          nextOpenTime: await this.getNextOpenTime(now),
         }
       }
 
