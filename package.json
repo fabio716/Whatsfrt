@@ -11,6 +11,8 @@
     "pages:deploy": "npm run pages:build && wrangler pages deploy .next"
   },
   "dependencies": {
+    "@emnapi/core": "^1.10.0",
+    "@emnapi/runtime": "^1.10.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/papaparse": "^5.5.2",
