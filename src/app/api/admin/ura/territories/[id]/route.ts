@@ -5,17 +5,19 @@ import { requireAdmin } from "@/app/api/admin/users/route"
 // PUT - Atualiza território
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const session = await requireAdmin(request)
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
+
+  const { id } = await params
 
   try {
     const body = await request.json()
     const { uf, assignedUserIds, isActive } = body
 
     const territory = await prisma.territory.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         uf: uf?.toUpperCase(),
         assignedUserIds,
@@ -33,14 +35,16 @@ export async function PUT(
 // DELETE - Deleta território
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const session = await requireAdmin(request)
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
 
+  const { id } = await params
+
   try {
     await prisma.territory.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json({ success: true })
