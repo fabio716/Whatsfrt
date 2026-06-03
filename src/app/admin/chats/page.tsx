@@ -15,7 +15,10 @@ export default async function ChatsPage() {
 
   const [rawContacts, agents] = await Promise.all([
     prisma.contact.findMany({
-      where: { deletedAt: null },
+      where: { 
+        deletedAt: null,
+        chatStatus: "IN_SERVICE"
+      },
       include: { messages: { orderBy: { createdAt: "asc" } } },
       orderBy: { updatedAt: "desc" },
     }),
