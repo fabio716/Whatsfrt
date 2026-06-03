@@ -149,6 +149,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           update: {
             name: r.name,
             assignedUserId: userId,
+            chatStatus: "IDLE",
           },
         })
       )
