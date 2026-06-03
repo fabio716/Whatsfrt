@@ -1,4 +1,4 @@
-import { zonedTimeToUtc, utcToZonedTime, format } from "date-fns-tz"
+import { toZonedTime, format } from "date-fns-tz"
 import { parse, isWithinInterval } from "date-fns"
 import { prisma } from "@/lib/prisma"
 import type { BusinessHoursCheck } from "./types"
@@ -17,7 +17,7 @@ export class BusinessHoursValidator {
   static async check(): Promise<BusinessHoursCheck> {
     try {
       // Pega horário atual em São Paulo
-      const now = utcToZonedTime(new Date(), TIMEZONE)
+      const now = toZonedTime(new Date(), TIMEZONE)
       const dayOfWeek = now.getDay() // 0=Dom, 1=Seg, ..., 6=Sáb
 
       // Busca configuração do dia
@@ -140,7 +140,7 @@ export class BusinessHoursValidator {
   static formatNextOpenTime(date: Date | undefined): string {
     if (!date) return "em breve"
 
-    const zonedDate = utcToZonedTime(date, TIMEZONE)
+    const zonedDate = toZonedTime(date, TIMEZONE)
     const dayName = format(zonedDate, "EEEE", { timeZone: TIMEZONE })
     const time = format(zonedDate, "HH:mm", { timeZone: TIMEZONE })
 
@@ -161,6 +161,6 @@ export class BusinessHoursValidator {
    * Retorna horário atual em São Paulo (para debug)
    */
   static getCurrentTime(): Date {
-    return utcToZonedTime(new Date(), TIMEZONE)
+    return toZonedTime(new Date(), TIMEZONE)
   }
 }
