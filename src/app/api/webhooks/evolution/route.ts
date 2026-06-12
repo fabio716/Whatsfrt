@@ -75,12 +75,10 @@ function extractMessageText(message?: EvolutionMessageContent): string {
   )
 }
 
-function normalizeRemoteJid(remoteJid: string): string | null {
-  // Ignora @lid (IDs internos do WhatsApp Business/linked devices)
-  if (remoteJid.includes("@lid")) return null
-  return remoteJid.replace(/@(s\.whatsapp\.net|g\.us|c\.us)$/, "").concat(
-    remoteJid.endsWith("@g.us") ? "@g.us" : "@s.whatsapp.net"
-  )
+function normalizeRemoteJid(remoteJid: string): string {
+  if (remoteJid.endsWith("@g.us")) return remoteJid
+  // Remove qualquer sufixo e normaliza para @s.whatsapp.net
+  return remoteJid.replace(/@.*$/, "") + "@s.whatsapp.net"
 }
 
 // ─── Media helper ────────────────────────────────────────────────────────────
@@ -162,6 +160,9 @@ async function sendUraMessage(contact: ContactSnapshot, text: string): Promise<v
 
 async function handleUra(contact: ContactSnapshot, inboundText: string): Promise<void> {
   if (contact.whatsappId.endsWith("@g.us")) return
+  // Ignora números inválidos (IDs internos do WhatsApp com mais de 13 dígitos)
+  const digits = contact.whatsappId.replace("@s.whatsapp.net", "")
+  if (digits.length > 13) return
 
   const cfg = await getUraConfigCached()
   if (!cfg.isActive) return
@@ -215,11 +216,7 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
   }
 
   const remoteJid = normalizeRemoteJid(key.remoteJid)
-  if (!remoteJid) {
-    console.log(`[webhook] Ignorando @lid JID: ${key.remoteJid}`)
-    return
-  }
-  console.log(`[webhook] Processando mensagem de: ${remoteJid}`)
+  console.log(`[webhook] Processando mensagem de: ${remoteJid} (original: ${key.remoteJid})`)
 
   const messageText = extractMessageText(message)
 
