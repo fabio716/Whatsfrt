@@ -47,9 +47,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (apiUrl && apiKey && instance) {
     try {
-      const number = contact.whatsappId.endsWith("@g.us")
-        ? contact.whatsappId
-        : contact.whatsappId.replace("@s.whatsapp.net", "")
+      // Normaliza o número para envio
+      let number = contact.whatsappId
+      if (number.endsWith("@g.us")) {
+        // grupo — mantém como está
+      } else if (number.includes("@lid")) {
+        // @lid format — remove o sufixo @lid
+        number = number.replace(/@lid.*/, "")
+      } else {
+        number = number.replace("@s.whatsapp.net", "").replace(/@.*/, "")
+      }
+
+      console.log(`[send] Enviando para número: ${number}, whatsappId: ${contact.whatsappId}`)
 
       const res = await fetch(`${apiUrl}/message/sendText/${instance}`, {
         method: "POST",
@@ -57,8 +66,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         body: JSON.stringify({ number, text: text.trim() }),
       })
 
-      if (!res.ok) finalStatus = MessageStatus.FAILED
-    } catch {
+      if (!res.ok) {
+        const errBody = await res.text()
+        console.error(`[send] Evolution API error ${res.status}: ${errBody}`)
+        finalStatus = MessageStatus.FAILED
+      }
+    } catch (err) {
+      console.error("[send] Exception:", err)
       finalStatus = MessageStatus.FAILED
     }
   }
