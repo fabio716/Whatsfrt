@@ -75,7 +75,9 @@ function extractMessageText(message?: EvolutionMessageContent): string {
   )
 }
 
-function normalizeRemoteJid(remoteJid: string): string {
+function normalizeRemoteJid(remoteJid: string): string | null {
+  // Ignora @lid (IDs internos do WhatsApp Business/linked devices)
+  if (remoteJid.includes("@lid")) return null
   return remoteJid.replace(/@(s\.whatsapp\.net|g\.us|c\.us)$/, "").concat(
     remoteJid.endsWith("@g.us") ? "@g.us" : "@s.whatsapp.net"
   )
@@ -210,6 +212,8 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
   if (key.fromMe) return
 
   const remoteJid = normalizeRemoteJid(key.remoteJid)
+  if (!remoteJid) return // ignora @lid e outros JIDs inválidos
+
   const messageText = extractMessageText(message)
 
   // ── 1. Upsert contact — preserves assignedUserId and chatStatus ──────────
