@@ -209,10 +209,17 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
 
   // Outbound messages from Evolution API (fromMe) are handled by /api/messages/send
   // or by sendUraMessage — skip to avoid duplicates.
-  if (key.fromMe) return
+  if (key.fromMe) {
+    console.log(`[webhook] Ignorando fromMe: ${key.remoteJid}`)
+    return
+  }
 
   const remoteJid = normalizeRemoteJid(key.remoteJid)
-  if (!remoteJid) return // ignora @lid e outros JIDs inválidos
+  if (!remoteJid) {
+    console.log(`[webhook] Ignorando @lid JID: ${key.remoteJid}`)
+    return
+  }
+  console.log(`[webhook] Processando mensagem de: ${remoteJid}`)
 
   const messageText = extractMessageText(message)
 
