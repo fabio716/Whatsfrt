@@ -28,6 +28,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Contact not found" }, { status: 404 })
   }
 
+  // Bloqueia envio para contatos @lid (IDs internos do WhatsApp Business)
+  if (contact.whatsappId.includes("@lid")) {
+    return NextResponse.json({
+      error: "Não é possível enviar mensagens para este contato. O número não é um telefone válido (formato @lid).",
+    }, { status: 400 })
+  }
+
   // 1 — Persist message as PENDING immediately
   const message = await prisma.message.create({
     data: {
