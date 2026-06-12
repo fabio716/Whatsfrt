@@ -8,6 +8,9 @@ import { sendEvolutionText } from "@/lib/evolution"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+
 // ─── Evolution API Payload Types ─────────────────────────────────────────────
 
 interface EvolutionMessageKey {
@@ -208,15 +211,17 @@ async function handleUra(contact: ContactSnapshot, inboundText: string): Promise
 async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<void> {
   const { key, pushName, message, profilePicUrl } = messageData
 
-  // Outbound messages from Evolution API (fromMe) are handled by /api/messages/send
-  // or by sendUraMessage — skip to avoid duplicates.
-  if (key.fromMe) {
-    console.log(`[webhook] Ignorando fromMe: ${key.remoteJid}`)
+  // Ignora mensagens do próprio dispositivo vinculado (@lid = Linked Device ID)
+  if (key.remoteJid.includes('@lid')) {
     return
   }
 
+  // Outbound messages from Evolution API (fromMe) are handled by /api/messages/send
+  // or by sendUraMessage — skip to avoid duplicates.
+  if (key.fromMe) return
+
   const remoteJid = normalizeRemoteJid(key.remoteJid)
-  console.log(`[webhook] Processando mensagem de: ${remoteJid} (original: ${key.remoteJid})`)
+  console.log(`[webhook] Processando mensagem de: ${remoteJid}`)
 
   const messageText = extractMessageText(message)
 

@@ -1,5 +1,8 @@
 import { addSSEClient, removeSSEClient } from "@/lib/sse-emitter"
 
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+
 const HEARTBEAT_INTERVAL_MS = 25_000
 
 export async function GET(): Promise<Response> {
