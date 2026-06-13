@@ -14,6 +14,22 @@ function evolutionMediaType(mimetype: string): string {
   return "document"
 }
 
+// Public base URL used so Evolution can download the media we just stored.
+// Prefers APP_PUBLIC_URL, falls back to the origin of EVOLUTION_WEBHOOK_URL.
+function resolvePublicBaseUrl(): string | null {
+  const explicit = process.env.APP_PUBLIC_URL
+  if (explicit) return explicit.replace(/\/$/, "")
+  const webhook = process.env.EVOLUTION_WEBHOOK_URL
+  if (webhook) {
+    try {
+      return new URL(webhook).origin
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let formData: FormData
   try {
@@ -74,6 +90,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? contact.whatsappId
         : contact.whatsappId.replace(/@.*/, "")
 
+      // Prefer sending media by public URL (Evolution downloads it and uploads
+      // properly to WhatsApp). Sending raw base64 can leave the recipient stuck
+      // in a perpetual download loop. Fall back to base64 if no public URL.
+      const publicBase = resolvePublicBaseUrl()
+      const media = publicBase ? `${publicBase}${mediaUrl}` : buffer.toString("base64")
+
       const res = await fetch(`${apiUrl}/message/sendMedia/${instance}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
@@ -82,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           mediatype: evolutionMediaType(mediaType),
           mimetype: mediaType,
           caption,
-          media: buffer.toString("base64"),
+          media,
           fileName: file.name,
         }),
       })
