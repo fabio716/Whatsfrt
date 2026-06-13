@@ -213,12 +213,14 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
 
   // Ignora mensagens do próprio dispositivo vinculado (@lid = Linked Device ID)
   if (key.remoteJid.includes('@lid')) {
+    console.log(`[webhook] Ignorando @lid: ${key.remoteJid}`)
     return
   }
 
-  // Outbound messages from Evolution API (fromMe) are handled by /api/messages/send
-  // or by sendUraMessage — skip to avoid duplicates.
-  if (key.fromMe) return
+  // TEMPORÁRIO: Bypass do bug fromMe da Evolution v2.2.3
+  // A Evolution pode marcar mensagens de clientes como fromMe: true incorretamente
+  console.log(`[webhook] fromMe=${key.fromMe}, remoteJid=${key.remoteJid}`)
+  // if (key.fromMe) return  // COMENTADO TEMPORARIAMENTE PARA DEBUG
 
   const remoteJid = normalizeRemoteJid(key.remoteJid)
   console.log(`[webhook] Processando mensagem de: ${remoteJid}`)
@@ -294,6 +296,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     payload = (await request.json()) as EvolutionWebhookPayload
     console.log("🔔 Webhook Recebido:", JSON.stringify({ event: payload.event, instance: payload.instance }))
+    
+    // DEBUG: Log completo do payload para diagnóstico
+    if (payload.event === "messages.upsert") {
+      console.log("[WEBHOOK RAW PAYLOAD] ->", JSON.stringify(payload, null, 2))
+    }
   } catch {
     return NextResponse.json({ received: false, error: "Invalid JSON body" }, { status: 200 })
   }
