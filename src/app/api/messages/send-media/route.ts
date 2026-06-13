@@ -33,6 +33,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
 
+  if (contact.whatsappId.includes("@lid")) {
+    return NextResponse.json({
+      error: "Não é possível enviar para este contato. O número não é um telefone válido (formato @lid).",
+    }, { status: 400 })
+  }
+
   // ── Save file to public/uploads/ ────────────────────────────────────────────
   const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
   const filePath = path.join(UPLOADS_DIR, safeName)
@@ -66,7 +72,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       const number = contact.whatsappId.endsWith("@g.us")
         ? contact.whatsappId
-        : contact.whatsappId.replace("@s.whatsapp.net", "")
+        : contact.whatsappId.replace(/@.*/, "")
 
       const res = await fetch(`${apiUrl}/message/sendMedia/${instance}`, {
         method: "POST",
@@ -80,10 +86,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           fileName: file.name,
         }),
       })
-      finalStatus = res.ok ? MessageStatus.SENT : MessageStatus.FAILED
-    } catch {
+      if (res.ok) {
+        finalStatus = MessageStatus.SENT
+      } else {
+        console.error("[SEND MEDIA ERROR] Falha Evolution API:", res.status, await res.text())
+        finalStatus = MessageStatus.FAILED
+      }
+    } catch (err) {
+      console.error("[SEND MEDIA EXCEPTION]:", err)
       finalStatus = MessageStatus.FAILED
     }
+  } else {
+    console.error("[SEND MEDIA ERROR] Variáveis de ambiente ausentes")
+    finalStatus = MessageStatus.FAILED
   }
 
   // ── Update status ───────────────────────────────────────────────────────────

@@ -118,6 +118,8 @@ services:
       EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME}
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
+    volumes:
+      - app_uploads:/app/public/uploads
     networks:
       - whatsfrt_net
 
@@ -142,6 +144,7 @@ volumes:
   postgres_data:
   redis_data:
   evolution_instances:
+  app_uploads:
 
 networks:
   whatsfrt_net:

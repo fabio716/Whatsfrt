@@ -4,7 +4,7 @@ import path from "node:path"
 import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
-import { sendEvolutionText } from "@/lib/evolution"
+import { sendEvolutionText, fetchMediaBase64 } from "@/lib/evolution"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 
@@ -108,7 +108,7 @@ async function saveMediaFromBase64(
 
 function extractMedia(
   message?: EvolutionMessageContent
-): { base64: string; mimetype: string; fileName?: string } | null {
+): { base64?: string; mimetype: string; fileName?: string } | null {
   if (!message) return null
   const candidates = [
     message.imageMessage,
@@ -118,7 +118,7 @@ function extractMedia(
     message.stickerMessage,
   ]
   for (const m of candidates) {
-    if (m?.base64 && m.mimetype) {
+    if (m?.mimetype) {
       return { base64: m.base64, mimetype: m.mimetype, fileName: m.fileName }
     }
   }
@@ -234,7 +234,22 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
 
   // ── 2. Always persist inbound message for audit ──────────────────────────
   const rawMedia = extractMedia(message)
-  const media = rawMedia ? await saveMediaFromBase64(rawMedia.base64, rawMedia.mimetype, rawMedia.fileName) : null
+  let media: { mediaUrl: string; mediaType: string } | null = null
+  if (rawMedia) {
+    let base64 = rawMedia.base64
+    let mimetype = rawMedia.mimetype
+    // Evolution omits base64 in the webhook unless webhookBase64 is on, so
+    // fetch the file content on demand using the message key.
+    if (!base64) {
+      const fetched = await fetchMediaBase64(key)
+      if (fetched) {
+        base64 = fetched.base64
+        mimetype = fetched.mimetype ?? mimetype
+      }
+    }
+    if (base64) media = await saveMediaFromBase64(base64, mimetype, rawMedia.fileName)
+    else console.warn("[webhook] mídia recebida sem base64 e não foi possível obter via API:", rawMedia.mimetype)
+  }
 
   const saved = await prisma.message.create({
     data: {
