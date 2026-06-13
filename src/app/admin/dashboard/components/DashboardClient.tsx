@@ -276,7 +276,11 @@ export default function DashboardClient({ contacts: initialContacts }: Readonly<
       setContacts((prev) => {
         const exists = prev.some((c) => c.id === contact.id)
         const updated = exists
-          ? prev.map((c) => c.id === contact.id ? { ...c, messages: [...c.messages, newMsg] } : c)
+          ? prev.map((c) =>
+              c.id === contact.id
+                ? { ...c, messages: c.messages.some((m) => m.id === newMsg.id) ? c.messages : [...c.messages, newMsg] }
+                : c
+            )
           : [...prev, { ...contact, messages: [newMsg] }]
         const target = updated.find((c) => c.id === contact.id)
         return target ? [target, ...updated.filter((c) => c.id !== contact.id)] : updated
@@ -344,13 +348,18 @@ export default function DashboardClient({ contacts: initialContacts }: Readonly<
       const res = await fetch("/api/messages/send-media", { method: "POST", body: fd })
       const data = (await res.json()) as { id: string; status: MessageData["status"]; mediaUrl: string }
       setContacts((prev) =>
-        prev.map((c) =>
-          c.id === activeId
-            ? { ...c, messages: c.messages.map((m) =>
-                m.id === tempId ? { ...m, id: data.id, status: data.status, mediaUrl: data.mediaUrl } : m
-              )}
-            : c
-        )
+        prev.map((c) => {
+          if (c.id !== activeId) return c
+          const hasReal = c.messages.some((m) => m.id === data.id)
+          return {
+            ...c,
+            messages: hasReal
+              ? c.messages.filter((m) => m.id !== tempId)
+              : c.messages.map((m) =>
+                  m.id === tempId ? { ...m, id: data.id, status: data.status, mediaUrl: data.mediaUrl } : m
+                ),
+          }
+        })
       )
     } catch {
       setContacts((prev) =>
@@ -396,13 +405,18 @@ export default function DashboardClient({ contacts: initialContacts }: Readonly<
         body: JSON.stringify({ contactId: activeId, text }),
       })
       const data = (await res.json()) as { id: string; status: MessageData["status"] }
-      // Replace temp message with persisted one
+      // Replace temp message with persisted one (or drop it if SSE already delivered the real one)
       setContacts((prev) =>
-        prev.map((c) =>
-          c.id === activeId
-            ? { ...c, messages: c.messages.map((m) => (m.id === tempId ? { ...m, id: data.id, status: data.status } : m)) }
-            : c
-        )
+        prev.map((c) => {
+          if (c.id !== activeId) return c
+          const hasReal = c.messages.some((m) => m.id === data.id)
+          return {
+            ...c,
+            messages: hasReal
+              ? c.messages.filter((m) => m.id !== tempId)
+              : c.messages.map((m) => (m.id === tempId ? { ...m, id: data.id, status: data.status } : m)),
+          }
+        })
       )
     } catch {
       // Mark as FAILED on network error

@@ -140,7 +140,11 @@ export default function ChatsClient({
         setContacts((prev) => {
           const exists = prev.some((c) => c.id === contact.id)
           const updated = exists
-            ? prev.map((c) => c.id === contact.id ? { ...c, ...contact, messages: [...c.messages, newMsg] } : c)
+            ? prev.map((c) =>
+                c.id === contact.id
+                  ? { ...c, ...contact, messages: c.messages.some((m) => m.id === newMsg.id) ? c.messages : [...c.messages, newMsg] }
+                  : c
+              )
             : [...prev, { ...contact, messages: [newMsg] }]
           const target = updated.find((c) => c.id === contact.id)
           return target ? [target, ...updated.filter((c) => c.id !== contact.id)] : updated
