@@ -20,9 +20,15 @@ type UraConfig = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DEPT_SUGGESTIONS = [
-  "VENDAS", "SUPORTE", "FINANCEIRO", "EXPEDICAO", "POS_VENDAS",
-  "SECRETARIA_ASSISTENCIA", "TECNICOS_ASSISTENCIA", "GERENCIA",
+const DEPT_OPTIONS: { value: string; label: string }[] = [
+  { value: "VENDAS",                 label: "Vendas" },
+  { value: "SUPORTE",                label: "Suporte" },
+  { value: "FINANCEIRO",             label: "Financeiro" },
+  { value: "EXPEDICAO",              label: "Expedição" },
+  { value: "POS_VENDAS",             label: "Pós-Vendas" },
+  { value: "SECRETARIA_ASSISTENCIA", label: "Secretária Assistência" },
+  { value: "TECNICOS_ASSISTENCIA",   label: "Técnicos Assistência" },
+  { value: "GERENCIA",               label: "Gerência" },
 ]
 const DAY_NAMES   = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"]
 
@@ -232,13 +238,11 @@ export default function URAPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-[11px] font-medium text-zinc-500" htmlFor="new-dept">Departamento</label>
-                  <input id="new-dept" type="text" list="dept-suggestions" value={newOpt.targetDepartment}
-                    onChange={(e) => setNewOpt((p) => ({ ...p, targetDepartment: e.target.value.toUpperCase() }))}
-                    placeholder="Ex: SUPORTE"
-                    className="w-36 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] uppercase outline-none focus:border-zinc-300" />
-                  <datalist id="dept-suggestions">
-                    {DEPT_SUGGESTIONS.map((d) => <option key={d} value={d} />)}
-                  </datalist>
+                  <select id="new-dept" value={newOpt.targetDepartment}
+                    onChange={(e) => setNewOpt((p) => ({ ...p, targetDepartment: e.target.value }))}
+                    className="w-44 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] outline-none focus:border-zinc-300">
+                    {DEPT_OPTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  </select>
                 </div>
                 <button type="button" onClick={() => void addOption()} disabled={!newOpt.digit || !newOpt.label || addingOpt}
                   className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white transition-colors hover:bg-zinc-700 disabled:opacity-40">
