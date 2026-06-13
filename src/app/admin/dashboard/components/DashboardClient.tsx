@@ -553,7 +553,7 @@ export default function DashboardClient({ contacts: initialContacts }: Readonly<
                           {msg.mediaUrl && msg.mediaType ? (
                             <MediaContent mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />
                           ) : (
-                            <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed px-1">
+                            <p translate="no" className="whitespace-pre-wrap break-words text-[13px] leading-relaxed px-1">
                               {msg.body}
                             </p>
                           )}

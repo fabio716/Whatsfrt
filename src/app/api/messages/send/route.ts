@@ -65,23 +65,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         number = number.replace("@s.whatsapp.net", "").replace(/@.*/, "")
       }
 
-      console.log(`[send] Enviando para número: ${number}, whatsappId: ${contact.whatsappId}`)
+      const url = `${apiUrl}/message/sendText/${instance}`
+      const payload = { number, text: text.trim() }
+      console.log("[OUTBOUND ATTEMPT] Enviando para:", url, "Payload:", JSON.stringify(payload))
 
-      const res = await fetch(`${apiUrl}/message/sendText/${instance}`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
-        body: JSON.stringify({ number, text: text.trim() }),
+        body: JSON.stringify(payload),
       })
 
+      const respText = await res.text()
       if (!res.ok) {
-        const errBody = await res.text()
-        console.error(`[send] Evolution API error ${res.status}: ${errBody}`)
+        console.error("[OUTBOUND ERROR] Falha Evolution API:", res.status, respText)
         finalStatus = MessageStatus.FAILED
+      } else {
+        console.log("[OUTBOUND SUCCESS] Evolution API respondeu:", res.status, respText)
       }
     } catch (err) {
-      console.error("[send] Exception:", err)
+      console.error("[OUTBOUND EXCEPTION]:", err)
       finalStatus = MessageStatus.FAILED
     }
+  } else {
+    console.error("[OUTBOUND ERROR] Variáveis de ambiente ausentes:", {
+      hasApiUrl: !!apiUrl, hasApiKey: !!apiKey, hasInstance: !!instance,
+    })
+    finalStatus = MessageStatus.FAILED
   }
 
   // 3 — Update final status in DB

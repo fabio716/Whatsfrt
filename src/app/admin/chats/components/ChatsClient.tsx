@@ -303,7 +303,7 @@ export default function ChatsClient({
                         <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm ${isOut ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
                           {msg.mediaUrl && msg.mediaType
                             ? <MediaBubble mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />
-                            : <p className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
+                            : <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
                           }
                           <div className={`mt-1 flex items-center gap-1 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
                             <span className="text-[10px] text-zinc-400">{formatTime(msg.createdAt)}</span>
