@@ -20,7 +20,10 @@ type UraConfig = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DEPT_SUGGESTIONS = ["VENDAS", "FINANCEIRO", "GERENCIA"]
+const DEPT_SUGGESTIONS = [
+  "VENDAS", "SUPORTE", "FINANCEIRO", "EXPEDICAO", "POS_VENDAS",
+  "SECRETARIA_ASSISTENCIA", "TECNICOS_ASSISTENCIA", "GERENCIA",
+]
 const DAY_NAMES   = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"]
 
 const DEFAULT_HOURS: BizHour[] = [0,1,2,3,4,5,6].map((d) => ({

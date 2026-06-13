@@ -28,6 +28,10 @@ enum Department {
   TI
   RH
   COMERCIAL
+  EXPEDICAO
+  POS_VENDAS
+  SECRETARIA_ASSISTENCIA
+  TECNICOS_ASSISTENCIA
 }
 
 enum ChatStatus {

@@ -8,7 +8,7 @@ interface UserRow {
   name: string
   email: string
   role: "ADMIN" | "AGENT"
-  department: "VENDAS" | "FINANCEIRO" | "GERENCIA" | null
+  department: string | null
   isActive: boolean
   createdAt: string
 }
@@ -20,11 +20,28 @@ const ROLE_CFG = {
   AGENT:  { label: "Agente",  cls: "bg-blue-50 text-blue-700 ring-blue-200" },
 } satisfies Record<string, { label: string; cls: string }>
 
-const DEPT_CFG = {
-  VENDAS:     { label: "Vendas",     cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-  FINANCEIRO: { label: "Financeiro", cls: "bg-amber-50 text-amber-700 ring-amber-200" },
-  GERENCIA:   { label: "Gerência",   cls: "bg-violet-50 text-violet-700 ring-violet-200" },
-} satisfies Record<string, { label: string; cls: string }>
+const DEPT_CFG: Record<string, { label: string; cls: string }> = {
+  VENDAS:                 { label: "Vendas",                cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  FINANCEIRO:             { label: "Financeiro",            cls: "bg-amber-50 text-amber-700 ring-amber-200" },
+  GERENCIA:               { label: "Gerência",              cls: "bg-violet-50 text-violet-700 ring-violet-200" },
+  SUPORTE:                { label: "Suporte",               cls: "bg-blue-50 text-blue-700 ring-blue-200" },
+  ATENDIMENTO:            { label: "Atendimento",           cls: "bg-sky-50 text-sky-700 ring-sky-200" },
+  COBRANCA:               { label: "Cobrança",              cls: "bg-rose-50 text-rose-700 ring-rose-200" },
+  MARKETING:              { label: "Marketing",             cls: "bg-pink-50 text-pink-700 ring-pink-200" },
+  TI:                     { label: "TI",                    cls: "bg-cyan-50 text-cyan-700 ring-cyan-200" },
+  RH:                     { label: "RH",                    cls: "bg-teal-50 text-teal-700 ring-teal-200" },
+  COMERCIAL:              { label: "Comercial",             cls: "bg-indigo-50 text-indigo-700 ring-indigo-200" },
+  EXPEDICAO:              { label: "Expedição",             cls: "bg-orange-50 text-orange-700 ring-orange-200" },
+  POS_VENDAS:             { label: "Pós-Vendas",            cls: "bg-lime-50 text-lime-700 ring-lime-200" },
+  SECRETARIA_ASSISTENCIA: { label: "Secretária Assistência", cls: "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200" },
+  TECNICOS_ASSISTENCIA:   { label: "Técnicos Assistência",  cls: "bg-slate-100 text-slate-700 ring-slate-200" },
+}
+
+// Departamentos exibidos nos dropdowns (ordem curada)
+const DEPT_OPTIONS = [
+  "VENDAS", "SUPORTE", "FINANCEIRO", "EXPEDICAO", "POS_VENDAS",
+  "SECRETARIA_ASSISTENCIA", "TECNICOS_ASSISTENCIA", "GERENCIA",
+] as const
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -80,7 +97,7 @@ export default function UsersPage() {
 
   // ─── Edit user state ────────────────────────────────────────────────────────
   const [editUser,      setEditUser]      = useState<UserRow | null>(null)
-  const [editForm,      setEditForm]      = useState<{ name: string; email: string; password: string; role: "ADMIN" | "AGENT"; department: "VENDAS" | "FINANCEIRO" | "GERENCIA" | null }>({ name: "", email: "", password: "", role: "AGENT", department: "VENDAS" })
+  const [editForm,      setEditForm]      = useState<{ name: string; email: string; password: string; role: "ADMIN" | "AGENT"; department: string | null }>({ name: "", email: "", password: "", role: "AGENT", department: "VENDAS" })
   const [editError,     setEditError]     = useState<string | null>(null)
   const [editSubmitting,setEditSubmitting] = useState(false)
   const [exporting,     setExporting]     = useState<string | null>(null)
@@ -309,7 +326,7 @@ export default function UsersPage() {
         </div>
 
         {/* ── Table ── */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-sm text-zinc-400">
               <svg className="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -326,7 +343,7 @@ export default function UsersPage() {
               </button>
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[860px] text-sm">
               <thead>
                 <tr className="border-b border-zinc-100">
                   <th className="px-6 py-3.5 text-left text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Nome</th>
@@ -362,7 +379,7 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                         {/* Editar */}
                         <button onClick={() => openEdit(u)} title="Editar"
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700">
@@ -434,11 +451,9 @@ export default function UsersPage() {
                 <Field id="e-email" label="E-mail" type="email" required value={editForm.email} onChange={(v) => patchEdit({ email: v })} placeholder="maria@empresa.com" />
                 <Field id="e-pass"  label="Nova senha" type="password" value={editForm.password} onChange={(v) => patchEdit({ password: v })} placeholder="Deixe vazio para não alterar" />
                 <Field id="e-dept" label="Departamento">
-                  <select id="e-dept" value={editForm.department ?? ""} onChange={(e) => patchEdit({ department: e.target.value as typeof editForm.department })}
+                  <select id="e-dept" value={editForm.department ?? ""} onChange={(e) => patchEdit({ department: e.target.value })}
                     className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition-all focus:border-zinc-400 focus:bg-white">
-                    <option value="VENDAS">Vendas</option>
-                    <option value="FINANCEIRO">Financeiro</option>
-                    <option value="GERENCIA">Gerência</option>
+                    {DEPT_OPTIONS.map((d) => <option key={d} value={d}>{DEPT_CFG[d].label}</option>)}
                   </select>
                 </Field>
                 <Field id="e-role" label="Perfil de acesso">
@@ -593,9 +608,7 @@ export default function UsersPage() {
                     onChange={(e) => patchForm({ department: e.target.value as typeof form.department })}
                     className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-900 outline-none transition-all focus:border-zinc-400 focus:bg-white focus:ring-2 focus:ring-zinc-900/5"
                   >
-                    <option value="VENDAS">Vendas</option>
-                    <option value="FINANCEIRO">Financeiro</option>
-                    <option value="GERENCIA">Gerência</option>
+                    {DEPT_OPTIONS.map((d) => <option key={d} value={d}>{DEPT_CFG[d].label}</option>)}
                   </select>
                 </Field>
 

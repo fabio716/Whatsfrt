@@ -45,7 +45,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const exists = await prisma.user.findFirst({ where: { email: email.toLowerCase().trim() } })
   if (exists) return NextResponse.json({ error: "E-mail já cadastrado" }, { status: 400 })
 
-  const validDepts = ["VENDAS", "FINANCEIRO", "GERENCIA"] as const
+  const validDepts = [
+    "VENDAS", "FINANCEIRO", "GERENCIA", "SUPORTE", "ATENDIMENTO",
+    "COBRANCA", "MARKETING", "TI", "RH", "COMERCIAL", "EXPEDICAO",
+    "POS_VENDAS", "SECRETARIA_ASSISTENCIA", "TECNICOS_ASSISTENCIA",
+  ] as const
   type Dept = (typeof validDepts)[number]
   const dept = validDepts.includes(department as Dept) ? (department as Dept) : undefined
 
