@@ -208,21 +208,24 @@ async function handleUra(contact: ContactSnapshot, inboundText: string): Promise
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<void> {
+async function handleMessagesUpsert(messageData: EvolutionMessageData, sender?: string): Promise<void> {
   const { key, pushName, message, profilePicUrl } = messageData
 
-  // Ignora mensagens do próprio dispositivo vinculado (@lid = Linked Device ID)
-  if (key.remoteJid.includes('@lid')) {
-    console.log(`[webhook] Ignorando @lid: ${key.remoteJid}`)
+  // Se remoteJid é @lid, usa o sender do payload (número real do cliente)
+  let effectiveJid = key.remoteJid
+  if (key.remoteJid.includes('@lid') && sender) {
+    console.log(`[webhook] @lid detectado, usando sender: ${sender}`)
+    effectiveJid = sender
+  } else if (key.remoteJid.includes('@lid')) {
+    console.log(`[webhook] Ignorando @lid sem sender: ${key.remoteJid}`)
     return
   }
 
   // TEMPORÁRIO: Bypass do bug fromMe da Evolution v2.2.3
-  // A Evolution pode marcar mensagens de clientes como fromMe: true incorretamente
-  console.log(`[webhook] fromMe=${key.fromMe}, remoteJid=${key.remoteJid}`)
+  console.log(`[webhook] fromMe=${key.fromMe}, effectiveJid=${effectiveJid}`)
   // if (key.fromMe) return  // COMENTADO TEMPORARIAMENTE PARA DEBUG
 
-  const remoteJid = normalizeRemoteJid(key.remoteJid)
+  const remoteJid = normalizeRemoteJid(effectiveJid)
   console.log(`[webhook] Processando mensagem de: ${remoteJid}`)
 
   const messageText = extractMessageText(message)
@@ -314,7 +317,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? payload.data
       : [payload.data]
 
-    await Promise.all(messages.map((msg) => handleMessagesUpsert(msg)))
+    // Injeta o sender do payload em cada mensagem para resolver @lid
+    await Promise.all(messages.map((msg) => handleMessagesUpsert(msg, payload.sender)))
 
     return NextResponse.json(
       { received: true, processed: true, count: messages.length },
