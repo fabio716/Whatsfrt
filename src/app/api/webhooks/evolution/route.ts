@@ -208,24 +208,16 @@ async function handleUra(contact: ContactSnapshot, inboundText: string): Promise
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-async function handleMessagesUpsert(messageData: EvolutionMessageData, sender?: string): Promise<void> {
+async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<void> {
   const { key, pushName, message, profilePicUrl } = messageData
 
-  // Se remoteJid é @lid, usa o sender do payload (número real do cliente)
-  let effectiveJid = key.remoteJid
-  if (key.remoteJid.includes('@lid') && sender) {
-    console.log(`[webhook] @lid detectado, usando sender: ${sender}`)
-    effectiveJid = sender
-  } else if (key.remoteJid.includes('@lid')) {
-    console.log(`[webhook] Ignorando @lid sem sender: ${key.remoteJid}`)
-    return
-  }
+  // Outbound messages from Evolution API (fromMe) are handled by /api/messages/send
+  // or by sendUraMessage — skip to avoid duplicates.
+  if (key.fromMe) return
 
-  // TEMPORÁRIO: Bypass do bug fromMe da Evolution v2.2.3
-  console.log(`[webhook] fromMe=${key.fromMe}, effectiveJid=${effectiveJid}`)
-  // if (key.fromMe) return  // COMENTADO TEMPORARIAMENTE PARA DEBUG
+  console.log(`[webhook] fromMe=${key.fromMe}, remoteJid=${key.remoteJid}`)
 
-  const remoteJid = normalizeRemoteJid(effectiveJid)
+  const remoteJid = normalizeRemoteJid(key.remoteJid)
   console.log(`[webhook] Processando mensagem de: ${remoteJid}`)
 
   const messageText = extractMessageText(message)
@@ -317,8 +309,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? payload.data
       : [payload.data]
 
-    // Injeta o sender do payload em cada mensagem para resolver @lid
-    await Promise.all(messages.map((msg) => handleMessagesUpsert(msg, payload.sender)))
+    await Promise.all(messages.map((msg) => handleMessagesUpsert(msg)))
 
     return NextResponse.json(
       { received: true, processed: true, count: messages.length },
