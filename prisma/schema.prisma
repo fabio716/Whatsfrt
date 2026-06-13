@@ -64,6 +64,8 @@ enum CampaignStatus {
 enum CampaignLogStatus {
   PENDING
   SENT
+  DELIVERED
+  READ
   FAILED
 }
 
@@ -202,6 +204,8 @@ model Campaign {
   id          String         @id @default(cuid())
   name        String
   messageText String
+  mediaUrl    String?
+  mediaType   String?
   status      CampaignStatus @default(PENDING)
   createdById String?
   createdAt   DateTime       @default(now())
@@ -224,6 +228,7 @@ model Campaign {
 model CampaignLog {
   id         String            @id @default(cuid())
   status     CampaignLogStatus @default(PENDING)
+  messageKeyId String?
   sentAt     DateTime?
   deliveredAt DateTime?
   readAt      DateTime?
@@ -236,6 +241,7 @@ model CampaignLog {
   contactId String
   contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
+  @@index([messageKeyId])
   @@map("campaign_logs")
 }
 

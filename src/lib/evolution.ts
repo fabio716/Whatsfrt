@@ -62,3 +62,88 @@ export async function sendEvolutionText(whatsappId: string, text: string): Promi
     return false
   }
 }
+
+// Public base URL so Evolution can download media we stored locally.
+// Prefers APP_PUBLIC_URL, falls back to the origin of EVOLUTION_WEBHOOK_URL.
+export function resolvePublicBaseUrl(): string | null {
+  const explicit = process.env.APP_PUBLIC_URL
+  if (explicit) return explicit.replace(/\/$/, "")
+  const webhook = process.env.EVOLUTION_WEBHOOK_URL
+  if (webhook) {
+    try {
+      return new URL(webhook).origin
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+function evolutionMediaType(mimetype: string): string {
+  if (mimetype.startsWith("image/")) return "image"
+  if (mimetype.startsWith("video/")) return "video"
+  if (mimetype.startsWith("audio/")) return "audio"
+  return "document"
+}
+
+export interface CampaignSendResult {
+  ok: boolean
+  messageId: string | null
+}
+
+// Sends a campaign message (text, or media with caption) and returns the
+// WhatsApp message key id so delivery/read receipts can be matched later.
+export async function sendCampaignMessage(
+  whatsappId: string,
+  opts: { text: string; mediaUrl?: string | null; mediaType?: string | null; fileName?: string | null },
+): Promise<CampaignSendResult> {
+  const apiUrl = process.env.EVOLUTION_API_URL
+  const apiKey = process.env.EVOLUTION_API_KEY
+  const instance = process.env.EVOLUTION_INSTANCE_NAME
+  if (!apiUrl || !apiKey || !instance) {
+    console.error("[CAMPAIGN SEND ERROR] Variáveis de ambiente ausentes")
+    return { ok: false, messageId: null }
+  }
+
+  const number = whatsappId.endsWith("@g.us")
+    ? whatsappId
+    : whatsappId.replace("@s.whatsapp.net", "").replace(/@.*/, "")
+
+  const hasMedia = Boolean(opts.mediaUrl && opts.mediaType)
+  const publicBase = resolvePublicBaseUrl()
+
+  let url: string
+  let payload: Record<string, unknown>
+
+  if (hasMedia && publicBase) {
+    url = `${apiUrl}/message/sendMedia/${instance}`
+    payload = {
+      number,
+      mediatype: evolutionMediaType(opts.mediaType as string),
+      mimetype: opts.mediaType,
+      caption: opts.text,
+      media: `${publicBase}${opts.mediaUrl}`,
+      fileName: opts.fileName ?? (opts.mediaUrl as string).split("/").pop(),
+    }
+  } else {
+    url = `${apiUrl}/message/sendText/${instance}`
+    payload = { number, text: opts.text }
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      console.error("[CAMPAIGN SEND ERROR] Falha Evolution API:", res.status, await res.text())
+      return { ok: false, messageId: null }
+    }
+    const data = (await res.json()) as { key?: { id?: string } }
+    return { ok: true, messageId: data?.key?.id ?? null }
+  } catch (err) {
+    console.error("[CAMPAIGN SEND EXCEPTION]:", err)
+    return { ok: false, messageId: null }
+  }
+}

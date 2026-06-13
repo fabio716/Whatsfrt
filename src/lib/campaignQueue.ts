@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { sendEvolutionText } from "@/lib/evolution"
+import { sendCampaignMessage } from "@/lib/evolution"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Campaign Queue com Proteções Avançadas
@@ -22,11 +22,13 @@ function humanDelay(minSec: number, maxSec: number): Promise<void> {
 async function getCampaignStats(campaignId: string): Promise<CampaignStats> {
   const logs = await prisma.campaignLog.findMany({
     where: { campaignId },
-    select: { status: true, blockedByContact: true },
+    select: { status: true, sentAt: true, blockedByContact: true },
   })
 
   const total = logs.length
-  const sent = logs.filter((l) => l.status === "SENT").length
+  // A message counts as "sent" once it left the system, even if it later
+  // transitioned to DELIVERED/READ via receipts.
+  const sent = logs.filter((l) => l.sentAt !== null).length
   const failed = logs.filter((l) => l.status === "FAILED").length
   const blocked = logs.filter((l) => l.blockedByContact).length
 
@@ -72,7 +74,6 @@ async function checkRateLimits(campaignId: string): Promise<boolean> {
   const sentLastHour = await prisma.campaignLog.count({
     where: {
       campaignId,
-      status: "SENT",
       sentAt: { gte: hourAgo },
     },
   })
@@ -80,7 +81,6 @@ async function checkRateLimits(campaignId: string): Promise<boolean> {
   const sentLastDay = await prisma.campaignLog.count({
     where: {
       campaignId,
-      status: "SENT",
       sentAt: { gte: dayAgo },
     },
   })
@@ -107,7 +107,7 @@ export async function processCampaign(campaignId: string): Promise<void> {
 
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { messageText: true, delayMin: true, delayMax: true },
+      select: { messageText: true, mediaUrl: true, mediaType: true, delayMin: true, delayMax: true },
     })
 
     if (!campaign) return
@@ -152,12 +152,17 @@ export async function processCampaign(campaignId: string): Promise<void> {
       const personalizedMessage = campaign.messageText.replace(/\{nome\}/gi, log.contact.name)
 
       try {
-        const ok = await sendEvolutionText(log.contact.whatsappId, personalizedMessage)
+        const { ok, messageId } = await sendCampaignMessage(log.contact.whatsappId, {
+          text: personalizedMessage,
+          mediaUrl: campaign.mediaUrl,
+          mediaType: campaign.mediaType,
+        })
         await prisma.campaignLog.update({
           where: { id: log.id },
           data: {
             status: ok ? "SENT" : "FAILED",
             sentAt: ok ? new Date() : null,
+            messageKeyId: messageId,
             errorMsg: ok ? null : "Evolution API retornou falha",
           },
         })

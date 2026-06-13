@@ -13,21 +13,47 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const campaigns = await prisma.campaign.findMany({
     where: isAgent ? { createdById: session.id } : {},
     orderBy: { createdAt: "desc" },
-    include: {
-      _count: { select: { logs: true } },
-      logs: { where: { status: "SENT" }, select: { id: true } },
-    },
   })
 
-  const result = campaigns.map((c) => ({
-    id: c.id,
-    name: c.name,
-    messageText: c.messageText,
-    status: c.status,
-    createdAt: c.createdAt,
-    total: c._count.logs,
-    sent: c.logs.length,
-  }))
+  const ids = campaigns.map((c) => c.id)
+  const grouped = ids.length
+    ? await prisma.campaignLog.groupBy({
+        by: ["campaignId", "status"],
+        where: { campaignId: { in: ids } },
+        _count: { _all: true },
+      })
+    : []
+
+  const countsByCampaign = new Map<string, Record<string, number>>()
+  for (const g of grouped) {
+    const entry = countsByCampaign.get(g.campaignId) ?? {}
+    entry[g.status] = g._count._all
+    countsByCampaign.set(g.campaignId, entry)
+  }
+
+  const result = campaigns.map((c) => {
+    const k = countsByCampaign.get(c.id) ?? {}
+    const pending = k.PENDING ?? 0
+    const failed = k.FAILED ?? 0
+    const readCount = k.READ ?? 0
+    const deliveredCount = (k.DELIVERED ?? 0) + readCount
+    const sentCount = (k.SENT ?? 0) + deliveredCount
+    const total = pending + failed + sentCount
+    return {
+      id: c.id,
+      name: c.name,
+      messageText: c.messageText,
+      mediaUrl: c.mediaUrl,
+      mediaType: c.mediaType,
+      status: c.status,
+      createdAt: c.createdAt,
+      total,
+      sent: sentCount,
+      delivered: deliveredCount,
+      read: readCount,
+      failed,
+    }
+  })
 
   return NextResponse.json(result)
 }
@@ -45,16 +71,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const isAgent = session.role === "AGENT"
 
-  let body: { name?: string; messageText?: string; filter?: AudienceFilter }
+  let body: { name?: string; messageText?: string; filter?: AudienceFilter; mediaUrl?: string; mediaType?: string }
   try {
     body = (await request.json()) as typeof body
   } catch {
     return NextResponse.json({ error: "Corpo inválido" }, { status: 400 })
   }
 
-  const { name, messageText, filter } = body
-  if (!name?.trim() || !messageText?.trim() || !filter) {
-    return NextResponse.json({ error: "Nome, mensagem e filtro são obrigatórios" }, { status: 400 })
+  const { name, messageText, filter, mediaUrl, mediaType } = body
+  const hasMedia = Boolean(mediaUrl && mediaType)
+  if (!name?.trim() || !filter || (!messageText?.trim() && !hasMedia)) {
+    return NextResponse.json({ error: "Nome, destinatários e mensagem (ou imagem) são obrigatórios" }, { status: 400 })
   }
 
   // ── Build contact query (agents are always scoped to their own contacts) ────
@@ -92,7 +119,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const campaign = await prisma.campaign.create({
     data: {
       name: name.trim(),
-      messageText: messageText.trim(),
+      messageText: messageText?.trim() ?? "",
+      mediaUrl: hasMedia ? mediaUrl : null,
+      mediaType: hasMedia ? mediaType : null,
       status: "PENDING",
       createdById: session.id,
       logs: {

@@ -294,6 +294,48 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
   await handleUra(contact, messageText)
 }
 
+// ─── Delivery/Read receipts → CampaignLog ────────────────────────────────────
+
+interface EvolutionStatusUpdate {
+  keyId?: string
+  key?: { id?: string }
+  status?: string
+  update?: { status?: string }
+}
+
+const STATUS_RANK: Record<string, number> = { PENDING: 0, SENT: 1, FAILED: 1, DELIVERED: 2, READ: 3 }
+
+async function handleMessageStatusUpdate(data: EvolutionStatusUpdate): Promise<void> {
+  const keyId = data.keyId ?? data.key?.id
+  const status = (data.status ?? data.update?.status ?? "").toUpperCase()
+  if (!keyId || !status) return
+
+  const isRead = status === "READ" || status === "PLAYED"
+  const isDelivered = status === "DELIVERY_ACK" || status === "DELIVERED"
+  if (!isRead && !isDelivered) return
+
+  const log = await prisma.campaignLog.findFirst({
+    where: { messageKeyId: keyId },
+    select: { id: true, status: true, deliveredAt: true },
+  })
+  if (!log) return
+
+  const currentRank = STATUS_RANK[log.status] ?? 0
+  const now = new Date()
+
+  if (isRead && currentRank < STATUS_RANK.READ) {
+    await prisma.campaignLog.update({
+      where: { id: log.id },
+      data: { status: "READ", readAt: now, deliveredAt: log.deliveredAt ?? now },
+    })
+  } else if (isDelivered && currentRank < STATUS_RANK.DELIVERED) {
+    await prisma.campaignLog.update({
+      where: { id: log.id },
+      data: { status: "DELIVERED", deliveredAt: now },
+    })
+  }
+}
+
 // ─── Route ───────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -306,6 +348,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    if (payload.event === "messages.update") {
+      const updates = (Array.isArray(payload.data) ? payload.data : [payload.data]) as EvolutionStatusUpdate[]
+      await Promise.all(updates.map((u) => handleMessageStatusUpdate(u)))
+      return NextResponse.json({ received: true, processed: true, event: payload.event }, { status: 200 })
+    }
+
     if (payload.event !== "messages.upsert") {
       return NextResponse.json({ received: true, processed: false, event: payload.event }, { status: 200 })
     }

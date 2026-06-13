@@ -10,10 +10,15 @@ interface Broadcast {
   id: string
   name: string
   messageText: string
+  mediaUrl: string | null
+  mediaType: string | null
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED"
   createdAt: string
   total: number
   sent: number
+  delivered: number
+  read: number
+  failed: number
 }
 
 type Mode = "all" | "cooperative" | "manual"
@@ -34,6 +39,8 @@ export default function BroadcastPage() {
 
   const [name, setName]               = useState("")
   const [messageText, setMessageText] = useState("")
+  const [media, setMedia]             = useState<{ mediaUrl: string; mediaType: string; fileName: string } | null>(null)
+  const [uploading, setUploading]     = useState(false)
   const [mode, setMode]               = useState<Mode>("all")
   const [coopId, setCoopId]           = useState("")
   const [selected, setSelected]       = useState<Set<string>>(new Set())
@@ -97,9 +104,26 @@ export default function BroadcastPage() {
 
   const clearSelection = () => setSelected(new Set())
 
+  // ── Media upload ──────────────────────────────────────────────────────────────
+  const handleUpload = async (file: File) => {
+    setUploading(true); setError(null)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/broadcast/upload", { method: "POST", body: fd })
+      const data = await res.json() as { mediaUrl?: string; mediaType?: string; fileName?: string; error?: string }
+      if (!res.ok || !data.mediaUrl) throw new Error(data.error ?? "Falha no upload")
+      setMedia({ mediaUrl: data.mediaUrl, mediaType: data.mediaType ?? "application/octet-stream", fileName: data.fileName ?? file.name })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro no upload")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   // ── Submit ──────────────────────────────────────────────────────────────────
-  const canSend = name.trim() && messageText.trim() && recipientCount > 0 && !sending &&
-    (mode !== "cooperative" || coopId)
+  const canSend = Boolean(name.trim() && (messageText.trim() || media) && recipientCount > 0 && !sending && !uploading &&
+    (mode !== "cooperative" || coopId))
 
   const handleSend = async () => {
     if (!canSend) return
@@ -117,12 +141,15 @@ export default function BroadcastPage() {
       const res = await fetch("/api/broadcast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), messageText: messageText.trim(), filter }),
+        body: JSON.stringify({
+          name: name.trim(), messageText: messageText.trim(), filter,
+          mediaUrl: media?.mediaUrl, mediaType: media?.mediaType,
+        }),
       })
       const data = await res.json() as { total?: number; error?: string }
       if (!res.ok) throw new Error(data.error ?? "Erro ao criar transmissão")
       setOkMsg(`Transmissão criada para ${data.total} contato(s). O envio começou.`)
-      setName(""); setMessageText(""); setSelected(new Set()); setCoopId(""); setMode("all")
+      setName(""); setMessageText(""); setMedia(null); setSelected(new Set()); setCoopId(""); setMode("all")
       void loadBroadcasts()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
@@ -155,6 +182,28 @@ export default function BroadcastPage() {
               placeholder="Digite a mensagem. Use {nome} para personalizar com o nome do contato."
               className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
             <p className="mt-1 text-[11px] text-zinc-400">Dica: <code className="rounded bg-zinc-100 px-1">{"{nome}"}</code> será substituído pelo nome do contato.</p>
+          </div>
+
+          {/* Media attachment */}
+          <div>
+            <p className="mb-1.5 block text-[12px] font-semibold text-zinc-700">Imagem / arquivo (opcional)</p>
+            {media ? (
+              <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                {media.mediaType.startsWith("image/")
+                  ? <img src={media.mediaUrl} alt={media.fileName} className="h-14 w-14 rounded-lg object-cover" />
+                  : <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-zinc-200 text-[10px] font-bold text-zinc-500">FILE</div>}
+                <span className="flex-1 truncate text-[13px] text-zinc-700">{media.fileName}</span>
+                <button type="button" onClick={() => setMedia(null)}
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-red-600 ring-1 ring-inset ring-red-200 hover:bg-red-50">Remover</button>
+              </div>
+            ) : (
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 py-4 text-[12px] font-medium text-zinc-500 hover:border-zinc-400 hover:bg-white">
+                <input type="file" className="hidden" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = "" }} />
+                {uploading ? "Enviando arquivo…" : "Clique para anexar uma imagem ou arquivo"}
+              </label>
+            )}
+            <p className="mt-1 text-[11px] text-zinc-400">A mensagem acima vira a legenda da imagem.</p>
           </div>
 
           {/* Audience mode */}
@@ -235,7 +284,12 @@ export default function BroadcastPage() {
                   return (
                     <div key={b.id} className="rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="truncate text-[13px] font-medium text-zinc-800">{b.name}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          {b.mediaUrl && b.mediaType?.startsWith("image/") && (
+                            <img src={b.mediaUrl} alt="" className="h-6 w-6 flex-shrink-0 rounded object-cover" />
+                          )}
+                          <span className="truncate text-[13px] font-medium text-zinc-800">{b.name}</span>
+                        </span>
                         <span className={`flex-shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${cfg.cls}`}>{cfg.label}</span>
                       </div>
                       <div className="mt-2 flex items-center gap-3">
@@ -243,6 +297,13 @@ export default function BroadcastPage() {
                           <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="text-[11px] tabular-nums text-zinc-500">{b.sent}/{b.total}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] tabular-nums">
+                        <span className="text-zinc-500">Enviados: <strong className="text-zinc-800">{b.sent}</strong></span>
+                        <span className="text-zinc-500">Entregues <span className="text-sky-500">✓✓</span>: <strong className="text-zinc-800">{b.delivered}</strong></span>
+                        <span className="text-zinc-500">Lidos: <strong className="text-sky-600">{b.read}</strong></span>
+                        <span className="text-zinc-500">Falhas: <strong className={b.failed > 0 ? "text-red-600" : "text-zinc-800"}>{b.failed}</strong></span>
+                        <span className="text-zinc-400">Não recebidos: <strong className="text-zinc-700">{Math.max(b.sent - b.delivered, 0)}</strong></span>
                       </div>
                     </div>
                   )
