@@ -215,11 +215,7 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
   // or by sendUraMessage — skip to avoid duplicates.
   if (key.fromMe) return
 
-  console.log(`[webhook] fromMe=${key.fromMe}, remoteJid=${key.remoteJid}`)
-
   const remoteJid = normalizeRemoteJid(key.remoteJid)
-  console.log(`[webhook] Processando mensagem de: ${remoteJid}`)
-
   const messageText = extractMessageText(message)
 
   // ── 1. Upsert contact — preserves assignedUserId and chatStatus ──────────
@@ -290,12 +286,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     payload = (await request.json()) as EvolutionWebhookPayload
-    console.log("🔔 Webhook Recebido:", JSON.stringify({ event: payload.event, instance: payload.instance }))
-    
-    // DEBUG: Log completo do payload para diagnóstico
-    if (payload.event === "messages.upsert") {
-      console.log("[WEBHOOK RAW PAYLOAD] ->", JSON.stringify(payload, null, 2))
-    }
   } catch {
     return NextResponse.json({ received: false, error: "Invalid JSON body" }, { status: 200 })
   }

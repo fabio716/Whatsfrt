@@ -67,7 +67,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       const url = `${apiUrl}/message/sendText/${instance}`
       const payload = { number, text: text.trim() }
-      console.log("[OUTBOUND ATTEMPT] Enviando para:", url, "Payload:", JSON.stringify(payload))
 
       const res = await fetch(url, {
         method: "POST",
@@ -75,12 +74,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         body: JSON.stringify(payload),
       })
 
-      const respText = await res.text()
       if (!res.ok) {
+        const respText = await res.text()
         console.error("[OUTBOUND ERROR] Falha Evolution API:", res.status, respText)
         finalStatus = MessageStatus.FAILED
-      } else {
-        console.log("[OUTBOUND SUCCESS] Evolution API respondeu:", res.status, respText)
       }
     } catch (err) {
       console.error("[OUTBOUND EXCEPTION]:", err)
