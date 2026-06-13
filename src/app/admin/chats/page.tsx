@@ -13,11 +13,15 @@ export default async function ChatsPage() {
   const token = cookieStore.get(COOKIE_NAME)?.value
   const session = token ? await verifySessionToken(token) : null
 
+  const isAgent = session?.role === "AGENT"
+
   const [rawContacts, agents] = await Promise.all([
     prisma.contact.findMany({
-      where: { 
+      where: {
         deletedAt: null,
-        chatStatus: "IN_SERVICE"
+        chatStatus: "IN_SERVICE",
+        // Agents only ever see their own assigned conversations.
+        ...(isAgent ? { assignedUserId: session?.id } : {}),
       },
       include: { messages: { orderBy: { createdAt: "asc" } } },
       orderBy: { updatedAt: "desc" },

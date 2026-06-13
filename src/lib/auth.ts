@@ -33,3 +33,12 @@ export const SESSION_COOKIE_OPTS = {
   path: "/",
   maxAge: 8 * 60 * 60,
 }
+
+// Reads and verifies the session from a request's cookies. Returns null if absent/invalid.
+export async function getSessionFromRequest(
+  request: { cookies: { get: (name: string) => { value: string } | undefined } },
+): Promise<SessionPayload | null> {
+  const token = request.cookies.get(COOKIE_NAME)?.value
+  if (!token) return null
+  return verifySessionToken(token)
+}

@@ -40,23 +40,49 @@ export type SSEPayload = SSENewMessagePayload | SSEMessageUpdatePayload
 // single-server deployment (local Docker). For multi-instance/serverless
 // environments, replace with a pub/sub layer (e.g. Redis Pub/Sub).
 
-const clients = new Set<ReadableStreamDefaultController<string>>()
+type Role = "ADMIN" | "AGENT"
 
-export function addSSEClient(ctrl: ReadableStreamDefaultController<string>): void {
-  clients.add(ctrl)
+interface SSEClient {
+  ctrl: ReadableStreamDefaultController<string>
+  userId: string | null
+  role: Role
+}
+
+const clients = new Set<SSEClient>()
+
+export function addSSEClient(
+  ctrl: ReadableStreamDefaultController<string>,
+  userId: string | null,
+  role: Role,
+): void {
+  clients.add({ ctrl, userId, role })
 }
 
 export function removeSSEClient(ctrl: ReadableStreamDefaultController<string>): void {
-  clients.delete(ctrl)
+  for (const c of clients) {
+    if (c.ctrl === ctrl) clients.delete(c)
+  }
 }
 
-export function broadcast(payload: SSEPayload): void {
+// Broadcast an event, scoping delivery so agents only receive events for the
+// contacts assigned to them. Admins always receive everything.
+// `ownerId` is the assignedUserId of the contact the event refers to.
+export function broadcast(payload: SSEPayload, ownerId?: string | null): void {
+  let owner: string | null | undefined = ownerId
+  if (owner === undefined && payload.type === "new_message") {
+    owner = payload.data.contact.assignedUserId
+  }
+
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
-  for (const ctrl of clients) {
+  for (const c of clients) {
+    // Agents only get events for their own contacts. If the owner is unknown
+    // (undefined) for a status update, deliver only to admins.
+    const allowed = c.role === "ADMIN" || owner === c.userId
+    if (!allowed) continue
     try {
-      ctrl.enqueue(chunk)
+      c.ctrl.enqueue(chunk)
     } catch {
-      clients.delete(ctrl)
+      clients.delete(c)
     }
   }
 }

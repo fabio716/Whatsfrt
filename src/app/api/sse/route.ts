@@ -1,4 +1,6 @@
+import { cookies } from "next/headers"
 import { addSSEClient, removeSSEClient } from "@/lib/sse-emitter"
+import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -6,13 +8,19 @@ export const fetchCache = 'force-no-store'
 const HEARTBEAT_INTERVAL_MS = 25_000
 
 export async function GET(): Promise<Response> {
+  const cookieStore = await cookies()
+  const token = cookieStore.get(COOKIE_NAME)?.value
+  const session = token ? await verifySessionToken(token) : null
+  const userId = session?.id ?? null
+  const role = session?.role ?? "AGENT"
+
   let savedCtrl: ReadableStreamDefaultController<string> | null = null
   let heartbeat: ReturnType<typeof setInterval> | null = null
 
   const stream = new ReadableStream<string>({
     start(ctrl) {
       savedCtrl = ctrl
-      addSSEClient(ctrl)
+      addSSEClient(ctrl, userId, role)
 
       ctrl.enqueue(": connected\n\n")
 

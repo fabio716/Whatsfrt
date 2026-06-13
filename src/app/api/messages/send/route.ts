@@ -104,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       status: updated.status,
       contactId: updated.contactId,
     },
-  })
+  }, contact.assignedUserId)
 
   return NextResponse.json({ id: updated.id, status: updated.status })
 }

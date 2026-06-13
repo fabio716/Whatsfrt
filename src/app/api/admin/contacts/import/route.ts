@@ -52,6 +52,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const file   = formData.get("file")   as File   | null
   const userId = (formData.get("userId") as string | null) || null
+  const cooperativeId = (formData.get("cooperativeId") as string | null) || null
 
   if (!file) {
     return NextResponse.json({ error: "file é obrigatório" }, { status: 400 })
@@ -144,11 +145,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             whatsappId: r.whatsappId,
             name: r.name,
             assignedUserId: userId,
+            ...(cooperativeId ? { cooperativeId } : {}),
             chatStatus: "IDLE",
           },
           update: {
             name: r.name,
             assignedUserId: userId,
+            ...(cooperativeId ? { cooperativeId } : {}),
             chatStatus: "IDLE",
           },
         })

@@ -15,6 +15,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       chatStatus: true,
       createdAt: true,
       assignedUser: { select: { id: true, name: true } },
+      cooperative: { select: { id: true, name: true } },
     },
     orderBy: { name: "asc" },
   })

@@ -97,6 +97,8 @@ model Contact {
   chatStatus      ChatStatus @default(IDLE)
   assignedUserId  String?
   assignedUser    User?      @relation("AssignedContacts", fields: [assignedUserId], references: [id])
+  cooperativeId   String?
+  cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id])
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
@@ -104,6 +106,8 @@ model Contact {
   messages     Message[]
   campaignLogs CampaignLog[]
 
+  @@index([assignedUserId])
+  @@index([cooperativeId])
   @@map("contacts")
 }
 
@@ -199,6 +203,7 @@ model Campaign {
   name        String
   messageText String
   status      CampaignStatus @default(PENDING)
+  createdById String?
   createdAt   DateTime       @default(now())
   
   // Proteções e limites
@@ -271,7 +276,9 @@ model Cooperative {
   // Atendente B2B responsável
   assignedUserId String?
   assignedUser   User?   @relation("CooperativeAssignments", fields: [assignedUserId], references: [id])
-  
+
+  contacts    Contact[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

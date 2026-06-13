@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AgentOption { id: string; name: string; department: string | null }
+interface CooperativeOption { id: string; name: string }
 
 interface ContactRow {
   id: string
@@ -12,6 +13,7 @@ interface ContactRow {
   whatsappId: string
   chatStatus: "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE"
   assignedUser: { id: string; name: string } | null
+  cooperative: { id: string; name: string } | null
   createdAt: string
 }
 
@@ -37,6 +39,7 @@ function phone(jid: string) {
 export default function ContatosPage() {
   const [contacts, setContacts]       = useState<ContactRow[]>([])
   const [agents,   setAgents]         = useState<AgentOption[]>([])
+  const [cooperatives, setCooperatives] = useState<CooperativeOption[]>([])
   const [loading,  setLoading]        = useState(true)
   const [search,   setSearch]         = useState("")
   const [filterAgent, setFilterAgent] = useState("")
@@ -44,6 +47,7 @@ export default function ContatosPage() {
   // ── import state
   const [showImport,   setShowImport]   = useState(false)
   const [importAgent,  setImportAgent]  = useState("")
+  const [importCoop,   setImportCoop]   = useState("")
   const [importing,    setImporting]    = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importError,  setImportError]  = useState<string | null>(null)
@@ -51,15 +55,17 @@ export default function ContatosPage() {
 
   // ── load data
   const load = useCallback(async () => {
-    const [cRes, uRes] = await Promise.all([
+    const [cRes, uRes, coopRes] = await Promise.all([
       fetch("/api/admin/contacts"),
       fetch("/api/admin/users"),
+      fetch("/api/admin/ura/cooperatives"),
     ])
     if (cRes.ok) setContacts((await cRes.json()) as ContactRow[])
     if (uRes.ok) {
       const users = (await uRes.json()) as (AgentOption & { role: string; isActive: boolean })[]
       setAgents(users.filter((u) => u.role === "AGENT" && u.isActive))
     }
+    if (coopRes.ok) setCooperatives((await coopRes.json()) as CooperativeOption[])
     setLoading(false)
   }, [])
 
@@ -84,6 +90,7 @@ export default function ContatosPage() {
       const fd = new FormData()
       fd.append("file", file)
       if (importAgent) fd.append("userId", importAgent)
+      if (importCoop) fd.append("cooperativeId", importCoop)
       const res  = await fetch("/api/admin/contacts/import", { method: "POST", body: fd })
       const data = (await res.json()) as ImportResult & { error?: string }
       if (!res.ok) throw new Error(data.error ?? "Erro na importação")
@@ -209,7 +216,7 @@ export default function ContatosPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-100">
-                  {["Nome", "Telefone", "Status", "Agente", "Cadastrado em"].map((h, i) => (
+                  {["Nome", "Telefone", "Status", "Agente", "Empresa", "Cadastrado em"].map((h, i) => (
                     <th key={h} className={`px-5 py-3.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 ${i === 0 ? "text-left" : "text-left"}`}>{h}</th>
                   ))}
                 </tr>
@@ -234,6 +241,11 @@ export default function ContatosPage() {
                       <td className="px-5 py-3.5 text-zinc-500">
                         {c.assignedUser
                           ? <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-blue-400" />{c.assignedUser.name}</span>
+                          : <span className="text-zinc-300">—</span>}
+                      </td>
+                      <td className="px-5 py-3.5 text-zinc-500">
+                        {c.cooperative
+                          ? <span className="text-zinc-600">{c.cooperative.name}</span>
                           : <span className="text-zinc-300">—</span>}
                       </td>
                       <td className="px-5 py-3.5 text-xs text-zinc-400">
@@ -293,6 +305,23 @@ export default function ContatosPage() {
                   <option value="">Sem agente (livre)</option>
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>{a.name}{a.department ? ` — ${a.department}` : ""}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Cooperative selector */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Empresa / Cooperativa <span className="normal-case text-zinc-400">(opcional)</span>
+                </label>
+                <select
+                  value={importCoop}
+                  onChange={(e) => setImportCoop(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white"
+                >
+                  <option value="">Nenhuma</option>
+                  {cooperatives.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
