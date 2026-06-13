@@ -240,8 +240,8 @@ export default function URAPage() {
                   <label className="mb-1 block text-[11px] font-medium text-zinc-500" htmlFor="new-dept">Departamento</label>
                   <select id="new-dept" value={newOpt.targetDepartment}
                     onChange={(e) => setNewOpt((p) => ({ ...p, targetDepartment: e.target.value }))}
-                    className="w-44 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] outline-none focus:border-zinc-300">
-                    {DEPT_OPTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                    className="w-44 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] text-zinc-800 outline-none focus:border-zinc-300">
+                    {DEPT_OPTIONS.map((d) => <option key={d.value} value={d.value} className="text-zinc-800">{d.label}</option>)}
                   </select>
                 </div>
                 <button type="button" onClick={() => void addOption()} disabled={!newOpt.digit || !newOpt.label || addingOpt}
