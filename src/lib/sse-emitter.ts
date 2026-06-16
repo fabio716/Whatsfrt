@@ -33,7 +33,17 @@ export interface SSEMessageUpdatePayload {
   data: { id: string; status: SSEMessageData["status"]; contactId: string }
 }
 
-export type SSEPayload = SSENewMessagePayload | SSEMessageUpdatePayload
+// Eventos de sistema vão para TODOS os clientes (admin e agente). O UI decide
+// o que mostrar — banner vermelho quando Evolution sai do "open", etc.
+export interface SSESystemEventPayload {
+  type: "evolution_state"
+  state: "open" | "close" | "connecting" | "qrcode" | "unknown"
+}
+
+export type SSEPayload =
+  | SSENewMessagePayload
+  | SSEMessageUpdatePayload
+  | SSESystemEventPayload
 
 // ─── Singleton client registry ────────────────────────────────────────────────
 // NOTE: This module-level Set is process-local. It works correctly for a
@@ -66,10 +76,27 @@ export function removeSSEClient(ctrl: ReadableStreamDefaultController<string>): 
   }
 }
 
+// Broadcast irrestrito para TODOS os clientes conectados (admin + agente).
+// Usado por eventos de sistema (status do Evolution, manutenção, etc.) que
+// não têm dono específico e todo mundo precisa ver.
+export function broadcastSystemEvent(payload: SSESystemEventPayload): void {
+  const chunk = `data: ${JSON.stringify(payload)}\n\n`
+  for (const c of clients) {
+    try {
+      c.ctrl.enqueue(chunk)
+    } catch {
+      clients.delete(c)
+    }
+  }
+}
+
 // Broadcast an event, scoping delivery so agents only receive events for the
 // contacts assigned to them. Admins always receive everything.
 // `ownerId` is the assignedUserId of the contact the event refers to.
-export function broadcast(payload: SSEPayload, ownerId?: string | null): void {
+export function broadcast(
+  payload: SSENewMessagePayload | SSEMessageUpdatePayload,
+  ownerId?: string | null,
+): void {
   let owner: string | null | undefined = ownerId
   if (owner === undefined && payload.type === "new_message") {
     owner = payload.data.contact.assignedUserId

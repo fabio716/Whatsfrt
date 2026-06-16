@@ -119,6 +119,54 @@ class RedisClient {
     return this.safeExecute(() => this.client!.flushdb(), null)
   }
 
+  // ─── List ops (usadas pela fila durável) ─────────────────────────────────
+  async lpush(key: string, value: string): Promise<number> {
+    return this.safeExecute(() => this.client!.lpush(key, value), 0)
+  }
+
+  async lrem(key: string, count: number, value: string): Promise<number> {
+    return this.safeExecute(() => this.client!.lrem(key, count, value), 0)
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return this.safeExecute(() => this.client!.lrange(key, start, stop), [])
+  }
+
+  async llen(key: string): Promise<number> {
+    return this.safeExecute(() => this.client!.llen(key), 0)
+  }
+
+  async ping(): Promise<string | null> {
+    return this.safeExecute(() => this.client!.ping(), null)
+  }
+
+  // Move tudo da fila "processing" de volta para "inbound" (replay no boot).
+  async drainProcessing(processingKey: string, inboundKey: string): Promise<number> {
+    if (!this.client || !this.isConnected) return 0
+    try {
+      const items = await this.client.lrange(processingKey, 0, -1)
+      if (items.length === 0) return 0
+      const pipeline = this.client.multi()
+      for (const item of items) pipeline.rpush(inboundKey, item)
+      pipeline.del(processingKey)
+      await pipeline.exec()
+      return items.length
+    } catch (err) {
+      console.error("[Redis] drainProcessing failed:", err)
+      return 0
+    }
+  }
+
+  // Acesso ao ioredis cru — usado SÓ pelo worker para BLMOVE bloqueante,
+  // que não pode rodar na conexão compartilhada.
+  rawClient(): Redis | null {
+    return this.client
+  }
+
+  isReady(): boolean {
+    return this.isConnected && this.client !== null
+  }
+
   getStatus(): { connected: boolean; retries: number } {
     return {
       connected: this.isConnected,
@@ -132,6 +180,16 @@ class RedisClient {
       this.isConnected = false
     }
   }
+}
+
+// Constrói uma conexão Redis dedicada (para BLMOVE/BRPOP). Cada caller deve
+// chamar `.quit()` no shutdown.
+export function createDedicatedRedis(): Redis {
+  return new Redis(REDIS_URL, {
+    maxRetriesPerRequest: null, // workers nunca rejeitam, só esperam
+    enableReadyCheck: true,
+    retryStrategy: (times) => Math.min(times * RETRY_DELAY, 5000),
+  })
 }
 
 // Singleton

@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import fs from "node:fs/promises"
-import path from "node:path"
 import { timingSafeEqual } from "node:crypto"
 import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
-import { sendEvolutionText, fetchMediaBase64 } from "@/lib/evolution"
-import { getUraConfigCached } from "@/lib/ura"
-import { isBusinessHour } from "@/lib/businessHours"
+import { fetchMediaBase64 } from "@/lib/evolution"
+import { saveMediaBuffer } from "@/lib/mediaStorage"
+import { enqueueInbound } from "@/lib/reliability/queue"
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -93,14 +91,8 @@ async function saveMediaFromBase64(
   fileName?: string
 ): Promise<{ mediaUrl: string; mediaType: string } | null> {
   try {
-    const ext = (mimetype.split("/")[1] ?? "bin").split(";")[0]
-    const safeName = fileName
-      ? `${Date.now()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`
-      : `${Date.now()}.${ext}`
-    const uploadsDir = path.join(process.cwd(), "public", "uploads")
-    await fs.mkdir(uploadsDir, { recursive: true })
-    await fs.writeFile(path.join(uploadsDir, safeName), Buffer.from(base64, "base64"))
-    return { mediaUrl: `/uploads/${safeName}`, mediaType: mimetype }
+    const saved = await saveMediaBuffer(Buffer.from(base64, "base64"), mimetype, fileName)
+    return { mediaUrl: saved.mediaUrl, mediaType: saved.mediaType }
   } catch (err) {
     console.error("[webhook] saveMediaFromBase64 error:", err)
     return null
@@ -127,85 +119,7 @@ function extractMedia(
 }
 
 
-// ─── Contact shape used internally ───────────────────────────────────────────
-
-type ContactSnapshot = {
-  id: string
-  whatsappId: string
-  name: string
-  profilePhotoUrl: string | null
-  chatStatus: ChatStatus
-  assignedUserId: string | null
-}
-
-// ─── Helper: broadcast + save outbound URA message ───────────────────────────
-
-async function sendUraMessage(contact: ContactSnapshot, text: string): Promise<void> {
-  const ok = await sendEvolutionText(contact.whatsappId, text)
-  const saved = await prisma.message.create({
-    data: {
-      body: text,
-      direction: MessageDirection.OUTBOUND,
-      status: ok ? MessageStatus.SENT : MessageStatus.FAILED,
-      contactId: contact.id,
-    },
-  })
-  broadcast({
-    type: "new_message",
-    data: {
-      id: saved.id, body: saved.body, direction: saved.direction,
-      status: saved.status, createdAt: saved.createdAt.toISOString(),
-      agentId: null, contactId: contact.id, contact,
-    },
-  })
-}
-
-// ─── URA State Machine ───────────────────────────────────────────────────────
-
-async function handleUra(contact: ContactSnapshot, inboundText: string): Promise<void> {
-  if (contact.whatsappId.endsWith("@g.us")) return
-  // Ignora números inválidos (IDs internos do WhatsApp com mais de 13 dígitos)
-  const digits = contact.whatsappId.replace("@s.whatsapp.net", "")
-  if (digits.length > 13) return
-
-  const cfg = await getUraConfigCached()
-  if (!cfg.isActive) return
-
-  const optionMap = Object.fromEntries(cfg.options.map((o) => [o.digit, o.label]))
-
-  if (contact.chatStatus === ChatStatus.IDLE) {
-    const bizStatus = isBusinessHour(cfg)
-
-    if (bizStatus === "CLOSED") {
-      if (cfg.outOfOfficeMessage) await sendUraMessage(contact, cfg.outOfOfficeMessage)
-      return // keep IDLE — re-check on next message
-    }
-
-    if (bizStatus === "LUNCH") {
-      if (cfg.lunchMessage) await sendUraMessage(contact, cfg.lunchMessage)
-      return // keep IDLE
-    }
-
-    await prisma.contact.update({ where: { id: contact.id }, data: { chatStatus: ChatStatus.IN_URA } })
-    await sendUraMessage(contact, cfg.greetingText)
-    return
-  }
-
-  if (contact.chatStatus === ChatStatus.IN_URA) {
-    const option = inboundText.trim()
-    const label = optionMap[option]
-    if (label) {
-      await prisma.contact.update({ where: { id: contact.id }, data: { chatStatus: ChatStatus.WAITING_AGENT } })
-      await sendUraMessage(
-        contact,
-        `✅ Você selecionou *${label}*.\nUm agente irá te atender em breve. Aguarde! 🙏`
-      )
-    } else {
-      await sendUraMessage(contact, `⚠️ Opção inválida. Por favor, escolha:\n\n${cfg.greetingText}`)
-    }
-  }
-  // WAITING_AGENT / IN_SERVICE: message already saved; nothing else to do.
-}
+// Lógica de URA agora vive em @/lib/ura/inbound e é executada por worker.
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
@@ -252,15 +166,30 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
     else console.warn("[webhook] mídia recebida sem base64 e não foi possível obter via API:", rawMedia.mimetype)
   }
 
-  const saved = await prisma.message.create({
-    data: {
-      body: messageText,
-      direction: MessageDirection.INBOUND,
-      status: MessageStatus.DELIVERED,
-      contactId: contact.id,
-      ...(media ? { mediaUrl: media.mediaUrl, mediaType: media.mediaType } : {}),
-    },
-  })
+  // Dedupe por whatsappKeyId (chave única). Se a Evolution reenviar este
+  // webhook (timeout dela, restart nosso), o create falha por unique violation
+  // e ignoramos silenciosamente — mensagem NUNCA aparece 2x na tela.
+  let saved
+  try {
+    saved = await prisma.message.create({
+      data: {
+        body: messageText,
+        direction: MessageDirection.INBOUND,
+        status: MessageStatus.DELIVERED,
+        contactId: contact.id,
+        whatsappKeyId: key.id,
+        ...(media ? { mediaUrl: media.mediaUrl, mediaType: media.mediaType } : {}),
+      },
+    })
+  } catch (err) {
+    // P2002 = unique constraint. Mensagem já foi gravada por uma chamada
+    // anterior; trabalho duplicado, descartamos.
+    if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
+      console.log(`[webhook] duplicata ignorada keyId=${key.id}`)
+      return
+    }
+    throw err
+  }
 
   broadcast({
     type: "new_message",
@@ -280,8 +209,6 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
 
   // ── 3. Routing: assigned contact bypasses URA entirely ───────────────────
   if (contact.assignedUserId !== null) {
-    // Contact already has an owner (migrated from individual number).
-    // Ensure status is IN_SERVICE and skip URA menu.
     if (contact.chatStatus !== ChatStatus.IN_SERVICE) {
       await prisma.contact.update({
         where: { id: contact.id },
@@ -291,8 +218,16 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
     return
   }
 
-  // ── 4. No owner → normal URA triage ─────────────────────────────────────
-  await handleUra(contact, messageText)
+  // ── 4. No owner → enfileira URA na fila durável.
+  // ANTES: await handleUra() inline — bloqueava o webhook e perdia tudo se o
+  // processo morresse. AGORA: job persistido no Redis. Worker dedicado
+  // processa e sobrevive a restart (replay no boot).
+  await enqueueInbound({
+    whatsappKeyId: key.id,
+    whatsappId: contact.whatsappId,
+    messageText,
+    contactName: contact.name,
+  })
 }
 
 // ─── Delivery/Read receipts → CampaignLog ────────────────────────────────────
@@ -356,6 +291,15 @@ function isAuthorizedWebhook(request: NextRequest): boolean {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!isAuthorizedWebhook(request)) {
+    // CRITICAL: se a Evolution está mandando webhook e o secret bate fora,
+    // toda inbound vira 403 silenciosamente. Loga loud pra aparecer em
+    // qualquer monitor de logs ANTES de o cliente reclamar.
+    console.error("[CRITICAL] webhook 403 — EVOLUTION_WEBHOOK_SECRET mismatch", {
+      ip: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      receivedKeyLength: (request.headers.get("apikey") ?? "").length,
+      hasExpected: !!process.env.EVOLUTION_WEBHOOK_SECRET,
+      at: new Date().toISOString(),
+    })
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

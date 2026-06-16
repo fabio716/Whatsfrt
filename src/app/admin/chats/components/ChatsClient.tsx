@@ -133,26 +133,42 @@ export default function ChatsClient({
       if (!alive) return
       source = new EventSource("/api/sse")
       source.onmessage = (e) => {
-        const p = JSON.parse(e.data as string) as SSEPayload
-        if (p.type !== "new_message") return
-        const { contact, ...msg } = p.data
-        const newMsg: MessageData = {
-          id: msg.id, body: msg.body, direction: msg.direction,
-          status: msg.status, createdAt: msg.createdAt, agentId: msg.agentId,
-          mediaUrl: msg.mediaUrl, mediaType: msg.mediaType,
+        let p: SSEPayload
+        try { p = JSON.parse(e.data as string) as SSEPayload } catch { return }
+
+        if (p.type === "new_message") {
+          const { contact, ...msg } = p.data
+          const newMsg: MessageData = {
+            id: msg.id, body: msg.body, direction: msg.direction,
+            status: msg.status, createdAt: msg.createdAt, agentId: msg.agentId,
+            mediaUrl: msg.mediaUrl, mediaType: msg.mediaType,
+          }
+          setContacts((prev) => {
+            const exists = prev.some((c) => c.id === contact.id)
+            const updated = exists
+              ? prev.map((c) =>
+                  c.id === contact.id
+                    ? { ...c, ...contact, messages: c.messages.some((m) => m.id === newMsg.id) ? c.messages : [...c.messages, newMsg] }
+                    : c
+                )
+              : [...prev, { ...contact, messages: [newMsg] }]
+            const target = updated.find((c) => c.id === contact.id)
+            return target ? [target, ...updated.filter((c) => c.id !== contact.id)] : updated
+          })
+          return
         }
-        setContacts((prev) => {
-          const exists = prev.some((c) => c.id === contact.id)
-          const updated = exists
-            ? prev.map((c) =>
-                c.id === contact.id
-                  ? { ...c, ...contact, messages: c.messages.some((m) => m.id === newMsg.id) ? c.messages : [...c.messages, newMsg] }
-                  : c
-              )
-            : [...prev, { ...contact, messages: [newMsg] }]
-          const target = updated.find((c) => c.id === contact.id)
-          return target ? [target, ...updated.filter((c) => c.id !== contact.id)] : updated
-        })
+
+        if (p.type === "message_update") {
+          // Atualiza status da mensagem (SENT/DELIVERED/READ/FAILED). O reaper
+          // emite FAILED para mensagens travadas em PENDING > 10min.
+          setContacts((prev) => prev.map((c) =>
+            c.id === p.data.contactId
+              ? { ...c, messages: c.messages.map((m) => m.id === p.data.id ? { ...m, status: p.data.status } : m) }
+              : c
+          ))
+          return
+        }
+        // evolution_state é consumido pelo EvolutionStatusBanner.
       }
       source.onerror = () => {
         source.close()
@@ -202,10 +218,16 @@ export default function ChatsClient({
     const text = inputValue.trim()
     setInputValue("")
     setIsSending(true)
+    // Idempotency-Key: garante que duplo-clique / retry de rede do navegador
+    // não envie a mesma mensagem 2x. Mesma chave → mesma Message no servidor.
+    const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     try {
       await fetch("/api/messages/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({ contactId: activeId, text }),
       })
     } finally {

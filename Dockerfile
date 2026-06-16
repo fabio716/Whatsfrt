@@ -46,8 +46,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/src/generated/prisma ./src/generated/prisma
 COPY --from=builder /app/prisma ./prisma
 
-# Pasta de uploads de mídia (montada como volume persistente em produção)
-RUN mkdir -p /app/public/uploads && chown -R nextjs:nodejs /app/public/uploads
+# Pasta privada de uploads de mídia. Fica FORA de /app/public para que o
+# Next.js não sirva diretamente — todo acesso passa por /api/media com
+# auth+ownership. O volume persistente é montado aqui em produção.
+RUN mkdir -p /app/private-uploads && chown -R nextjs:nodejs /app/private-uploads
 
 USER nextjs
 

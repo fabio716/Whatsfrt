@@ -38,6 +38,14 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: SECURITY_HEADERS },
     ];
   },
+  // Compatibilidade com mídia salva antes da migração para storage privado.
+  // Qualquer mensagem antiga com mediaUrl="/uploads/<file>" passa pelo guard
+  // de auth+ownership de /api/media/<file>.
+  async rewrites() {
+    return [
+      { source: "/uploads/:filename", destination: "/api/media/:filename" },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
 import AdminNav from "./components/AdminNav"
+import EvolutionStatusBanner from "./components/EvolutionStatusBanner"
 
 export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies()
@@ -18,6 +19,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
     <div className="flex h-screen overflow-hidden bg-white">
       <AdminNav userRole={session.role} />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <EvolutionStatusBanner />
         {children}
       </main>
     </div>

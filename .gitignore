@@ -56,3 +56,6 @@ next-env.d.ts
 # local media uploads (swap for R2 in production)
 /public/uploads/*
 !/public/uploads/.gitkeep
+
+# storage privado de mídia (acessado só via /api/media)
+/private-uploads/

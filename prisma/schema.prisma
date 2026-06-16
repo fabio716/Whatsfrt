@@ -125,12 +125,27 @@ model Message {
   mediaUrl  String?
   mediaType String?
 
+  // Idempotência inbound: key.id da Evolution. Evita gravar 2x se a Evolution
+  // reenviar o webhook (timeout dela, restart nosso, etc).
+  whatsappKeyId String? @unique
+
+  // Idempotência outbound: cliente passa Idempotency-Key no header.
+  // Botão "enviar" clicado N vezes = 1 mensagem.
+  clientKey String? @unique
+
+  // Última falha registrada (reaper, retry esgotado, etc) — visível na UI.
+  errorMsg String?
+
+  // Quantas vezes o pipeline de envio rodou para esta mensagem (retry).
+  attempts Int @default(0)
+
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id])
 
   agentId String?
   agent   User?   @relation(fields: [agentId], references: [id])
 
+  @@index([status, createdAt])
   @@map("messages")
 }
 

@@ -1,3 +1,6 @@
+import { evolutionFetch } from "@/lib/reliability/evolutionFetch"
+import { signMediaUrl } from "@/lib/mediaStorage"
+
 // Fetches the base64 content of an inbound media message from Evolution.
 // Evolution does not include base64 in the webhook unless webhookBase64 is on,
 // so we retrieve it on demand using the message key.
@@ -9,58 +12,65 @@ export async function fetchMediaBase64(
   const instance = process.env.EVOLUTION_INSTANCE_NAME
   if (!apiUrl || !apiKey || !instance) return null
 
-  try {
-    const res = await fetch(`${apiUrl}/chat/getBase64FromMediaMessage/${instance}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ message: { key }, convertToMp4: false }),
-    })
-    if (!res.ok) {
-      console.error("[MEDIA FETCH ERROR] Evolution API:", res.status, await res.text())
-      return null
-    }
-    const data = (await res.json()) as { base64?: string; mimetype?: string }
-    if (!data.base64) return null
-    return { base64: data.base64, mimetype: data.mimetype }
-  } catch (err) {
-    console.error("[MEDIA FETCH EXCEPTION]:", err)
+  const res = await evolutionFetch(`${apiUrl}/chat/getBase64FromMediaMessage/${instance}`, {
+    label: "fetch-media",
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ message: { key }, convertToMp4: false }),
+  })
+  if (!res.ok) {
+    console.error("[MEDIA FETCH ERROR]:", res.status, res.lastError)
     return null
   }
+  const data = res.responseJson as { base64?: string; mimetype?: string } | null
+  if (!data?.base64) return null
+  return { base64: data.base64, mimetype: data.mimetype }
 }
 
-export async function sendEvolutionText(whatsappId: string, text: string): Promise<boolean> {
+export interface EvolutionSendResult {
+  ok: boolean
+  messageId: string | null
+  attempts: number
+  errorMsg: string | null
+}
+
+export async function sendEvolutionText(
+  whatsappId: string,
+  text: string,
+): Promise<boolean> {
+  const r = await sendEvolutionTextDetailed(whatsappId, text)
+  return r.ok
+}
+
+export async function sendEvolutionTextDetailed(
+  whatsappId: string,
+  text: string,
+): Promise<EvolutionSendResult> {
   const apiUrl = process.env.EVOLUTION_API_URL
   const apiKey = process.env.EVOLUTION_API_KEY
   const instance = process.env.EVOLUTION_INSTANCE_NAME
   if (!apiUrl || !apiKey || !instance) {
-    console.error("[URA OUTBOUND ERROR] Variáveis de ambiente ausentes:", {
-      hasApiUrl: !!apiUrl, hasApiKey: !!apiKey, hasInstance: !!instance,
-    })
-    return false
+    console.error("[OUTBOUND ERROR] env ausente:", { hasApiUrl: !!apiUrl, hasApiKey: !!apiKey, hasInstance: !!instance })
+    return { ok: false, messageId: null, attempts: 0, errorMsg: "env ausente" }
   }
 
   const number = whatsappId.endsWith("@g.us")
     ? whatsappId
     : whatsappId.replace("@s.whatsapp.net", "").replace(/@.*/, "")
 
-  const url = `${apiUrl}/message/sendText/${instance}`
+  const res = await evolutionFetch(`${apiUrl}/message/sendText/${instance}`, {
+    label: "send-text",
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ number, text }),
+  })
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number, text }),
-    })
-    if (!res.ok) {
-      const respText = await res.text()
-      console.error("[URA OUTBOUND ERROR] Falha Evolution API:", res.status, respText)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error("[URA OUTBOUND EXCEPTION]:", err)
-    return false
+  if (!res.ok) {
+    console.error("[OUTBOUND ERROR]", res.status, res.lastError, `attempts=${res.attempts}`)
+    return { ok: false, messageId: null, attempts: res.attempts, errorMsg: res.lastError ?? `status ${res.status}` }
   }
+  const data = res.responseJson as { key?: { id?: string } } | null
+  return { ok: true, messageId: data?.key?.id ?? null, attempts: res.attempts, errorMsg: null }
 }
 
 // Public base URL so Evolution can download media we stored locally.
@@ -70,11 +80,7 @@ export function resolvePublicBaseUrl(): string | null {
   if (explicit) return explicit.replace(/\/$/, "")
   const webhook = process.env.EVOLUTION_WEBHOOK_URL
   if (webhook) {
-    try {
-      return new URL(webhook).origin
-    } catch {
-      return null
-    }
+    try { return new URL(webhook).origin } catch { return null }
   }
   return null
 }
@@ -101,7 +107,7 @@ export async function sendCampaignMessage(
   const apiKey = process.env.EVOLUTION_API_KEY
   const instance = process.env.EVOLUTION_INSTANCE_NAME
   if (!apiUrl || !apiKey || !instance) {
-    console.error("[CAMPAIGN SEND ERROR] Variáveis de ambiente ausentes")
+    console.error("[CAMPAIGN SEND ERROR] env ausente")
     return { ok: false, messageId: null }
   }
 
@@ -116,34 +122,41 @@ export async function sendCampaignMessage(
   let payload: Record<string, unknown>
 
   if (hasMedia && publicBase) {
+    // Para mídia salva como /api/media/<filename>, assina pra Evolution baixar.
+    const mediaUrl = opts.mediaUrl as string
+    const isPrivate = mediaUrl.startsWith("/api/media/")
+    let mediaSource = `${publicBase}${mediaUrl}`
+    if (isPrivate) {
+      const filename = mediaUrl.replace("/api/media/", "")
+      const { queryString } = signMediaUrl(filename, 300)
+      mediaSource = `${publicBase}${mediaUrl}?${queryString}`
+    }
+
     url = `${apiUrl}/message/sendMedia/${instance}`
     payload = {
       number,
       mediatype: evolutionMediaType(opts.mediaType as string),
       mimetype: opts.mediaType,
       caption: opts.text,
-      media: `${publicBase}${opts.mediaUrl}`,
-      fileName: opts.fileName ?? (opts.mediaUrl as string).split("/").pop(),
+      media: mediaSource,
+      fileName: opts.fileName ?? mediaUrl.split("/").pop(),
     }
   } else {
     url = `${apiUrl}/message/sendText/${instance}`
     payload = { number, text: opts.text }
   }
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) {
-      console.error("[CAMPAIGN SEND ERROR] Falha Evolution API:", res.status, await res.text())
-      return { ok: false, messageId: null }
-    }
-    const data = (await res.json()) as { key?: { id?: string } }
-    return { ok: true, messageId: data?.key?.id ?? null }
-  } catch (err) {
-    console.error("[CAMPAIGN SEND EXCEPTION]:", err)
+  const res = await evolutionFetch(url, {
+    label: "campaign-send",
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify(payload),
+  })
+
+  if (!res.ok) {
+    console.error("[CAMPAIGN SEND ERROR]", res.status, res.lastError, `attempts=${res.attempts}`)
     return { ok: false, messageId: null }
   }
+  const data = res.responseJson as { key?: { id?: string } } | null
+  return { ok: true, messageId: data?.key?.id ?? null }
 }
