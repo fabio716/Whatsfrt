@@ -87,6 +87,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: "/admin/importar",
+    label: "Importar Contatos",
+    roles: ["ADMIN", "AGENT"] as const,
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12L8 8m4-4l4 4" />
+      </svg>
+    ),
+  },
+  {
     href: "/admin/manual",
     label: "Manual",
     roles: ["ADMIN", "AGENT"] as const,

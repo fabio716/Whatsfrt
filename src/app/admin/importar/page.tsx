@@ -21,7 +21,6 @@ export default function ImportarPage() {
   const [preview, setPreview] = useState<Contact[]>([])
   const [stats, setStats] = useState<ImportStats | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [agente, setAgente] = useState<string>("")
   const fileRef = useRef<HTMLInputElement>(null)
 
   const normalizePhone = (phone: string): string | null => {
@@ -158,9 +157,8 @@ export default function ImportarPage() {
       const blob = new Blob([csvContent], { type: "text/csv" })
       const formData = new FormData()
       formData.append("file", blob, "contatos_limpos.csv")
-      if (agente) formData.append("userId", agente)
 
-      const res = await fetch("/api/admin/contacts/import", {
+      const res = await fetch("/api/contacts/import", {
         method: "POST",
         body: formData,
       })
@@ -269,14 +267,7 @@ export default function ImportarPage() {
           </div>
 
           <div className="mt-6 border-t pt-4">
-            <h3 className="font-semibold mb-2">2. Atribuir a um agente (opcional)</h3>
-            <input
-              type="text"
-              placeholder="ID do agente (deixe vazio para não atribuir)"
-              value={agente}
-              onChange={(e) => setAgente(e.target.value)}
-              className="border rounded px-3 py-2 w-full max-w-md mb-4"
-            />
+            <p className="mb-4 text-sm text-gray-500">2. Os contatos serão adicionados à sua carteira.</p>
 
             <button
               onClick={importContacts}
