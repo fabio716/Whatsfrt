@@ -35,6 +35,10 @@ yarn-error.log*
 !.env.example
 evolution-api.env
 
+# libcurl cookie jars e afins
+cookie.txt
+*.cookies.txt
+
 # vercel
 .vercel
 

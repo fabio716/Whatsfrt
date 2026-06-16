@@ -209,7 +209,7 @@ export default function ImportarPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="h-full overflow-y-auto p-6 max-w-6xl mx-auto w-full">
       <h1 className="text-2xl font-bold mb-6">👤 Contatos</h1>
 
       {/* Cadastro de contato avulso */}
