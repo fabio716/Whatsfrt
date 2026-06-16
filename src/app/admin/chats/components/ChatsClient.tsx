@@ -102,6 +102,8 @@ export default function ChatsClient({
   const [taking, setTaking] = useState(false)
   const [inputValue, setInputValue] = useState("")
   const [isSending, setIsSending] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const prevActiveRef   = useRef<string | null>(null)
 
@@ -160,6 +162,22 @@ export default function ChatsClient({
     connect()
     return () => { alive = false; if (retry) clearTimeout(retry); source?.close() }
   }, [])
+
+  // Delete contact
+  const handleDelete = useCallback(async () => {
+    if (!activeId || isDeleting) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/contacts/${activeId}`, { method: "DELETE" })
+      if (res.ok) {
+        setContacts((prev) => prev.filter((c) => c.id !== activeId))
+        setActiveId(null)
+      }
+    } finally {
+      setIsDeleting(false)
+      setConfirmDelete(false)
+    }
+  }, [activeId, isDeleting])
 
   // Take over contact
   const handleTakeOver = useCallback(async () => {
@@ -282,6 +300,18 @@ export default function ChatsClient({
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={activeContact.chatStatus} />
+                {!isAgent && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    title="Excluir chat"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
                 {!isOwner && (
                   <button
                     type="button"
@@ -363,6 +393,35 @@ export default function ChatsClient({
           </div>
         )}
       </main>
+
+      {/* ─── Confirm Delete Modal ─────────────────────────────────────── */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="w-80 rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-[15px] font-semibold text-zinc-900">Excluir chat?</h2>
+            <p className="mt-1.5 text-[13px] text-zinc-500">
+              Isso vai apagar permanentemente o contato <strong>{activeContact?.name}</strong> e todo o histórico de mensagens. Esta ação não pode ser desfeita.
+            </p>
+            <div className="mt-5 flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 rounded-xl border border-zinc-200 py-2 text-[13px] font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={isDeleting}
+                className="flex-1 rounded-xl bg-red-500 py-2 text-[13px] font-medium text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {isDeleting ? "Excluindo..." : "Excluir"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
