@@ -71,15 +71,57 @@ fi
 echo "[6/8] docker compose build app (pode demorar 1-3 min)"
 docker compose -f docker-compose.prod.yml build app
 
-# ─── 7. Migration Prisma ─────────────────────────────────────────────────────
-echo "[7/8] aplicando migration (adiciona whatsappKeyId, clientKey, etc)"
-docker compose -f docker-compose.prod.yml run --rm \
-  -e DATABASE_URL=$(grep '^DATABASE_URL=' $ENV_FILE | cut -d= -f2-) \
-  app npx prisma migrate deploy
+# ─── 7. Migration via psql (não depende do prisma CLI + dotenv) ──────────────
+echo "[7/8] aplicando migration via psql"
+PG_USER=$(grep ^POSTGRES_USER $ENV_FILE | cut -d= -f2-)
+PG_DB=$(grep ^POSTGRES_DB $ENV_FILE | cut -d= -f2-)
 
-# ─── 8. Subir tudo ───────────────────────────────────────────────────────────
-echo "[8/8] subindo containers"
-docker compose -f docker-compose.prod.yml up -d
+# Garante tabela _prisma_migrations (caso DB tenha sido inicializada sem ela).
+docker exec -i whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -q <<'SQL' > /dev/null
+CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+  id VARCHAR(36) PRIMARY KEY,
+  checksum VARCHAR(64) NOT NULL,
+  finished_at TIMESTAMP WITH TIME ZONE,
+  migration_name VARCHAR(255) NOT NULL,
+  logs TEXT,
+  rolled_back_at TIMESTAMP WITH TIME ZONE,
+  started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  applied_steps_count INTEGER NOT NULL DEFAULT 0
+);
+SQL
+
+# Aplica cada migration em prisma/migrations que ainda não está em _prisma_migrations.
+# Idempotente: rodar 2x não duplica nem falha.
+for MIG_DIR in prisma/migrations/*/; do
+  MIG_NAME=$(basename "$MIG_DIR")
+  [ -f "${MIG_DIR}migration.sql" ] || continue
+
+  APPLIED=$(docker exec whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc \
+    "SELECT 1 FROM \"_prisma_migrations\" WHERE migration_name = '$MIG_NAME'" 2>/dev/null || echo "")
+
+  if [ -n "$APPLIED" ]; then
+    echo "  • $MIG_NAME já aplicada — pulando"
+    continue
+  fi
+
+  echo "  • aplicando $MIG_NAME"
+  if docker exec -i whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 \
+      < "${MIG_DIR}migration.sql" > /tmp/mig_${MIG_NAME}.log 2>&1; then
+    docker exec -i whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -q <<SQL > /dev/null
+INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, started_at, applied_steps_count)
+VALUES ('${MIG_NAME}_psql', 'psql-direct', now(), '$MIG_NAME', now(), 1);
+SQL
+    echo "    ✓ $MIG_NAME aplicada"
+  else
+    echo "    ✗ $MIG_NAME FALHOU — ver /tmp/mig_${MIG_NAME}.log"
+    tail -20 /tmp/mig_${MIG_NAME}.log
+    exit 1
+  fi
+done
+
+# ─── 8. Subir tudo (recreate força containers a relerem .env) ────────────────
+echo "[8/8] subindo containers (force-recreate p/ ler .env atualizado)"
+docker compose -f docker-compose.prod.yml up -d --force-recreate
 
 # ─── Smoke tests ─────────────────────────────────────────────────────────────
 echo
