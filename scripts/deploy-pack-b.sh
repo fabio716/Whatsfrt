@@ -90,8 +90,25 @@ CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
 );
 SQL
 
-# Aplica cada migration em prisma/migrations que ainda não está em _prisma_migrations.
-# Idempotente: rodar 2x não duplica nem falha.
+# Para cada migration:
+#  - já em _prisma_migrations → skip
+#  - mais antiga que a primeira reliability → baseline (assume schema já em prod)
+#  - nova → aplica SQL e marca
+#
+# BASELINE_THRESHOLD é a data da primeira migration introduzida POR este pack.
+# Tudo nascido antes dela é assumido como já aplicado em produção. Quando
+# futuras migrations forem adicionadas, atualize este threshold OU registre
+# manualmente as antigas em _prisma_migrations.
+BASELINE_THRESHOLD="20260616000000_"
+
+mark_applied() {
+  local name=$1 source=$2
+  docker exec -i whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -q -v ON_ERROR_STOP=1 <<SQL > /dev/null
+INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, started_at, applied_steps_count)
+VALUES ('${name}_${source}', '$source', now(), '$name', now(), 1);
+SQL
+}
+
 for MIG_DIR in prisma/migrations/*/; do
   MIG_NAME=$(basename "$MIG_DIR")
   [ -f "${MIG_DIR}migration.sql" ] || continue
@@ -100,17 +117,20 @@ for MIG_DIR in prisma/migrations/*/; do
     "SELECT 1 FROM \"_prisma_migrations\" WHERE migration_name = '$MIG_NAME'" 2>/dev/null || echo "")
 
   if [ -n "$APPLIED" ]; then
-    echo "  • $MIG_NAME já aplicada — pulando"
+    echo "  • $MIG_NAME já registrada — pulando"
+    continue
+  fi
+
+  if [[ "$MIG_NAME" < "$BASELINE_THRESHOLD" ]]; then
+    mark_applied "$MIG_NAME" baseline
+    echo "  • $MIG_NAME baselined (schema já em prod)"
     continue
   fi
 
   echo "  • aplicando $MIG_NAME"
   if docker exec -i whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 \
       < "${MIG_DIR}migration.sql" > /tmp/mig_${MIG_NAME}.log 2>&1; then
-    docker exec -i whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -q <<SQL > /dev/null
-INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, started_at, applied_steps_count)
-VALUES ('${MIG_NAME}_psql', 'psql-direct', now(), '$MIG_NAME', now(), 1);
-SQL
+    mark_applied "$MIG_NAME" psql
     echo "    ✓ $MIG_NAME aplicada"
   else
     echo "    ✗ $MIG_NAME FALHOU — ver /tmp/mig_${MIG_NAME}.log"
