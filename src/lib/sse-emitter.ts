@@ -46,9 +46,11 @@ export type SSEPayload =
   | SSESystemEventPayload
 
 // ─── Singleton client registry ────────────────────────────────────────────────
-// NOTE: This module-level Set is process-local. It works correctly for a
-// single-server deployment (local Docker). For multi-instance/serverless
-// environments, replace with a pub/sub layer (e.g. Redis Pub/Sub).
+// O Set é compartilhado entre bundles via globalThis + Symbol.for. Em Next.js
+// standalone, route handlers (onde clientes se conectam via /api/sse) e o
+// instrumentation.ts (onde o watchdog dispara broadcastSystemEvent) podem
+// rodar em bundles distintos — module-level Set seria duplicado e eventos do
+// watchdog nunca chegariam aos clientes conectados.
 
 type Role = "ADMIN" | "AGENT"
 
@@ -58,7 +60,17 @@ interface SSEClient {
   role: Role
 }
 
-const clients = new Set<SSEClient>()
+const CLIENTS_KEY = Symbol.for("whatsfrt.sse.clients")
+
+type GlobalWithSlot = typeof globalThis & {
+  [CLIENTS_KEY]?: Set<SSEClient>
+}
+
+function getClients(): Set<SSEClient> {
+  const g = globalThis as GlobalWithSlot
+  if (!g[CLIENTS_KEY]) g[CLIENTS_KEY] = new Set<SSEClient>()
+  return g[CLIENTS_KEY]
+}
 
 // userId NUNCA pode ser null aqui — a rota SSE rejeita anônimos com 401.
 // Manter o tipo estrito impede regressões que vazariam eventos.
@@ -67,10 +79,11 @@ export function addSSEClient(
   userId: string,
   role: Role,
 ): void {
-  clients.add({ ctrl, userId, role })
+  getClients().add({ ctrl, userId, role })
 }
 
 export function removeSSEClient(ctrl: ReadableStreamDefaultController<string>): void {
+  const clients = getClients()
   for (const c of clients) {
     if (c.ctrl === ctrl) clients.delete(c)
   }
@@ -81,6 +94,7 @@ export function removeSSEClient(ctrl: ReadableStreamDefaultController<string>): 
 // não têm dono específico e todo mundo precisa ver.
 export function broadcastSystemEvent(payload: SSESystemEventPayload): void {
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
+  const clients = getClients()
   for (const c of clients) {
     try {
       c.ctrl.enqueue(chunk)
@@ -103,6 +117,7 @@ export function broadcast(
   }
 
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
+  const clients = getClients()
   for (const c of clients) {
     // Admin recebe tudo. Agente só recebe se for explicitamente o dono do
     // contato. Owner null/undefined NUNCA entrega para agentes (evita o bug

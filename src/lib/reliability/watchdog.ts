@@ -2,6 +2,12 @@
 // Watchdog do Evolution — pinga connectionState a cada 30s.
 // Se state !== "open" → tenta /instance/connect, broadcasts SSE pro UI,
 // loga CRITICAL pra o operador ver em monitor de logs.
+//
+// Estado é mantido em globalThis via Symbol.for porque, em Next.js standalone,
+// instrumentation.ts (que roda o watchdog) e os route handlers (que leem via
+// getWatchdogStatus) podem ser bundles separados — module-level vars NÃO são
+// compartilhadas. Sem isso, /api/health vê lastCheckAt=null mesmo com o
+// watchdog tickando perfeitamente.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { evolutionFetch } from "./evolutionFetch"
@@ -10,10 +16,31 @@ import { emitConnectionStateChange, type EvolutionState } from "./events"
 const POLL_INTERVAL_MS = 30_000
 const RECONNECT_BACKOFF_MS = 60_000 // não tenta reconectar mais que 1x/min
 
-let timer: ReturnType<typeof setInterval> | null = null
-let lastState: EvolutionState | null = null
-let lastReconnectAttempt = 0
-let lastCheckAt: Date | null = null
+const STATE_KEY = Symbol.for("whatsfrt.reliability.watchdog.state")
+
+interface SharedState {
+  timer: ReturnType<typeof setInterval> | null
+  lastState: EvolutionState | null
+  lastReconnectAttempt: number
+  lastCheckAt: Date | null
+}
+
+type GlobalWithSlot = typeof globalThis & {
+  [STATE_KEY]?: SharedState
+}
+
+function state(): SharedState {
+  const g = globalThis as GlobalWithSlot
+  if (!g[STATE_KEY]) {
+    g[STATE_KEY] = {
+      timer: null,
+      lastState: null,
+      lastReconnectAttempt: 0,
+      lastCheckAt: null,
+    }
+  }
+  return g[STATE_KEY]
+}
 
 function envOk(): boolean {
   return !!(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE_NAME)
@@ -39,9 +66,10 @@ async function checkConnectionState(): Promise<EvolutionState> {
 }
 
 async function tryReconnect(): Promise<void> {
+  const s = state()
   const now = Date.now()
-  if (now - lastReconnectAttempt < RECONNECT_BACKOFF_MS) return
-  lastReconnectAttempt = now
+  if (now - s.lastReconnectAttempt < RECONNECT_BACKOFF_MS) return
+  s.lastReconnectAttempt = now
   if (!envOk()) return
   const url = `${process.env.EVOLUTION_API_URL}/instance/connect/${process.env.EVOLUTION_INSTANCE_NAME}`
   await evolutionFetch(url, {
@@ -55,18 +83,19 @@ async function tryReconnect(): Promise<void> {
 }
 
 async function tick(): Promise<void> {
+  const s = state()
   try {
-    const state = await checkConnectionState()
-    lastCheckAt = new Date()
+    const detected = await checkConnectionState()
+    s.lastCheckAt = new Date()
 
-    if (state !== lastState) {
-      console.warn(`[watchdog] estado Evolution: ${lastState ?? "?"} → ${state}`)
-      lastState = state
-      emitConnectionStateChange(state)
+    if (detected !== s.lastState) {
+      console.warn(`[watchdog] estado Evolution: ${s.lastState ?? "?"} → ${detected}`)
+      s.lastState = detected
+      emitConnectionStateChange(detected)
     }
 
-    if (state !== "open") {
-      console.error(`[watchdog] CRITICAL — Evolution NÃO está em "open" (state=${state}). Mensagens podem estar sendo perdidas.`)
+    if (detected !== "open") {
+      console.error(`[watchdog] CRITICAL — Evolution NÃO está em "open" (state=${detected}). Mensagens podem estar sendo perdidas.`)
       void tryReconnect()
     }
   } catch (err) {
@@ -75,24 +104,27 @@ async function tick(): Promise<void> {
 }
 
 export function startWatchdog(): void {
-  if (timer) return // idempotente
+  const s = state()
+  if (s.timer) return // idempotente
   // Tick inicial sem esperar 30s.
   void tick()
-  timer = setInterval(() => void tick(), POLL_INTERVAL_MS)
+  s.timer = setInterval(() => void tick(), POLL_INTERVAL_MS)
   console.log("[watchdog] iniciado (poll a cada 30s)")
 }
 
 export function stopWatchdog(): void {
-  if (timer) clearInterval(timer)
-  timer = null
+  const s = state()
+  if (s.timer) clearInterval(s.timer)
+  s.timer = null
 }
 
 export function getWatchdogStatus(): {
   state: EvolutionState | null
   lastCheckAt: string | null
 } {
+  const s = state()
   return {
-    state: lastState,
-    lastCheckAt: lastCheckAt ? lastCheckAt.toISOString() : null,
+    state: s.lastState,
+    lastCheckAt: s.lastCheckAt ? s.lastCheckAt.toISOString() : null,
   }
 }

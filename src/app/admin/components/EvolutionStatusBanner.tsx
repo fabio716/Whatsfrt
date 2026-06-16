@@ -16,18 +16,25 @@ interface HealthResponse {
 export default function EvolutionStatusBanner() {
   const [state, setState] = useState<EvolutionState>(null)
 
-  // Estado inicial via /api/health pra não esperar o primeiro tick do watchdog.
+  // Poll /api/health a cada 20s. Funciona como fallback caso o canal SSE
+  // de evolution_state não esteja entregando (bundling, proxy, etc).
   useEffect(() => {
     let cancelled = false
-    fetch("/api/health", { cache: "no-store" })
-      .then((r) => r.json() as Promise<HealthResponse>)
-      .then((data) => {
-        if (cancelled) return
-        const s = data?.checks?.evolution?.state ?? null
-        setState(s)
-      })
-      .catch(() => { /* health falhou — silencioso, SSE atualiza */ })
-    return () => { cancelled = true }
+
+    const fetchOnce = () => {
+      fetch("/api/health", { cache: "no-store" })
+        .then((r) => r.json() as Promise<HealthResponse>)
+        .then((data) => {
+          if (cancelled) return
+          const s = data?.checks?.evolution?.state ?? null
+          setState(s)
+        })
+        .catch(() => { /* health falhou — silencioso */ })
+    }
+
+    fetchOnce()
+    const interval = setInterval(fetchOnce, 20_000)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
   // Atualizações em tempo real via SSE.
