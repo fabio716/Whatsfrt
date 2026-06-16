@@ -103,9 +103,11 @@ BASELINE_THRESHOLD="20260616000000_"
 
 mark_applied() {
   local name=$1 source=$2
+  # id é VARCHAR(36) no schema do Prisma. gen_random_uuid() está em core desde
+  # Postgres 13, então não precisa de pgcrypto.
   docker exec -i whatsfrt_postgres psql -U "$PG_USER" -d "$PG_DB" -q -v ON_ERROR_STOP=1 <<SQL > /dev/null
 INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, started_at, applied_steps_count)
-VALUES ('${name}_${source}', '$source', now(), '$name', now(), 1);
+VALUES (gen_random_uuid()::text, '$source', now(), '$name', now(), 1);
 SQL
 }
 
