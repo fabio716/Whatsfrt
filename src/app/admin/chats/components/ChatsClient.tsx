@@ -89,10 +89,12 @@ export default function ChatsClient({
   contacts: initial,
   agents,
   currentUserId,
+  isAgent = false,
 }: Readonly<{
   contacts: ContactData[]
   agents: Agent[]
   currentUserId: string
+  isAgent?: boolean
 }>) {
   const [contacts, setContacts] = useState<ContactData[]>(initial)
   const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null)
@@ -201,24 +203,26 @@ export default function ChatsClient({
       {/* ─── Sidebar ─────────────────────────────────────────────────────── */}
       <aside className="flex w-72 flex-shrink-0 flex-col overflow-hidden border-r border-zinc-100 bg-white">
         <div className="border-b border-zinc-100 px-4 py-3">
-          <h1 className="text-[14px] font-semibold text-zinc-900">Chats Globais</h1>
+          <h1 className="text-[14px] font-semibold text-zinc-900">{isAgent ? "Meus Chats" : "Chats Globais"}</h1>
           <p className="text-[11px] text-zinc-400">{contacts.length} contatos</p>
         </div>
 
-        {/* Agent filter */}
-        <div className="border-b border-zinc-100 px-4 py-2.5">
-          <select
-            value={agentFilter}
-            onChange={(e) => setAgentFilter(e.target.value)}
-            className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-zinc-300"
-          >
-            <option value="all">Todos os agentes</option>
-            <option value="unassigned">Sem agente</option>
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-        </div>
+        {/* Agent filter (admins only) */}
+        {!isAgent && (
+          <div className="border-b border-zinc-100 px-4 py-2.5">
+            <select
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value)}
+              className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-zinc-300"
+            >
+              <option value="all">Todos os agentes</option>
+              <option value="unassigned">Sem agente</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Contact list */}
         <nav className="flex-1 overflow-y-auto">

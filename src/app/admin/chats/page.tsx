@@ -15,7 +15,7 @@ export default async function ChatsPage() {
 
   const isAgent = session?.role === "AGENT"
 
-  const [rawContacts, agents] = await Promise.all([
+  const [rawContacts, allAgents] = await Promise.all([
     prisma.contact.findMany({
       where: {
         deletedAt: null,
@@ -32,6 +32,9 @@ export default async function ChatsPage() {
       orderBy: { name: "asc" },
     }),
   ])
+
+  // Agents must never receive other users' names (filter is admin-only).
+  const agents = isAgent ? [] : allAgents
 
   const contacts: ContactData[] = rawContacts.map((c) => ({
     id: c.id,
@@ -57,6 +60,7 @@ export default async function ChatsPage() {
       contacts={contacts}
       agents={agents}
       currentUserId={session?.id ?? ""}
+      isAgent={isAgent}
     />
   )
 }
