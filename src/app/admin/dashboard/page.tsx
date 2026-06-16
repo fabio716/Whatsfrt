@@ -1,4 +1,6 @@
+import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
+import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
 import { ContactData } from "./types"
 import DashboardClient from "./components/DashboardClient"
 
@@ -9,8 +11,17 @@ export const metadata = {
 }
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies()
+  const token = cookieStore.get(COOKIE_NAME)?.value
+  const session = token ? await verifySessionToken(token) : null
+  const isAgent = session?.role === "AGENT"
+
   const raw = await prisma.contact.findMany({
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      // Agents only ever see their own assigned conversations.
+      ...(isAgent ? { assignedUserId: session?.id } : {}),
+    },
     include: {
       messages: {
         orderBy: { createdAt: "asc" },

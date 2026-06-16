@@ -20,9 +20,9 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       })
-      const data = (await res.json()) as { ok?: boolean; error?: string }
+      const data = (await res.json()) as { ok?: boolean; error?: string; role?: string }
       if (!res.ok) throw new Error(data.error ?? "Erro ao entrar")
-      router.push("/admin/dashboard")
+      router.push(data.role === "AGENT" ? "/admin/chats" : "/admin/dashboard")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
     } finally {
