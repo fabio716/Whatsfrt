@@ -1,4 +1,5 @@
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
 import { ContactData } from "@/app/admin/dashboard/types"
@@ -13,7 +14,10 @@ export default async function ChatsPage() {
   const token = cookieStore.get(COOKIE_NAME)?.value
   const session = token ? await verifySessionToken(token) : null
 
-  const isAgent = session?.role === "AGENT"
+  // Sem sessão = sem acesso. Não há mais fallback que tratava anônimo como ADMIN.
+  if (!session) redirect("/login")
+
+  const isAgent = session.role === "AGENT"
 
   const [rawContacts, allAgents] = await Promise.all([
     prisma.contact.findMany({
@@ -21,7 +25,7 @@ export default async function ChatsPage() {
         deletedAt: null,
         chatStatus: "IN_SERVICE",
         // Agents only ever see their own assigned conversations.
-        ...(isAgent ? { assignedUserId: session?.id } : {}),
+        ...(isAgent ? { assignedUserId: session.id } : {}),
       },
       include: { messages: { orderBy: { createdAt: "asc" } } },
       orderBy: { updatedAt: "desc" },
@@ -59,7 +63,7 @@ export default async function ChatsPage() {
     <ChatsClient
       contacts={contacts}
       agents={agents}
-      currentUserId={session?.id ?? ""}
+      currentUserId={session.id}
       isAgent={isAgent}
     />
   )

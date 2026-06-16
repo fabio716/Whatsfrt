@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { timingSafeEqual } from "node:crypto"
 import { UraStateMachine } from "@/lib/ura/stateMachine"
 import type { EvolutionWebhookPayload } from "@/lib/ura/types"
 
@@ -6,7 +7,30 @@ import type { EvolutionWebhookPayload } from "@/lib/ura/types"
 // Webhook da Evolution API - Resposta Rápida (200 OK imediato)
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Comparação timing-safe do shared secret enviado no header `apikey`.
+// Em produção é OBRIGATÓRIO. Em dev, ausência do segredo apenas loga.
+function isAuthorizedWebhook(request: NextRequest): boolean {
+  const expected = process.env.EVOLUTION_WEBHOOK_SECRET
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[Webhook] EVOLUTION_WEBHOOK_SECRET ausente — rejeitando.")
+      return false
+    }
+    console.warn("[Webhook] EVOLUTION_WEBHOOK_SECRET não configurado (dev).")
+    return true
+  }
+  const received = request.headers.get("apikey") ?? ""
+  const a = Buffer.from(received)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!isAuthorizedWebhook(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   try {
     const payload: EvolutionWebhookPayload = await request.json()
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { timingSafeEqual } from "node:crypto"
 import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
@@ -338,7 +339,28 @@ async function handleMessageStatusUpdate(data: EvolutionStatusUpdate): Promise<v
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
+function isAuthorizedWebhook(request: NextRequest): boolean {
+  const expected = process.env.EVOLUTION_WEBHOOK_SECRET
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[webhook] EVOLUTION_WEBHOOK_SECRET ausente — rejeitando.")
+      return false
+    }
+    console.warn("[webhook] EVOLUTION_WEBHOOK_SECRET não configurado (dev).")
+    return true
+  }
+  const received = request.headers.get("apikey") ?? ""
+  const a = Buffer.from(received)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!isAuthorizedWebhook(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   let payload: EvolutionWebhookPayload
 
   try {

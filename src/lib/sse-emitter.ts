@@ -44,15 +44,17 @@ type Role = "ADMIN" | "AGENT"
 
 interface SSEClient {
   ctrl: ReadableStreamDefaultController<string>
-  userId: string | null
+  userId: string
   role: Role
 }
 
 const clients = new Set<SSEClient>()
 
+// userId NUNCA pode ser null aqui — a rota SSE rejeita anônimos com 401.
+// Manter o tipo estrito impede regressões que vazariam eventos.
 export function addSSEClient(
   ctrl: ReadableStreamDefaultController<string>,
-  userId: string | null,
+  userId: string,
   role: Role,
 ): void {
   clients.add({ ctrl, userId, role })
@@ -75,9 +77,11 @@ export function broadcast(payload: SSEPayload, ownerId?: string | null): void {
 
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
   for (const c of clients) {
-    // Agents only get events for their own contacts. If the owner is unknown
-    // (undefined) for a status update, deliver only to admins.
-    const allowed = c.role === "ADMIN" || owner === c.userId
+    // Admin recebe tudo. Agente só recebe se for explicitamente o dono do
+    // contato. Owner null/undefined NUNCA entrega para agentes (evita o bug
+    // null===null que vazava contatos não atribuídos).
+    const allowed =
+      c.role === "ADMIN" || (typeof owner === "string" && owner === c.userId)
     if (!allowed) continue
     try {
       c.ctrl.enqueue(chunk)

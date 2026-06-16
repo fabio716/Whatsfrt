@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
+import { requireSession, isErrorResponse } from "@/lib/auth"
 
 interface SendMessageBody {
   contactId: string
@@ -9,6 +10,10 @@ interface SendMessageBody {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireSession(request)
+  if (isErrorResponse(auth)) return auth
+  const session = auth
+
   let body: SendMessageBody
   try {
     body = (await request.json()) as SendMessageBody
@@ -28,20 +33,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Contact not found" }, { status: 404 })
   }
 
-  // Bloqueia envio para contatos @lid (IDs internos do WhatsApp Business)
+  // Isolamento: agente só envia para contatos atribuídos a ele. Admin ignora.
+  if (session.role === "AGENT" && contact.assignedUserId !== session.id) {
+    return NextResponse.json({ error: "Sem permissão para este contato" }, { status: 403 })
+  }
+
   if (contact.whatsappId.includes("@lid")) {
     return NextResponse.json({
       error: "Não é possível enviar mensagens para este contato. O número não é um telefone válido (formato @lid).",
     }, { status: 400 })
   }
 
-  // 1 — Persist message as PENDING immediately
+  // 1 — Persist message as PENDING immediately (com agentId para auditoria).
   const message = await prisma.message.create({
     data: {
       body: text.trim(),
       direction: MessageDirection.OUTBOUND,
       status: MessageStatus.PENDING,
       contactId,
+      agentId: session.id,
     },
   })
 
@@ -54,12 +64,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (apiUrl && apiKey && instance) {
     try {
-      // Normaliza o número para envio
       let number = contact.whatsappId
       if (number.endsWith("@g.us")) {
-        // grupo — mantém como está
+        // grupo — mantém
       } else if (number.includes("@lid")) {
-        // @lid format — remove o sufixo @lid
         number = number.replace(/@lid.*/, "")
       } else {
         number = number.replace("@s.whatsapp.net", "").replace(/@.*/, "")
@@ -90,13 +98,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     finalStatus = MessageStatus.FAILED
   }
 
-  // 3 — Update final status in DB
   const updated = await prisma.message.update({
     where: { id: message.id },
     data: { status: finalStatus },
   })
 
-  // 4 — Broadcast status update to all SSE clients
   broadcast({
     type: "message_update",
     data: {

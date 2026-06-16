@@ -23,6 +23,36 @@ export default function ImportarPage() {
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // Contato avulso (cadastro manual de um contato)
+  const [avulsoName, setAvulsoName] = useState("")
+  const [avulsoPhone, setAvulsoPhone] = useState("")
+  const [savingAvulso, setSavingAvulso] = useState(false)
+  const [avulsoMsg, setAvulsoMsg] = useState<string | null>(null)
+  const [avulsoErr, setAvulsoErr] = useState<string | null>(null)
+
+  const handleAddAvulso = async () => {
+    if (!avulsoName.trim() || !avulsoPhone.trim() || savingAvulso) return
+    setSavingAvulso(true)
+    setAvulsoMsg(null)
+    setAvulsoErr(null)
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: avulsoName.trim(), phone: avulsoPhone.trim() }),
+      })
+      const data = (await res.json()) as { name?: string; created?: boolean; error?: string }
+      if (!res.ok) throw new Error(data.error ?? "Erro ao cadastrar contato")
+      setAvulsoMsg(`✅ Contato "${data.name}" ${data.created ? "cadastrado" : "atualizado"} na sua carteira.`)
+      setAvulsoName("")
+      setAvulsoPhone("")
+    } catch (err) {
+      setAvulsoErr(err instanceof Error ? err.message : "Erro ao cadastrar contato")
+    } finally {
+      setSavingAvulso(false)
+    }
+  }
+
   const normalizePhone = (phone: string): string | null => {
     const digits = phone.replace(/\D/g, "")
     if (!digits) return null
@@ -180,10 +210,48 @@ export default function ImportarPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">🧹 Importar e Limpar Contatos</h1>
+      <h1 className="text-2xl font-bold mb-6">👤 Contatos</h1>
+
+      {/* Cadastro de contato avulso */}
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Adicionar contato avulso</h2>
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <div>
+            <label htmlFor="avulso-nome" className="mb-1 block text-sm text-gray-600">Nome</label>
+            <input
+              id="avulso-nome"
+              type="text"
+              value={avulsoName}
+              onChange={(e) => setAvulsoName(e.target.value)}
+              placeholder="Ex: João da Silva"
+              className="w-full rounded border px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="avulso-tel" className="mb-1 block text-sm text-gray-600">Telefone (com DDD)</label>
+            <input
+              id="avulso-tel"
+              type="tel"
+              value={avulsoPhone}
+              onChange={(e) => setAvulsoPhone(e.target.value)}
+              placeholder="Ex: 11 99999-9999"
+              className="w-full rounded border px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            onClick={handleAddAvulso}
+            disabled={!avulsoName.trim() || !avulsoPhone.trim() || savingAvulso}
+            className="rounded bg-green-600 px-6 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:bg-gray-300"
+          >
+            {savingAvulso ? "Salvando..." : "Adicionar"}
+          </button>
+        </div>
+        {avulsoMsg && <p className="mt-3 text-sm text-green-700">{avulsoMsg}</p>}
+        {avulsoErr && <p className="mt-3 text-sm text-red-600">❌ {avulsoErr}</p>}
+      </div>
 
       <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">1. Selecione o arquivo CSV</h2>
+        <h2 className="text-lg font-semibold mb-4">Importar vários por CSV</h2>
         
         <div className="mb-4 p-4 bg-blue-50 rounded border border-blue-200">
           <p className="text-sm text-blue-800 mb-2">

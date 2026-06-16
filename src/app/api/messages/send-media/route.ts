@@ -4,8 +4,32 @@ import path from "node:path"
 import { prisma } from "@/lib/prisma"
 import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
+import { requireSession, isErrorResponse } from "@/lib/auth"
 
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads")
+
+const MAX_UPLOAD_BYTES = 16 * 1024 * 1024 // 16 MB, limite WhatsApp para mídia comum
+const ALLOWED_MIME_PREFIXES = ["image/", "video/", "audio/"]
+const ALLOWED_MIME_EXACT = new Set([
+  "application/pdf",
+  "application/zip",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+])
+// SVG é image/* mas pode conter scripts. Servimos uploads em /public, então é XSS.
+const BLOCKED_MIME = new Set(["image/svg+xml", "text/html", "application/xhtml+xml"])
+
+function isMimeAllowed(mime: string): boolean {
+  if (BLOCKED_MIME.has(mime)) return false
+  if (ALLOWED_MIME_PREFIXES.some((p) => mime.startsWith(p))) return true
+  return ALLOWED_MIME_EXACT.has(mime)
+}
 
 function evolutionMediaType(mimetype: string): string {
   if (mimetype.startsWith("image/")) return "image"
@@ -14,8 +38,6 @@ function evolutionMediaType(mimetype: string): string {
   return "document"
 }
 
-// Public base URL used so Evolution can download the media we just stored.
-// Prefers APP_PUBLIC_URL, falls back to the origin of EVOLUTION_WEBHOOK_URL.
 function resolvePublicBaseUrl(): string | null {
   const explicit = process.env.APP_PUBLIC_URL
   if (explicit) return explicit.replace(/\/$/, "")
@@ -31,6 +53,10 @@ function resolvePublicBaseUrl(): string | null {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireSession(request)
+  if (isErrorResponse(auth)) return auth
+  const session = auth
+
   let formData: FormData
   try {
     formData = await request.formData()
@@ -46,8 +72,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "file e contactId são obrigatórios" }, { status: 400 })
   }
 
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: `Arquivo excede ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.` },
+      { status: 413 }
+    )
+  }
+
+  const mediaType = file.type || "application/octet-stream"
+  if (!isMimeAllowed(mediaType)) {
+    return NextResponse.json({ error: `Tipo de arquivo não permitido: ${mediaType}` }, { status: 415 })
+  }
+
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
+
+  if (session.role === "AGENT" && contact.assignedUserId !== session.id) {
+    return NextResponse.json({ error: "Sem permissão para este contato" }, { status: 403 })
+  }
 
   if (contact.whatsappId.includes("@lid")) {
     return NextResponse.json({
@@ -55,18 +97,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }, { status: 400 })
   }
 
-  // ── Save file to public/uploads/ ────────────────────────────────────────────
   const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
   const filePath = path.join(UPLOADS_DIR, safeName)
   const mediaUrl = `/uploads/${safeName}`
-  const mediaType = file.type || "application/octet-stream"
 
   const bytes = await file.arrayBuffer()
   const buffer = Buffer.from(bytes)
   await fs.mkdir(UPLOADS_DIR, { recursive: true })
   await fs.writeFile(filePath, buffer)
 
-  // ── Persist as PENDING before sending ───────────────────────────────────────
   let finalStatus: MessageStatus = MessageStatus.PENDING
   const msg = await prisma.message.create({
     data: {
@@ -74,12 +113,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       direction: MessageDirection.OUTBOUND,
       status: MessageStatus.PENDING,
       contactId,
+      agentId: session.id,
       mediaUrl,
       mediaType,
     },
   })
 
-  // ── Send via Evolution API ───────────────────────────────────────────────────
   const apiUrl  = process.env.EVOLUTION_API_URL
   const apiKey  = process.env.EVOLUTION_API_KEY
   const instance = process.env.EVOLUTION_INSTANCE_NAME
@@ -90,9 +129,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? contact.whatsappId
         : contact.whatsappId.replace(/@.*/, "")
 
-      // Prefer sending media by public URL (Evolution downloads it and uploads
-      // properly to WhatsApp). Sending raw base64 can leave the recipient stuck
-      // in a perpetual download loop. Fall back to base64 if no public URL.
       const publicBase = resolvePublicBaseUrl()
       const media = publicBase ? `${publicBase}${mediaUrl}` : buffer.toString("base64")
 
@@ -123,16 +159,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     finalStatus = MessageStatus.FAILED
   }
 
-  // ── Update status ───────────────────────────────────────────────────────────
   await prisma.message.update({ where: { id: msg.id }, data: { status: finalStatus } })
 
-  // ── Broadcast via SSE ───────────────────────────────────────────────────────
   broadcast({
     type: "new_message",
     data: {
       id: msg.id, body: caption, direction: "OUTBOUND",
       status: finalStatus, createdAt: msg.createdAt.toISOString(),
-      agentId: null, contactId,
+      agentId: session.id, contactId,
       mediaUrl, mediaType,
       contact: {
         id: contact.id, whatsappId: contact.whatsappId,

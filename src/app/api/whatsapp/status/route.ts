@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { requireSession, isErrorResponse } from "@/lib/auth"
 
 interface EvolutionStateResponse {
   instance?: {
@@ -7,7 +8,10 @@ interface EvolutionStateResponse {
   }
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireSession(request)
+  if (isErrorResponse(auth)) return auth
+
   const apiUrl = process.env.EVOLUTION_API_URL
   const apiKey = process.env.EVOLUTION_API_KEY
   const instance = process.env.EVOLUTION_INSTANCE_NAME

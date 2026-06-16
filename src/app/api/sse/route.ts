@@ -11,8 +11,15 @@ export async function GET(): Promise<Response> {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value
   const session = token ? await verifySessionToken(token) : null
-  const userId = session?.id ?? null
-  const role = session?.role ?? "AGENT"
+
+  // Sem sessão: 401. Antes, anônimos recebiam eventos de contatos com
+  // assignedUserId=null (null === null no filtro do broadcaster).
+  if (!session) {
+    return new Response("Unauthorized", { status: 401 })
+  }
+
+  const userId = session.id
+  const role = session.role
 
   let savedCtrl: ReadableStreamDefaultController<string> | null = null
   let heartbeat: ReturnType<typeof setInterval> | null = null

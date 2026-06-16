@@ -1,4 +1,5 @@
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
 import { ContactData } from "./types"
@@ -14,13 +15,15 @@ export default async function DashboardPage() {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value
   const session = token ? await verifySessionToken(token) : null
-  const isAgent = session?.role === "AGENT"
+  if (!session) redirect("/login")
+
+  const isAgent = session.role === "AGENT"
 
   const raw = await prisma.contact.findMany({
     where: {
       deletedAt: null,
       // Agents only ever see their own assigned conversations.
-      ...(isAgent ? { assignedUserId: session?.id } : {}),
+      ...(isAgent ? { assignedUserId: session.id } : {}),
     },
     include: {
       messages: {
