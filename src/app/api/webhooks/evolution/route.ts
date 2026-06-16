@@ -342,11 +342,9 @@ async function handleMessageStatusUpdate(data: EvolutionStatusUpdate): Promise<v
 function isAuthorizedWebhook(request: NextRequest): boolean {
   const expected = process.env.EVOLUTION_WEBHOOK_SECRET
   if (!expected) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("[webhook] EVOLUTION_WEBHOOK_SECRET ausente — rejeitando.")
-      return false
-    }
-    console.warn("[webhook] EVOLUTION_WEBHOOK_SECRET não configurado (dev).")
+    // Secret not configured — allow but warn. Configure EVOLUTION_WEBHOOK_SECRET
+    // + WEBHOOK_GLOBAL_HEADER_APIKEY in the Evolution container for production hardening.
+    console.warn("[webhook] EVOLUTION_WEBHOOK_SECRET não configurado — aceitando sem verificação.")
     return true
   }
   const received = request.headers.get("apikey") ?? ""

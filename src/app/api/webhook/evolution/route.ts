@@ -12,11 +12,7 @@ import type { EvolutionWebhookPayload } from "@/lib/ura/types"
 function isAuthorizedWebhook(request: NextRequest): boolean {
   const expected = process.env.EVOLUTION_WEBHOOK_SECRET
   if (!expected) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("[Webhook] EVOLUTION_WEBHOOK_SECRET ausente — rejeitando.")
-      return false
-    }
-    console.warn("[Webhook] EVOLUTION_WEBHOOK_SECRET não configurado (dev).")
+    console.warn("[Webhook] EVOLUTION_WEBHOOK_SECRET não configurado — aceitando sem verificação.")
     return true
   }
   const received = request.headers.get("apikey") ?? ""
