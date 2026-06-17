@@ -64,15 +64,19 @@ type ZapiPayload = ZapiTextPayload | ZapiStatusPayload | ZapiConnectionPayload
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
+// IMPORTANT: validar webhook Z-API requer header SEPARADO do Client-Token.
+// O "Token de segurança da conta" do Z-API é pra NÓS enviarmos PRA eles
+// (header Client-Token em chamadas OUTBOUND), NÃO algo que eles incluem em
+// webhooks INBOUND. Por isso usamos ZAPI_WEBHOOK_SECRET separado.
+//
+// Como Z-API (versão atual) não permite configurar header custom no webhook,
+// na prática ZAPI_WEBHOOK_SECRET fica vazio e aceitamos qualquer request.
+// Risco mitigado por: URL secreta + dedupe por whatsappKeyId + HTTPS.
+// Quando Z-API suportar header custom no webhook, basta setar a env.
 function isAuthorized(request: NextRequest): boolean {
-  const expected = process.env.ZAPI_CLIENT_TOKEN
-  if (!expected) {
-    if (process.env.NODE_ENV === "production") {
-      console.warn("[CRITICAL] ZAPI_CLIENT_TOKEN ausente — webhook Z-API sem validação. Configure no painel Z-API e no .env.")
-    }
-    return true
-  }
-  const received = request.headers.get("client-token") ?? ""
+  const expected = process.env.ZAPI_WEBHOOK_SECRET
+  if (!expected) return true // sem verificação se não configurado
+  const received = request.headers.get("x-webhook-secret") ?? request.headers.get("client-token") ?? ""
   const a = Buffer.from(received)
   const b = Buffer.from(expected)
   if (a.length !== b.length) return false
