@@ -7,7 +7,7 @@ export interface SSEContactInfo {
   whatsappId: string
   name: string
   profilePhotoUrl: string | null
-  chatStatus: "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE"
+  chatStatus: "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "AWAITING_RATING"
   assignedUserId: string | null
 }
 

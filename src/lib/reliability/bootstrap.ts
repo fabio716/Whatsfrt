@@ -14,6 +14,7 @@
 import { replayProcessingOnBoot, startInboundWorker } from "./queue"
 import { startWatchdog } from "./watchdog"
 import { startReaper } from "./reaper"
+import { startServiceReaper } from "./serviceReaper"
 import { handleInboundJob } from "./inboundHandler"
 
 let started = false
@@ -33,6 +34,7 @@ export async function startReliabilityWorkers(): Promise<void> {
   startInboundWorker(handleInboundJob)
   startWatchdog()
   startReaper()
+  startServiceReaper()
 
   console.log("[reliability] todos os workers ativos")
 }

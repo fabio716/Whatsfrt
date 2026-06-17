@@ -13,6 +13,7 @@ import { broadcast } from "@/lib/sse-emitter"
 import { sendEvolutionText } from "@/lib/evolution"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
+import { markWaitingForAgent } from "@/lib/serviceTracking"
 
 interface ContactSnapshot {
   id: string
@@ -91,7 +92,9 @@ export async function handleInboundForUra(
     const option = inboundText.trim()
     const label = optionMap[option]
     if (label) {
-      await prisma.contact.update({ where: { id: contact.id }, data: { chatStatus: ChatStatus.WAITING_AGENT } })
+      // Marca o instante em que entrou em fila — base para "tempo de espera"
+      // na tela Equipe ao vivo.
+      await markWaitingForAgent(contact.id)
       await sendUraMessage(
         contact,
         `✅ Você selecionou *${label}*.\nUm agente irá te atender em breve. Aguarde! 🙏`,

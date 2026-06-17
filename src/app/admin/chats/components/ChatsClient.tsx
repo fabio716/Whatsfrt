@@ -42,6 +42,7 @@ function StatusBadge({ status }: Readonly<{ status: ContactData["chatStatus"] }>
     IN_URA:        { label: "URA",             cls: "bg-blue-50 text-blue-600" },
     WAITING_AGENT: { label: "Aguardando",      cls: "bg-amber-50 text-amber-600" },
     IN_SERVICE:    { label: "Em atendimento",  cls: "bg-emerald-50 text-emerald-700" },
+    AWAITING_RATING: { label: "Aguardando nota", cls: "bg-purple-50 text-purple-700" },
   }
   const { label, cls } = cfg[status] ?? cfg.IDLE
   return <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${cls}`}>{label}</span>
@@ -100,6 +101,7 @@ export default function ChatsClient({
   const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null)
   const [agentFilter, setAgentFilter] = useState<string>("all")
   const [taking, setTaking] = useState(false)
+  const [ending, setEnding] = useState(false)
   const [inputValue, setInputValue] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -194,6 +196,29 @@ export default function ChatsClient({
       setConfirmDelete(false)
     }
   }, [activeId, isDeleting])
+
+  // Encerrar atendimento e pedir nota ao cliente
+  const handleEndService = useCallback(async () => {
+    if (!activeId || ending) return
+    if (!confirm("Encerrar atendimento e pedir nota ao cliente?")) return
+    setEnding(true)
+    try {
+      const res = await fetch("/api/services/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: activeId }),
+      })
+      if (res.ok) {
+        // O contato sai da lista (já não está mais IN_SERVICE) — UI atualiza via SSE
+        setActiveId(null)
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        alert(data.error ?? "Não foi possível encerrar.")
+      }
+    } finally {
+      setEnding(false)
+    }
+  }, [activeId, ending])
 
   // Take over contact
   const handleTakeOver = useCallback(async () => {
@@ -342,6 +367,17 @@ export default function ChatsClient({
                     className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
                   >
                     {taking ? "Assumindo..." : "Assumir Atendimento"}
+                  </button>
+                )}
+                {isOwner && activeContact.chatStatus === "IN_SERVICE" && (
+                  <button
+                    type="button"
+                    onClick={() => void handleEndService()}
+                    disabled={ending}
+                    title="Encerrar e pedir nota ao cliente"
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {ending ? "Encerrando..." : "Encerrar e pedir nota"}
                   </button>
                 )}
               </div>

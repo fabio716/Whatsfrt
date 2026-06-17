@@ -3,9 +3,10 @@ import { timingSafeEqual } from "node:crypto"
 import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
-import { fetchMediaBase64 } from "@/lib/evolution"
+import { fetchMediaBase64, sendEvolutionText } from "@/lib/evolution"
 import { saveMediaBuffer } from "@/lib/mediaStorage"
 import { enqueueInbound } from "@/lib/reliability/queue"
+import { applyRating, parseRating } from "@/lib/serviceTracking"
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -207,7 +208,32 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
     },
   })
 
-  // ── 3. Routing: assigned contact bypasses URA entirely ───────────────────
+  // ── 3a. Captura nota se contato está aguardando avaliação ────────────────
+  if (contact.chatStatus === ChatStatus.AWAITING_RATING) {
+    const parsed = parseRating(messageText)
+    if (parsed) {
+      const { sessionId } = await applyRating(contact.id, parsed.rating, parsed.comment)
+      if (sessionId) {
+        const thanks = parsed.rating >= 4
+          ? "🙏 Obrigado pela avaliação! Ficamos felizes em ajudar."
+          : "🙏 Obrigado pela avaliação. Vamos trabalhar para melhorar."
+        const ok = await sendEvolutionText(contact.whatsappId, thanks)
+        await prisma.message.create({
+          data: {
+            body: thanks,
+            direction: MessageDirection.OUTBOUND,
+            status: ok ? MessageStatus.SENT : MessageStatus.FAILED,
+            contactId: contact.id,
+          },
+        })
+      }
+    }
+    // Se não conseguiu parsear (cliente mandou texto não-nota), simplesmente
+    // ignora — o reaper de auto-end vai limpar em 30min se não vier nada.
+    return
+  }
+
+  // ── 3b. Routing: assigned contact bypasses URA entirely ──────────────────
   if (contact.assignedUserId !== null) {
     if (contact.chatStatus !== ChatStatus.IN_SERVICE) {
       await prisma.contact.update({

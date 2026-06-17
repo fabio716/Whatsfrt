@@ -19,11 +19,17 @@ export default async function DashboardPage() {
 
   const isAgent = session.role === "AGENT"
 
+  // Mostra só conversas em aberto OU com mensagem nos últimos 7 dias.
+  // Contatos puramente importados (sem chat) ficam em /admin/contatos.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   const raw = await prisma.contact.findMany({
     where: {
       deletedAt: null,
-      // Agents only ever see their own assigned conversations.
       ...(isAgent ? { assignedUserId: session.id } : {}),
+      OR: [
+        { chatStatus: { in: ["IN_URA", "WAITING_AGENT", "IN_SERVICE", "AWAITING_RATING"] } },
+        { messages: { some: { createdAt: { gte: sevenDaysAgo } } } },
+      ],
     },
     include: {
       messages: {

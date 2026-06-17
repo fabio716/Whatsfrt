@@ -39,6 +39,7 @@ enum ChatStatus {
   IN_URA
   WAITING_AGENT
   IN_SERVICE
+  AWAITING_RATING
 }
 
 enum MessageDirection {
@@ -86,6 +87,7 @@ model User {
   messages         Message[]
   assignedContacts Contact[] @relation("AssignedContacts")
   cooperatives     Cooperative[] @relation("CooperativeAssignments")
+  serviceSessions  ServiceSession[] @relation("AgentSessions")
 
   @@map("users")
 }
@@ -101,16 +103,60 @@ model Contact {
   assignedUser    User?      @relation("AssignedContacts", fields: [assignedUserId], references: [id])
   cooperativeId   String?
   cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id])
+
+  // Timestamps do ciclo de atendimento. Setadas quando o chatStatus muda:
+  //   waitingAgentSince → ao entrar em WAITING_AGENT
+  //   inServiceSince    → ao entrar em IN_SERVICE
+  // Usadas pela tela "Equipe ao vivo" para mostrar tempo de espera/atendimento.
+  waitingAgentSince DateTime?
+  inServiceSince    DateTime?
+
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
 
-  messages     Message[]
-  campaignLogs CampaignLog[]
+  messages        Message[]
+  campaignLogs    CampaignLog[]
+  serviceSessions ServiceSession[]
 
   @@index([assignedUserId])
   @@index([cooperativeId])
+  @@index([chatStatus])
   @@map("contacts")
+}
+
+// Cada atendimento completo (de pegou → encerrou) vira uma ServiceSession.
+// Mesmo contato pode ter N sessions ao longo do tempo. Usada para:
+//   1. Histórico de atendimentos por agente
+//   2. Cálculo de tempo de espera/duração
+//   3. Avaliação do cliente (rating + comment)
+model ServiceSession {
+  id                String   @id @default(cuid())
+  contactId         String
+  contact           Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  agentId           String
+  agent             User     @relation("AgentSessions", fields: [agentId], references: [id])
+
+  // Ciclo
+  waitingFrom       DateTime  // quando o contato entrou em fila (WAITING_AGENT)
+  startedAt         DateTime  // quando o agente assumiu (IN_SERVICE)
+  endedAt           DateTime? // quando o agente encerrou (botão ou auto)
+
+  // Avaliação
+  ratingRequestedAt DateTime?
+  rating            Int?      // 1-5 (CSAT)
+  comment           String?
+  ratedAt           DateTime?
+
+  // Encerramento forçado por inatividade (>30 min sem mensagem)
+  autoEnded         Boolean   @default(false)
+
+  createdAt         DateTime  @default(now())
+
+  @@index([agentId, startedAt])
+  @@index([contactId])
+  @@index([endedAt, rating])
+  @@map("service_sessions")
 }
 
 // Mensagem trocada entre um Contact e um User (agente).

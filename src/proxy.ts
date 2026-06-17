@@ -23,6 +23,8 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/ura",
   "/admin/ura-motor",
   "/admin/connect",
+  "/admin/equipe-ao-vivo",
+  "/admin/avaliacoes",
 ]
 
 export async function proxy(request: NextRequest) {

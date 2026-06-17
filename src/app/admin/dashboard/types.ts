@@ -9,7 +9,7 @@ export interface MessageData {
   mediaType?: string | null
 }
 
-export type ChatStatus = "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE"
+export type ChatStatus = "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "AWAITING_RATING"
 
 export interface ContactData {
   id: string

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
+import { assignAgent } from "@/lib/serviceTracking"
 
 export async function POST(
   request: NextRequest,
@@ -17,13 +18,11 @@ export async function POST(
   const contact = await prisma.contact.findUnique({ where: { id } })
   if (!contact) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
 
-  const updated = await prisma.contact.update({
-    where: { id },
-    data: {
-      assignedUserId: session.id,
-      chatStatus: "IN_SERVICE",
-    },
-  })
+  // Cria ServiceSession + marca inServiceSince + chatStatus=IN_SERVICE.
+  await assignAgent(id, session.id)
 
-  return NextResponse.json({ assignedUserId: updated.assignedUserId, chatStatus: updated.chatStatus })
+  return NextResponse.json({
+    assignedUserId: session.id,
+    chatStatus: "IN_SERVICE",
+  })
 }

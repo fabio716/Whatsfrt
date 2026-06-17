@@ -9,6 +9,7 @@ const CHAT_STATUS_CONFIG: Record<ChatStatus, { label: string; cls: string }> = {
   IN_URA:        { label: "URA",          cls: "bg-blue-50 text-blue-600" },
   WAITING_AGENT: { label: "Aguardando",  cls: "bg-amber-50 text-amber-600" },
   IN_SERVICE:    { label: "Em atendimento", cls: "bg-emerald-50 text-emerald-700" },
+  AWAITING_RATING: { label: "Aguardando nota", cls: "bg-purple-50 text-purple-700" },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
