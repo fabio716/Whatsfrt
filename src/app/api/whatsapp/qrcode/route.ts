@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
+import { activeProvider } from "@/lib/whatsapp"
+import { getZapiQrCode } from "@/lib/zapi"
 
 interface EvolutionQRResponse {
   code?: string
@@ -34,6 +36,20 @@ async function fetchQR(apiUrl: string, apiKey: string, instance: string): Promis
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin(request)
   if (isErrorResponse(auth)) return auth
+
+  if (activeProvider() === "zapi") {
+    const { base64, connected } = await getZapiQrCode()
+    if (connected) {
+      return NextResponse.json({ connected: true })
+    }
+    if (!base64) {
+      return NextResponse.json({ error: "Z-API não retornou QR code" }, { status: 500 })
+    }
+    return NextResponse.json({
+      base64: base64.startsWith("data:") ? base64 : `data:image/png;base64,${base64}`,
+      code: null,
+    })
+  }
 
   const apiUrl = process.env.EVOLUTION_API_URL
   const apiKey = process.env.EVOLUTION_API_KEY

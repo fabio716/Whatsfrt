@@ -12,6 +12,8 @@
 
 import { evolutionFetch } from "./evolutionFetch"
 import { emitConnectionStateChange, type EvolutionState } from "./events"
+import { activeProvider } from "@/lib/whatsapp"
+import { getZapiConnectionState } from "@/lib/zapi"
 
 const POLL_INTERVAL_MS = 30_000
 const RECONNECT_BACKOFF_MS = 60_000 // não tenta reconectar mais que 1x/min
@@ -51,6 +53,8 @@ interface EvolutionStateResponse {
 }
 
 async function checkConnectionState(): Promise<EvolutionState> {
+  if (activeProvider() === "zapi") return getZapiConnectionState()
+
   if (!envOk()) return "unknown"
   const url = `${process.env.EVOLUTION_API_URL}/instance/connectionState/${process.env.EVOLUTION_INSTANCE_NAME}`
   const res = await evolutionFetch(url, {
@@ -70,6 +74,13 @@ async function tryReconnect(): Promise<void> {
   const now = Date.now()
   if (now - s.lastReconnectAttempt < RECONNECT_BACKOFF_MS) return
   s.lastReconnectAttempt = now
+
+  // Z-API: não tentamos auto-reconectar — o painel deles gerencia. Apenas log.
+  if (activeProvider() === "zapi") {
+    console.warn("[watchdog] Z-API fora de open — verifique o painel z-api.io")
+    return
+  }
+
   if (!envOk()) return
   const url = `${process.env.EVOLUTION_API_URL}/instance/connect/${process.env.EVOLUTION_INSTANCE_NAME}`
   await evolutionFetch(url, {

@@ -3,21 +3,12 @@ import { prisma } from "@/lib/prisma"
 import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
-import { evolutionFetch } from "@/lib/reliability/evolutionFetch"
-import { resolvePublicBaseUrl } from "@/lib/evolution"
+import { sendMedia as sendWhatsAppMedia } from "@/lib/whatsapp"
 import {
   isMimeAllowed,
   MAX_UPLOAD_BYTES,
   saveMediaBuffer,
-  signMediaUrl,
 } from "@/lib/mediaStorage"
-
-function evolutionMediaType(mimetype: string): string {
-  if (mimetype.startsWith("image/")) return "image"
-  if (mimetype.startsWith("video/")) return "video"
-  if (mimetype.startsWith("audio/")) return "audio"
-  return "document"
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
@@ -112,47 +103,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     throw err
   }
 
-  const apiUrl  = process.env.EVOLUTION_API_URL
-  const apiKey  = process.env.EVOLUTION_API_KEY
-  const instance = process.env.EVOLUTION_INSTANCE_NAME
-
-  let finalStatus: MessageStatus = MessageStatus.PENDING
-  let attempts = 0
-  let errorMsg: string | null = null
-
-  if (apiUrl && apiKey && instance) {
-    const number = contact.whatsappId.endsWith("@g.us")
-      ? contact.whatsappId
-      : contact.whatsappId.replace(/@.*/, "")
-
-    const publicBase = resolvePublicBaseUrl()
-    const media = publicBase
-      ? `${publicBase}/api/media/${saved.filename}?${signMediaUrl(saved.filename, 300).queryString}`
-      : buffer.toString("base64")
-
-    const res = await evolutionFetch(`${apiUrl}/message/sendMedia/${instance}`, {
-      label: "send-media",
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({
-        number,
-        mediatype: evolutionMediaType(mediaType),
-        mimetype: mediaType,
-        caption,
-        media,
-        fileName: file.name,
-      }),
-    })
-    attempts = res.attempts
-    if (res.ok) finalStatus = MessageStatus.SENT
-    else {
-      finalStatus = MessageStatus.FAILED
-      errorMsg = res.lastError ?? `status ${res.status}`
-    }
-  } else {
-    finalStatus = MessageStatus.FAILED
-    errorMsg = "env Evolution ausente"
-  }
+  // Envia via provider ativo (Evolution OU Z-API). O dispatcher gera URL
+  // assinada do nosso /api/media + fallback pra base64 se não houver APP_PUBLIC_URL.
+  const sendResult = await sendWhatsAppMedia({
+    whatsappId: contact.whatsappId,
+    filename: saved.filename,
+    mimetype: mediaType,
+    caption,
+    fileName: file.name,
+    rawBase64: buffer.toString("base64"),
+  })
+  const finalStatus: MessageStatus = sendResult.ok ? MessageStatus.SENT : MessageStatus.FAILED
+  const attempts = sendResult.attempts
+  const errorMsg = sendResult.ok ? null : sendResult.errorMsg
 
   await prisma.message.update({
     where: { id: msg.id },

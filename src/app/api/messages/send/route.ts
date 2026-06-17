@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
-import { sendEvolutionTextDetailed } from "@/lib/evolution"
+import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 
 interface SendMessageBody {
   contactId: string
@@ -88,8 +88,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     throw err
   }
 
-  // 2 — Dispara para Evolution (retry+backoff incluso).
-  const result = await sendEvolutionTextDetailed(contact.whatsappId, text.trim())
+  // 2 — Dispara para o provider ativo (Evolution OU Z-API) com retry+backoff.
+  const result = await sendWhatsAppText(contact.whatsappId, text.trim())
   const finalStatus = result.ok ? MessageStatus.SENT : MessageStatus.FAILED
 
   // 3 — Persiste estado final + telemetria.
