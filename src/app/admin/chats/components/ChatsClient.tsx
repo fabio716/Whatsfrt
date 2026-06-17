@@ -174,10 +174,16 @@ export default function ChatsClient({
   const [isSending, setIsSending] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [showEmojis, setShowEmojis] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingSec, setRecordingSec] = useState(0)
+  const [recordedBlob, setRecordedBlob] = useState<{ blob: Blob; url: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
+  const mediaRecRef     = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef  = useRef<MediaStream | null>(null)
+  const recordTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevActiveRef   = useRef<string | null>(null)
 
   const activeContact = contacts.find((c) => c.id === activeId) ?? null
@@ -309,6 +315,95 @@ export default function ChatsClient({
   }, [activeId, taking])
 
   // Send message (only when owner)
+  // Gravação de áudio (estilo WhatsApp: clica pra começar, clica de novo pra parar)
+  const stopRecordingStreams = useCallback(() => {
+    if (recordTimerRef.current) { clearInterval(recordTimerRef.current); recordTimerRef.current = null }
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop())
+    mediaStreamRef.current = null
+    mediaRecRef.current = null
+  }, [])
+
+  const startRecording = useCallback(async () => {
+    if (!isOwner || isUploading || isRecording) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+          ? "audio/ogg;codecs=opus"
+          : "audio/webm"
+      const rec = new MediaRecorder(stream, { mimeType })
+      const chunks: BlobPart[] = []
+      rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+      rec.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType })
+        const url = URL.createObjectURL(blob)
+        setRecordedBlob({ blob, url })
+        stopRecordingStreams()
+      }
+      mediaRecRef.current = rec
+      rec.start()
+      setIsRecording(true)
+      setRecordingSec(0)
+      recordTimerRef.current = setInterval(() => setRecordingSec((s) => s + 1), 1000)
+    } catch (err) {
+      alert("Não consegui acessar o microfone. Permita o acesso no navegador e tente de novo.")
+      console.error(err)
+      stopRecordingStreams()
+      setIsRecording(false)
+    }
+  }, [isOwner, isUploading, isRecording, stopRecordingStreams])
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") {
+      mediaRecRef.current.stop()
+    }
+    setIsRecording(false)
+  }, [])
+
+  const cancelRecording = useCallback(() => {
+    if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") {
+      mediaRecRef.current.stop()
+    }
+    stopRecordingStreams()
+    setIsRecording(false)
+    if (recordedBlob?.url) URL.revokeObjectURL(recordedBlob.url)
+    setRecordedBlob(null)
+    setRecordingSec(0)
+  }, [recordedBlob, stopRecordingStreams])
+
+  const sendAudio = useCallback(async () => {
+    if (!recordedBlob || !activeId || isUploading) return
+    setIsUploading(true)
+    const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const ext = recordedBlob.blob.type.includes("ogg") ? "ogg" : "webm"
+    const file = new File([recordedBlob.blob], `audio-${Date.now()}.${ext}`, { type: recordedBlob.blob.type })
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("contactId", activeId)
+    formData.append("caption", "")
+    try {
+      const res = await fetch("/api/messages/send-media", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: formData,
+      })
+      if (res.ok) {
+        URL.revokeObjectURL(recordedBlob.url)
+        setRecordedBlob(null)
+        setRecordingSec(0)
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        alert(`Falha ao enviar áudio: ${data.error ?? res.status}`)
+      }
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsUploading(false)
+    }
+  }, [recordedBlob, activeId, isUploading])
+
   // Upload e envio de mídia (foto/vídeo/documento)
   const handleFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -536,7 +631,69 @@ export default function ChatsClient({
 
             {/* Read-only footer / owned footer */}
             <footer className="relative flex items-center gap-2 border-t border-zinc-100 bg-white px-4 py-3">
-              {isOwner ? (
+              {/* Modo gravação: substitui input + clipe + emoji */}
+              {isOwner && isRecording && (
+                <div className="flex w-full items-center gap-3 rounded-full border border-red-200 bg-red-50 px-4 py-2.5">
+                  <span className="relative inline-flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-70" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                  </span>
+                  <span className="flex-1 text-[13px] font-medium text-red-700">
+                    Gravando... {Math.floor(recordingSec / 60).toString().padStart(2, "0")}:{(recordingSec % 60).toString().padStart(2, "0")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={cancelRecording}
+                    title="Cancelar"
+                    className="rounded-full px-3 py-1 text-[12px] font-medium text-red-700 hover:bg-red-100"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    title="Parar e ouvir antes de enviar"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-red-600 text-white shadow hover:bg-red-700"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              {/* Modo preview: áudio gravado, antes de enviar */}
+              {isOwner && !isRecording && recordedBlob && (
+                <div className="flex w-full items-center gap-3 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2">
+                  <audio src={recordedBlob.url} controls className="h-8 flex-1" />
+                  <button
+                    type="button"
+                    onClick={cancelRecording}
+                    title="Descartar"
+                    className="rounded-full px-3 py-1 text-[12px] font-medium text-zinc-600 hover:bg-zinc-100"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void sendAudio()}
+                    disabled={isUploading}
+                    title="Enviar áudio"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[#25D366] text-white shadow hover:bg-[#1db954] disabled:opacity-50"
+                  >
+                    {isUploading ? (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              )}
+              {/* Modo normal */}
+              {isOwner && !isRecording && !recordedBlob && (
                 <>
                   <input
                     ref={fileInputRef}
@@ -588,17 +745,35 @@ export default function ChatsClient({
                     disabled={isUploading}
                     className="flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 outline-none focus:border-zinc-300 focus:bg-white disabled:opacity-60"
                   />
-                  <button
-                    onClick={() => void handleSend()}
-                    disabled={!inputValue.trim() || isSending || isUploading}
-                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition-all hover:bg-[#1db954] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                    </svg>
-                  </button>
+                  {/* Mic quando input vazio, send button quando tem texto */}
+                  {inputValue.trim() === "" ? (
+                    <button
+                      type="button"
+                      onClick={() => void startRecording()}
+                      disabled={isUploading || isSending}
+                      title="Gravar áudio"
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition-all hover:bg-[#1db954] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+                        <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z" />
+                        <path d="M19 11a1 1 0 10-2 0 5 5 0 11-10 0 1 1 0 10-2 0 7 7 0 006 6.93V21a1 1 0 102 0v-3.07A7 7 0 0019 11z" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => void handleSend()}
+                      disabled={isSending || isUploading}
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition-all hover:bg-[#1db954] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                      </svg>
+                    </button>
+                  )}
                 </>
-              ) : (
+              )}
+              {/* Auditoria — quando não é dono do contato */}
+              {!isOwner && (
                 <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 py-3">
                   <svg viewBox="0 0 24 24" className="h-4 w-4 text-zinc-300" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
