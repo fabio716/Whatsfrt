@@ -246,9 +246,20 @@ export default function ChatsClient({
     e.target.value = "" // permite escolher mesmo arquivo de novo
     if (!file || !activeId || isUploading || !isOwner) return
 
-    const maxBytes = 16 * 1024 * 1024
-    if (file.size > maxBytes) {
-      alert("Arquivo muito grande (máx 16 MB).")
+    // Limites por tipo (mesmos do WhatsApp). Documento aceita até 100 MB.
+    const maxByCategory =
+      file.type.startsWith("image/")    ? 16 * 1024 * 1024   // imagem 16 MB (folga)
+    : file.type.startsWith("video/")    ? 16 * 1024 * 1024   // vídeo 16 MB
+    : file.type.startsWith("audio/")    ? 16 * 1024 * 1024   // áudio 16 MB
+    : /* documento */                     100 * 1024 * 1024  // documento 100 MB
+
+    if (file.size > maxByCategory) {
+      const limitMB = Math.round(maxByCategory / 1024 / 1024)
+      const kind = file.type.startsWith("image/") ? "imagem"
+                 : file.type.startsWith("video/") ? "vídeo"
+                 : file.type.startsWith("audio/") ? "áudio"
+                 : "documento"
+      alert(`Arquivo muito grande. Limite WhatsApp para ${kind}: ${limitMB} MB.`)
       return
     }
 

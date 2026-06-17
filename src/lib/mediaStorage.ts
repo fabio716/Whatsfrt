@@ -135,7 +135,11 @@ const ALLOWED_MIME_EXACT = new Set([
 // então mantemos o XSS fora.
 const BLOCKED_MIME = new Set(["image/svg+xml", "text/html", "application/xhtml+xml"])
 
-export const MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+// 100 MB cobre o limite WhatsApp pra documentos (PDF, Office, ZIP).
+// Imagens/vídeos/áudios efetivos têm limites menores (5/16/16 MB) — se
+// estourar lá, Z-API/Evolution devolve erro e marcamos FAILED. Aqui no
+// upload aceitamos até o teto pra não bloquear documentos legítimos.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 export function isMimeAllowed(mime: string): boolean {
   if (BLOCKED_MIME.has(mime)) return false

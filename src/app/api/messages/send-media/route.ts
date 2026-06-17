@@ -47,7 +47,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (file.size > MAX_UPLOAD_BYTES) {
     return NextResponse.json(
-      { error: `Arquivo excede ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.` },
+      { error: `Arquivo excede o limite de ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.` },
       { status: 413 }
     )
   }
