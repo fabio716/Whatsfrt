@@ -104,9 +104,11 @@ export default function ChatsClient({
   const [ending, setEnding] = useState(false)
   const [inputValue, setInputValue] = useState("")
   const [isSending, setIsSending] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef    = useRef<HTMLInputElement>(null)
   const prevActiveRef   = useRef<string | null>(null)
 
   const activeContact = contacts.find((c) => c.id === activeId) ?? null
@@ -238,6 +240,44 @@ export default function ChatsClient({
   }, [activeId, taking])
 
   // Send message (only when owner)
+  // Upload e envio de mídia (foto/vídeo/documento)
+  const handleFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // permite escolher mesmo arquivo de novo
+    if (!file || !activeId || isUploading || !isOwner) return
+
+    const maxBytes = 16 * 1024 * 1024
+    if (file.size > maxBytes) {
+      alert("Arquivo muito grande (máx 16 MB).")
+      return
+    }
+
+    setIsUploading(true)
+    const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("contactId", activeId)
+    formData.append("caption", inputValue.trim())
+
+    try {
+      const res = await fetch("/api/messages/send-media", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: formData,
+      })
+      if (res.ok) {
+        setInputValue("") // limpa legenda se enviou
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        alert(`Falha ao enviar arquivo: ${data.error ?? res.status}`)
+      }
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsUploading(false)
+    }
+  }, [activeId, inputValue, isOwner, isUploading])
+
   const handleSend = async () => {
     if (!inputValue.trim() || !activeId || isSending || !isOwner) return
     const text = inputValue.trim()
@@ -418,16 +458,41 @@ export default function ChatsClient({
               {isOwner ? (
                 <>
                   <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                    onChange={(e) => void handleFileSelected(e)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading || isSending}
+                    title="Anexar arquivo (foto, vídeo, documento)"
+                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {isUploading ? (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                    )}
+                  </button>
+                  <input
                     type="text"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) void handleSend() }}
-                    placeholder="Digite uma mensagem..."
-                    className="flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 outline-none focus:border-zinc-300 focus:bg-white"
+                    placeholder={isUploading ? "Enviando arquivo..." : "Digite uma mensagem..."}
+                    disabled={isUploading}
+                    className="flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 outline-none focus:border-zinc-300 focus:bg-white disabled:opacity-60"
                   />
                   <button
                     onClick={() => void handleSend()}
-                    disabled={!inputValue.trim() || isSending}
+                    disabled={!inputValue.trim() || isSending || isUploading}
                     className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition-all hover:bg-[#1db954] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">

@@ -103,6 +103,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   })
 
   // 4 — Notifica clientes via SSE.
+  // 4a — new_message: pro UI do agente exibir o balão verde imediato sem F5.
+  broadcast({
+    type: "new_message",
+    data: {
+      id: updated.id,
+      body: updated.body,
+      direction: updated.direction,
+      status: updated.status,
+      createdAt: updated.createdAt.toISOString(),
+      agentId: session.id,
+      contactId: updated.contactId,
+      mediaUrl: null,
+      mediaType: null,
+      contact: {
+        id: contact.id,
+        whatsappId: contact.whatsappId,
+        name: contact.name,
+        profilePhotoUrl: contact.profilePhotoUrl,
+        chatStatus: contact.chatStatus,
+        assignedUserId: contact.assignedUserId,
+      },
+    },
+  })
+
+  // 4b — message_update: pro UI atualizar status (✓ → ✓✓ → ✓✓ azul).
   broadcast({
     type: "message_update",
     data: {
