@@ -84,6 +84,74 @@ function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string;
   )
 }
 
+// ─── Status icon (WhatsApp-style: relógio / ✓ / ✓✓ / ✓✓ azul / ⚠️) ──────────
+function MessageStatusIcon({ status }: Readonly<{ status: MessageData["status"] }>) {
+  if (status === "PENDING") {
+    return (
+      <svg viewBox="0 0 16 16" className="h-3 w-3 text-zinc-400" fill="none" stroke="currentColor" strokeWidth={1.5}>
+        <circle cx="8" cy="8" r="6.5" />
+        <path d="M8 4.5V8l2 1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (status === "FAILED") {
+    return (
+      <svg viewBox="0 0 16 16" className="h-3 w-3 text-red-500" fill="none" stroke="currentColor" strokeWidth={2}>
+        <circle cx="8" cy="8" r="6.5" />
+        <path d="M8 4.5v4M8 11h.01" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  // SENT / DELIVERED / READ — ticks acumulam, READ fica azul
+  const color = status === "READ" ? "text-sky-500" : "text-zinc-400"
+  return (
+    <svg viewBox="0 0 18 12" className={`h-3 w-3.5 ${color}`} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 6.5l3 3 6-6" />
+      {(status === "DELIVERED" || status === "READ") && <path d="M6 9.5l3-3 6-6" />}
+    </svg>
+  )
+}
+
+// ─── Emoji picker (inline, sem dependência externa) ─────────────────────────
+const EMOJI_GROUPS = {
+  "😀 Emoções": ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😋","😛","😜","🤪","😝","🤗","🤔","😐","😑","😶","🙄","😏","😒","😔","😟","😕","🙁","☹️","😣","😖","😫","😩","🥺","😢","😭","😤","😠","😡","🤬"],
+  "👍 Gestos": ["👍","👎","👌","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","✋","🖐️","🖖","👋","🤚","🤝","🙏","👏","🙌","💪","🤲"],
+  "❤️ Coração": ["❤️","🧡","💛","💚","💙","💜","🤎","🖤","🤍","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟"],
+  "✅ Símbolos": ["✅","❌","⚠️","🚨","🔥","💯","🎉","🎊","🌟","⭐","✨","💎","⏰","📌","📍","🔔","🔕","📎","📞","📱","💰","💵","💳","🎁","🛒","📦","🚚","🏦"],
+}
+
+function EmojiPicker({ onPick, onClose }: Readonly<{ onPick: (emoji: string) => void; onClose: () => void }>) {
+  return (
+    <div className="absolute bottom-14 left-2 z-50 max-h-64 w-72 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-2xl">
+      <div className="mb-1 flex items-center justify-between px-1">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Emojis</span>
+        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700" title="Fechar">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      {Object.entries(EMOJI_GROUPS).map(([group, emojis]) => (
+        <div key={group} className="mb-2">
+          <p className="mb-0.5 px-1 text-[10px] font-medium text-zinc-400">{group}</p>
+          <div className="grid grid-cols-8 gap-0.5">
+            {emojis.map((e) => (
+              <button
+                key={e}
+                onClick={() => onPick(e)}
+                className="flex h-7 w-7 items-center justify-center rounded text-base hover:bg-zinc-100"
+                type="button"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ChatsClient({
@@ -105,6 +173,7 @@ export default function ChatsClient({
   const [inputValue, setInputValue] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [showEmojis, setShowEmojis] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -454,6 +523,7 @@ export default function ChatsClient({
                           }
                           <div className={`mt-1 flex items-center gap-1 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
                             <span className="text-[10px] text-zinc-400">{formatTime(msg.createdAt)}</span>
+                            {isOut && <MessageStatusIcon status={msg.status} />}
                           </div>
                         </div>
                       </div>
@@ -465,7 +535,7 @@ export default function ChatsClient({
             </section>
 
             {/* Read-only footer / owned footer */}
-            <footer className="flex items-center gap-2 border-t border-zinc-100 bg-white px-4 py-3">
+            <footer className="relative flex items-center gap-2 border-t border-zinc-100 bg-white px-4 py-3">
               {isOwner ? (
                 <>
                   <input
@@ -492,6 +562,23 @@ export default function ChatsClient({
                       </svg>
                     )}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojis((v) => !v)}
+                    title="Emojis"
+                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <circle cx="12" cy="12" r="10" />
+                      <path strokeLinecap="round" d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+                    </svg>
+                  </button>
+                  {showEmojis && (
+                    <EmojiPicker
+                      onPick={(e) => setInputValue((v) => v + e)}
+                      onClose={() => setShowEmojis(false)}
+                    />
+                  )}
                   <input
                     type="text"
                     value={inputValue}
