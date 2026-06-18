@@ -66,6 +66,22 @@ export async function handleInboundForUra(
   const digits = contact.whatsappId.replace("@s.whatsapp.net", "")
   if (digits.length > 13) return
 
+  // Mensagem só de mídia (áudio/foto/vídeo/doc sem caption) NÃO dispara URA.
+  // Quem manda áudio quer falar com humano, não escolher menu. Manda direto
+  // pra fila de WAITING_AGENT pra um agente assumir e ouvir.
+  if (!inboundText.trim()) {
+    if (contact.chatStatus === ChatStatus.IDLE || contact.chatStatus === ChatStatus.IN_URA) {
+      await prisma.contact.update({
+        where: { id: contact.id },
+        data: {
+          chatStatus: ChatStatus.WAITING_AGENT,
+          waitingAgentSince: new Date(),
+        },
+      })
+    }
+    return
+  }
+
   const cfg = await getUraConfigCached()
   if (!cfg.isActive) return
 

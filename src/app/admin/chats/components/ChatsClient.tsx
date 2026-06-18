@@ -69,9 +69,15 @@ function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string;
   }
   if (mediaType.startsWith("audio/")) {
     return (
-      <audio src={mediaUrl} controls className="max-w-xs">
-        <track kind="captions" />
-      </audio>
+      <div className="flex items-center gap-2 rounded-lg bg-zinc-50 px-2 py-1.5 min-w-[260px]">
+        <svg viewBox="0 0 24 24" className="h-5 w-5 flex-shrink-0 text-emerald-600" fill="currentColor">
+          <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z" />
+          <path d="M19 11a1 1 0 10-2 0 5 5 0 11-10 0 1 1 0 10-2 0 7 7 0 006 6.93V21a1 1 0 102 0v-3.07A7 7 0 0019 11z" />
+        </svg>
+        <audio src={mediaUrl} controls preload="metadata" className="h-9 flex-1 min-w-[200px]">
+          <track kind="captions" />
+        </audio>
+      </div>
     )
   }
   return (
@@ -774,11 +780,21 @@ export default function ChatsClient({
               )}
               {/* Auditoria — quando não é dono do contato */}
               {!isOwner && (
-                <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 py-3">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-zinc-300" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                <div className="flex w-full items-center justify-center gap-3 rounded-xl border border-amber-200 bg-amber-50 py-3 px-4">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-amber-600" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.34 16a2 2 0 001.73 3z" />
                   </svg>
-                  <span className="text-[12px] text-zinc-400">Modo auditoria · Clique em <strong>Assumir Atendimento</strong> para enviar</span>
+                  <span className="flex-1 text-[12px] text-amber-700">
+                    Você não está atendendo este cliente. Para responder, clique no botão.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleTakeOver()}
+                    disabled={taking}
+                    className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
+                  >
+                    {taking ? "Assumindo..." : "Assumir / Reassumir"}
+                  </button>
                 </div>
               )}
             </footer>
