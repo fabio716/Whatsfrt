@@ -4,7 +4,6 @@ import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
-import { validatePhoneCached } from "@/lib/whatsappValidation"
 
 interface SendMessageBody {
   contactId: string
@@ -63,29 +62,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }, { status: 400 })
   }
 
-  // 0.5 — Valida automaticamente que o número está cadastrado no WhatsApp
-  // ANTES de criar a Message. Evita que o agente fique esperando entrega
-  // que nunca vai chegar. Cache de 7 dias evita custo extra.
-  // Grupos e contatos com histórico de inbound recente pulam — assume válidos.
-  const isGroup = contact.whatsappId.endsWith("@g.us")
-  if (!isGroup) {
-    const recentInbound = await prisma.message.count({
-      where: {
-        contactId,
-        direction: MessageDirection.INBOUND,
-        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }, // 30 dias
-      },
-    })
-    if (recentInbound === 0) {
-      const validated = await validatePhoneCached(contact.whatsappId)
-      if (validated === false) {
-        return NextResponse.json({
-          error: "Este número não está cadastrado no WhatsApp. A mensagem não vai chegar — confirme o número com o cliente.",
-          code: "INVALID_WHATSAPP_NUMBER",
-        }, { status: 422 })
-      }
-    }
-  }
+  // Validação Z-API só pra log/aviso — NUNCA bloqueia o envio. Razão:
+  // Z-API trial as vezes retorna falso-negativo (rate limit, timeout,
+  // numero internacional, etc.) e bloquear estava impedindo o agente de
+  // iniciar conversa com clientes legitimos. Agora a gente tenta sempre,
+  // e o status FAILED no proprio Z-API ja avisa se nao chegou.
+  // (Mantemos a validacao no /api/contacts pra avisar na hora do cadastro.)
 
   // 1 — Cria PENDING com clientKey (se houver).
   let message
