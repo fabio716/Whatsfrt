@@ -74,3 +74,34 @@ export async function getDailyMessageCount(agentId: string): Promise<number> {
     },
   })
 }
+
+export interface ColdOutreachCheck {
+  isCold: boolean
+  consecutiveOutbound: number
+  hasEverReceivedInbound: boolean
+}
+
+// "Cold outreach" = contato nunca respondeu E o agente já mandou várias
+// mensagens em sequência. O Meta dropa silenciosamente esses envios por
+// considerar spam. Bloqueamos a partir de 3 outbound consecutivos sem nenhum
+// inbound histórico — agente confirma manualmente se quiser insistir.
+export async function checkColdOutreach(contactId: string): Promise<ColdOutreachCheck> {
+  const lastInbound = await prisma.message.findFirst({
+    where: { contactId, direction: MessageDirection.INBOUND },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  })
+
+  const consecutiveOutbound = await prisma.message.count({
+    where: {
+      contactId,
+      direction: MessageDirection.OUTBOUND,
+      ...(lastInbound ? { createdAt: { gt: lastInbound.createdAt } } : {}),
+    },
+  })
+
+  const hasEverReceivedInbound = lastInbound !== null
+  const isCold = !hasEverReceivedInbound && consecutiveOutbound >= 3
+
+  return { isCold, consecutiveOutbound, hasEverReceivedInbound }
+}

@@ -191,6 +191,13 @@ export default function ChatsClient({
   const [recordedBlob, setRecordedBlob] = useState<{ blob: Blob; url: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [windowStatus, setWindowStatus] = useState<{
+    windowOpen: boolean
+    lastInboundAt: string | null
+    hoursSinceLastInbound: number | null
+    consecutiveOutbound: number
+    hasEverReceivedInbound: boolean
+  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
   const mediaRecRef     = useRef<MediaRecorder | null>(null)
@@ -223,6 +230,28 @@ export default function ChatsClient({
     const behavior = prevActiveRef.current === activeId ? "smooth" : "auto"
     prevActiveRef.current = activeId
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
+  }, [activeId, activeContact?.messages.length])
+
+  // Janela de 24h: revalida ao trocar contato OU ao chegar novo inbound.
+  // Sem isso, o banner ficava preso no estado de quando o chat foi aberto.
+  useEffect(() => {
+    if (!activeId) { setWindowStatus(null); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/contacts/${activeId}/window-status`)
+        if (!res.ok || cancelled) return
+        const data = await res.json() as {
+          windowOpen: boolean
+          lastInboundAt: string | null
+          hoursSinceLastInbound: number | null
+          consecutiveOutbound: number
+          hasEverReceivedInbound: boolean
+        }
+        if (!cancelled) setWindowStatus(data)
+      } catch { /* falha silenciosa — banner some, envio continua funcionando */ }
+    })()
+    return () => { cancelled = true }
   }, [activeId, activeContact?.messages.length])
 
   // SSE
@@ -503,7 +532,7 @@ export default function ChatsClient({
     }
   }, [activeId, inputValue, isOwner, isUploading])
 
-  const doSend = useCallback(async (text: string, confirmTemplate = false): Promise<void> => {
+  const doSend = useCallback(async (text: string, confirmTemplate = false, confirmCold = false): Promise<void> => {
     if (!activeId) return
     const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     const res = await fetch("/api/messages/send", {
@@ -512,6 +541,7 @@ export default function ChatsClient({
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
         ...(confirmTemplate ? { "X-Confirm-Template": "true" } : {}),
+        ...(confirmCold ? { "X-Confirm-Cold": "true" } : {}),
       },
       body: JSON.stringify({ contactId: activeId, text }),
     })
@@ -522,7 +552,7 @@ export default function ChatsClient({
     }
 
     if (res.status === 429) {
-      const data = await res.json().catch(() => ({})) as { error?: string; code?: string; similarCount?: number; sentToday?: number; limit?: number }
+      const data = await res.json().catch(() => ({})) as { error?: string; code?: string; similarCount?: number; sentToday?: number; limit?: number; consecutiveOutbound?: number }
       if (data.code === "DAILY_LIMIT_REACHED") {
         alert(`🛑 ${data.error}`)
         return
@@ -530,7 +560,14 @@ export default function ChatsClient({
       if (data.code === "TEMPLATE_SPAM_RISK") {
         const ok = confirm(`⚠️ ${data.error}\n\nEnviar mesmo assim? (Risco de bloqueio do WhatsApp)`)
         if (ok) {
-          await doSend(text, true) // retry com header X-Confirm-Template
+          await doSend(text, true, confirmCold) // retry com header X-Confirm-Template
+        }
+        return
+      }
+      if (data.code === "COLD_OUTREACH_RISK") {
+        const ok = confirm(`⚠️ ${data.error}\n\nEnviar mesmo assim? (Risco do Meta dropar a mensagem)`)
+        if (ok) {
+          await doSend(text, confirmTemplate, true) // retry com header X-Confirm-Cold
         }
         return
       }
@@ -698,6 +735,30 @@ export default function ChatsClient({
                 )}
               </div>
             </header>
+
+            {/* Banner janela de 24h — avisa quando cliente não responde há tempo.
+                Fora dessa janela, o Meta dropa silenciosamente envios de iniciativa
+                do agente como spam. Não bloqueia o envio, só alerta. */}
+            {windowStatus && !windowStatus.windowOpen && (
+              <div className="border-b border-amber-200 bg-amber-50 px-6 py-2.5">
+                <div className="flex items-start gap-2 text-[12px] text-amber-900">
+                  <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M4.93 19h14.14c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.2 16c-.77 1.33.19 3 1.73 3z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="font-semibold">
+                      {!windowStatus.hasEverReceivedInbound
+                        ? "Cliente nunca respondeu por aqui."
+                        : `Cliente sem responder há ${Math.floor(windowStatus.hoursSinceLastInbound ?? 0)}h.`}
+                    </p>
+                    <p className="mt-0.5 text-amber-800">
+                      Fora da janela de 24h, o WhatsApp pode não entregar suas mensagens.
+                      Tente outro canal (ligar, SMS) ou peça pro cliente mandar &quot;oi&quot; primeiro.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Messages */}
             <section className="flex-1 overflow-y-auto px-6 py-4 space-y-1">

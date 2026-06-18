@@ -4,7 +4,7 @@ import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
-import { checkTemplateSpam, getDailyMessageCount } from "@/lib/antispam"
+import { checkTemplateSpam, checkColdOutreach, getDailyMessageCount } from "@/lib/antispam"
 
 interface SendMessageBody {
   contactId: string
@@ -91,6 +91,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         error: `Você enviou essa MESMA mensagem ${spam.similarCount} vezes em poucas horas. WhatsApp tem alta chance de filtrar como spam. Personalize a mensagem ou aguarde 1-2 horas.`,
         code: "TEMPLATE_SPAM_RISK",
         similarCount: spam.similarCount,
+      }, { status: 429 })
+    }
+  }
+
+  // ─── Anti-spam check 3: cold outreach (cliente nunca respondeu) ─────────
+  // Meta dropa silenciosamente quando o agente insiste em contato que nunca
+  // interagiu. 3+ mensagens consecutivas sem resposta = bloqueio sugerido.
+  // Bypass via header pro agente confirmar "manda mesmo assim".
+  const confirmCold = request.headers.get("x-confirm-cold") === "true"
+  if (!confirmCold) {
+    const cold = await checkColdOutreach(contactId)
+    if (cold.isCold) {
+      return NextResponse.json({
+        error: `Esse cliente NUNCA respondeu e você já mandou ${cold.consecutiveOutbound} mensagens. WhatsApp tem alta chance de NÃO entregar. Tente outro canal (ligação, SMS) ou peça pro cliente mandar "oi" primeiro.`,
+        code: "COLD_OUTREACH_RISK",
+        consecutiveOutbound: cold.consecutiveOutbound,
       }, { status: 429 })
     }
   }
