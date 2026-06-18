@@ -4,6 +4,7 @@ import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
+import { checkTemplateSpam, getDailyMessageCount } from "@/lib/antispam"
 
 interface SendMessageBody {
   contactId: string
@@ -60,6 +61,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       error: "Não é possível enviar mensagens para este contato. O número não é um telefone válido (formato @lid).",
     }, { status: 400 })
+  }
+
+  // ─── Anti-spam check 1: limite diário do agente ─────────────────────────
+  const user = await prisma.user.findUnique({
+    where: { id: session.id },
+    select: { dailyMessageLimit: true },
+  })
+  const limit = user?.dailyMessageLimit ?? 150
+  if (limit > 0) {
+    const sentToday = await getDailyMessageCount(session.id)
+    if (sentToday >= limit) {
+      return NextResponse.json({
+        error: `Limite diário atingido (${sentToday}/${limit}). Aguarde até amanhã ou peça pro admin aumentar.`,
+        code: "DAILY_LIMIT_REACHED",
+        sentToday,
+        limit,
+      }, { status: 429 })
+    }
+  }
+
+  // ─── Anti-spam check 2: mesma mensagem repetida (template) ──────────────
+  // Bypass quando o frontend confirma "envia mesmo assim" via header.
+  const confirmTemplate = request.headers.get("x-confirm-template") === "true"
+  if (!confirmTemplate) {
+    const spam = await checkTemplateSpam(session.id, text)
+    if (spam.isSuspicious) {
+      return NextResponse.json({
+        error: `Você enviou essa MESMA mensagem ${spam.similarCount} vezes em poucas horas. WhatsApp tem alta chance de filtrar como spam. Personalize a mensagem ou aguarde 1-2 horas.`,
+        code: "TEMPLATE_SPAM_RISK",
+        similarCount: spam.similarCount,
+      }, { status: 429 })
+    }
   }
 
   // Validação Z-API só pra log/aviso — NUNCA bloqueia o envio. Razão:

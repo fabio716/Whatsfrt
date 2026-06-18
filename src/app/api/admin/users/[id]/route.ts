@@ -17,6 +17,7 @@ export async function PUT(
     password?: string
     department?: string | null
     role?: string
+    dailyMessageLimit?: number
   }
 
   const existing = await prisma.user.findUnique({ where: { id } })
@@ -33,11 +34,14 @@ export async function PUT(
   if (body.role)       data.role       = body.role
   if ("department" in body) data.department = body.department ?? null
   if (body.password)   data.passwordHash = await bcrypt.hash(body.password, 10)
+  if (typeof body.dailyMessageLimit === "number" && body.dailyMessageLimit >= 0 && body.dailyMessageLimit <= 5000) {
+    data.dailyMessageLimit = body.dailyMessageLimit
+  }
 
   const updated = await prisma.user.update({
     where: { id },
     data,
-    select: { id: true, name: true, email: true, role: true, department: true, isActive: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, department: true, isActive: true, dailyMessageLimit: true, createdAt: true },
   })
 
   return NextResponse.json(updated)

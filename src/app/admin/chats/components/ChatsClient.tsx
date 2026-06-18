@@ -503,33 +503,62 @@ export default function ChatsClient({
     }
   }, [activeId, inputValue, isOwner, isUploading])
 
+  const doSend = useCallback(async (text: string, confirmTemplate = false): Promise<void> => {
+    if (!activeId) return
+    const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const res = await fetch("/api/messages/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        ...(confirmTemplate ? { "X-Confirm-Template": "true" } : {}),
+      },
+      body: JSON.stringify({ contactId: activeId, text }),
+    })
+
+    if (res.ok) {
+      setInputValue("") // limpa só se enviou
+      return
+    }
+
+    if (res.status === 429) {
+      const data = await res.json().catch(() => ({})) as { error?: string; code?: string; similarCount?: number; sentToday?: number; limit?: number }
+      if (data.code === "DAILY_LIMIT_REACHED") {
+        alert(`🛑 ${data.error}`)
+        return
+      }
+      if (data.code === "TEMPLATE_SPAM_RISK") {
+        const ok = confirm(`⚠️ ${data.error}\n\nEnviar mesmo assim? (Risco de bloqueio do WhatsApp)`)
+        if (ok) {
+          await doSend(text, true) // retry com header X-Confirm-Template
+        }
+        return
+      }
+      alert(`⚠️ ${data.error ?? "Não foi possível enviar"}`)
+      return
+    }
+
+    if (res.status === 422) {
+      const data = await res.json().catch(() => ({})) as { error?: string }
+      alert(`⚠️ ${data.error ?? "Não foi possível enviar"}`)
+      return
+    }
+
+    if (res.status >= 500 || res.status === 502) {
+      setInputValue("")
+      return
+    }
+
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    alert(`Erro: ${data.error ?? res.status}`)
+  }, [activeId])
+
   const handleSend = async () => {
     if (!inputValue.trim() || !activeId || isSending || !isOwner) return
     const text = inputValue.trim()
     setIsSending(true)
-    const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     try {
-      const res = await fetch("/api/messages/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify({ contactId: activeId, text }),
-      })
-      if (res.ok) {
-        setInputValue("") // limpa só se enviou
-      } else if (res.status === 422) {
-        const data = await res.json().catch(() => ({})) as { error?: string; code?: string }
-        // Mantém o texto digitado pra o agente poder copiar/corrigir
-        alert(`⚠️ ${data.error ?? "Não foi possível enviar a mensagem"}`)
-      } else if (res.status >= 500 || res.status === 502) {
-        // Falha técnica — Message foi salva como FAILED no servidor, UI atualiza via SSE
-        setInputValue("")
-      } else {
-        const data = await res.json().catch(() => ({})) as { error?: string }
-        alert(`Erro: ${data.error ?? res.status}`)
-      }
+      await doSend(text)
     } catch (err) {
       alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
     } finally {

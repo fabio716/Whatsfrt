@@ -81,6 +81,10 @@ model User {
   role         Role        @default(AGENT)
   department   Department?
   isActive     Boolean     @default(true)
+  // Limite diário de mensagens OUTBOUND iniciadas por este usuário.
+  // Protege contra anti-spam do WhatsApp. Admin pode ajustar em /admin/users.
+  // 0 = ilimitado.
+  dailyMessageLimit Int    @default(150)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
