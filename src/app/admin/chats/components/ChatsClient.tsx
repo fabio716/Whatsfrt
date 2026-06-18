@@ -184,6 +184,8 @@ export default function ChatsClient({
   const [isSending, setIsSending] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [showEmojis, setShowEmojis] = useState(false)
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferring, setTransferring] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingSec, setRecordingSec] = useState(0)
   const [recordedBlob, setRecordedBlob] = useState<{ blob: Blob; url: string } | null>(null)
@@ -294,6 +296,33 @@ export default function ChatsClient({
       setConfirmDelete(false)
     }
   }, [activeId, isDeleting])
+
+  // Transfere contato (admin only)
+  const handleTransfer = useCallback(async (target: { agentId?: string; toMe?: boolean }) => {
+    if (!activeId || transferring) return
+    setTransferring(true)
+    try {
+      const res = await fetch(`/api/admin/contacts/${activeId}/transfer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(target),
+      })
+      if (res.ok) {
+        const data = await res.json() as { assignedUserId: string }
+        setContacts((prev) => prev.map((c) =>
+          c.id === activeId
+            ? { ...c, assignedUserId: data.assignedUserId, chatStatus: "IN_SERVICE" as const }
+            : c
+        ))
+        setShowTransfer(false)
+      } else {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        alert(`Erro ao transferir: ${err.error ?? res.status}`)
+      }
+    } finally {
+      setTransferring(false)
+    }
+  }, [activeId, transferring])
 
   // Encerrar atendimento e pedir nota ao cliente
   const handleEndService = useCallback(async () => {
@@ -617,6 +646,16 @@ export default function ChatsClient({
                     {taking ? "Assumindo..." : "Assumir Atendimento"}
                   </button>
                 )}
+                {!isAgent && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTransfer(true)}
+                    title="Transferir esta conversa pra outro atendente"
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+                  >
+                    🔁 Transferir
+                  </button>
+                )}
                 {isOwner && activeContact.chatStatus === "IN_SERVICE" && (
                   <button
                     type="button"
@@ -832,6 +871,69 @@ export default function ChatsClient({
           </div>
         )}
       </main>
+
+      {/* ─── Transferir Conversa Modal ──────────────────────────────────── */}
+      {showTransfer && activeContact && !isAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-[15px] font-semibold text-zinc-900">Transferir &quot;{activeContact.name}&quot;</h2>
+            <p className="mt-0.5 text-[12px] text-zinc-400">
+              Atual: {agents.find((a) => a.id === activeContact.assignedUserId)?.name ?? "ninguém"}
+            </p>
+
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => void handleTransfer({ toMe: true })}
+                disabled={transferring}
+                className="flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-zinc-900 px-3 py-2.5 text-[13px] font-semibold text-white hover:bg-zinc-700 disabled:opacity-50"
+              >
+                <span>👤 Trazer pra mim</span>
+                <span className="text-[11px] opacity-70">Eu (Admin)</span>
+              </button>
+
+              <div className="my-2 flex items-center gap-2">
+                <div className="h-px flex-1 bg-zinc-200" />
+                <span className="text-[10px] uppercase text-zinc-400">ou transferir para</span>
+                <div className="h-px flex-1 bg-zinc-200" />
+              </div>
+
+              <div className="max-h-60 space-y-1 overflow-y-auto">
+                {agents
+                  .filter((a) => a.id !== activeContact.assignedUserId)
+                  .map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => void handleTransfer({ agentId: a.id })}
+                      disabled={transferring}
+                      className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left text-[13px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-200 text-[11px] font-semibold text-zinc-600">
+                        {a.name.charAt(0).toUpperCase()}
+                      </div>
+                      {a.name}
+                    </button>
+                  ))}
+                {agents.filter((a) => a.id !== activeContact.assignedUserId).length === 0 && (
+                  <p className="px-3 py-2 text-[12px] text-zinc-400">Nenhum outro agente ativo.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowTransfer(false)}
+                disabled={transferring}
+                className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-[13px] font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Confirm Delete Modal ─────────────────────────────────────── */}
       {confirmDelete && (
