@@ -10,15 +10,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getSessionFromRequest(request)
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
 
-  let body: { name?: string; phone?: string }
+  let body: { name?: string; phone?: string; empresa?: string; cidade?: string }
   try {
-    body = (await request.json()) as { name?: string; phone?: string }
+    body = (await request.json()) as typeof body
   } catch {
     return NextResponse.json({ error: "Corpo inválido" }, { status: 400 })
   }
 
   const name = body.name?.trim()
   const rawPhone = body.phone?.trim()
+  const empresa = body.empresa?.trim() || null
+  const cidade = body.cidade?.trim() || null
   if (!name || !rawPhone) {
     return NextResponse.json({ error: "Nome e telefone são obrigatórios" }, { status: 400 })
   }
@@ -43,15 +45,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     create: {
       whatsappId,
       name,
+      empresa,
+      cidade,
       assignedUserId: session.id,
       chatStatus: "IDLE",
     },
     update: {
       name,
+      // Só sobrescreve empresa/cidade se mandou valor
+      ...(empresa !== null ? { empresa } : {}),
+      ...(cidade !== null ? { cidade } : {}),
       assignedUserId: session.id,
       deletedAt: null,
     },
-    select: { id: true, name: true, whatsappId: true },
+    select: { id: true, name: true, whatsappId: true, empresa: true, cidade: true },
   })
 
   const created = !existing

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import { useRouter } from "next/navigation"
 import Papa from "papaparse"
 
 interface Contact {
@@ -16,6 +17,7 @@ interface ImportStats {
 }
 
 export default function ImportarPage() {
+  const router = useRouter()
   const [file, setFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
   const [preview, setPreview] = useState<Contact[]>([])
@@ -26,31 +28,45 @@ export default function ImportarPage() {
   // Contato avulso (cadastro manual de um contato)
   const [avulsoName, setAvulsoName] = useState("")
   const [avulsoPhone, setAvulsoPhone] = useState("")
+  const [avulsoEmpresa, setAvulsoEmpresa] = useState("")
+  const [avulsoCidade, setAvulsoCidade] = useState("")
   const [savingAvulso, setSavingAvulso] = useState(false)
-  const [avulsoMsg, setAvulsoMsg] = useState<string | null>(null)
+  const [avulsoSaved, setAvulsoSaved] = useState<{ id: string; name: string; created: boolean } | null>(null)
   const [avulsoErr, setAvulsoErr] = useState<string | null>(null)
 
   const handleAddAvulso = async () => {
     if (!avulsoName.trim() || !avulsoPhone.trim() || savingAvulso) return
     setSavingAvulso(true)
-    setAvulsoMsg(null)
+    setAvulsoSaved(null)
     setAvulsoErr(null)
     try {
       const res = await fetch("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: avulsoName.trim(), phone: avulsoPhone.trim() }),
+        body: JSON.stringify({
+          name: avulsoName.trim(),
+          phone: avulsoPhone.trim(),
+          empresa: avulsoEmpresa.trim() || undefined,
+          cidade: avulsoCidade.trim() || undefined,
+        }),
       })
-      const data = (await res.json()) as { name?: string; created?: boolean; error?: string }
-      if (!res.ok) throw new Error(data.error ?? "Erro ao cadastrar contato")
-      setAvulsoMsg(`✅ Contato "${data.name}" ${data.created ? "cadastrado" : "atualizado"} na sua carteira.`)
+      const data = (await res.json()) as { id?: string; name?: string; created?: boolean; error?: string }
+      if (!res.ok || !data.id) throw new Error(data.error ?? "Erro ao cadastrar contato")
+      setAvulsoSaved({ id: data.id, name: data.name ?? "", created: !!data.created })
+      // Limpa os campos pra próximo cadastro (mas mantém saved card visível com botão Conversar)
       setAvulsoName("")
       setAvulsoPhone("")
+      setAvulsoEmpresa("")
+      setAvulsoCidade("")
     } catch (err) {
       setAvulsoErr(err instanceof Error ? err.message : "Erro ao cadastrar contato")
     } finally {
       setSavingAvulso(false)
     }
+  }
+
+  const openChatWith = (contactId: string) => {
+    router.push(`/admin/chats?contact=${contactId}`)
   }
 
   const normalizePhone = (phone: string): string | null => {
@@ -215,9 +231,9 @@ export default function ImportarPage() {
       {/* Cadastro de contato avulso */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">Adicionar contato avulso</h2>
-        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label htmlFor="avulso-nome" className="mb-1 block text-sm text-gray-600">Nome</label>
+            <label htmlFor="avulso-nome" className="mb-1 block text-sm text-gray-600">Nome <span className="text-red-500">*</span></label>
             <input
               id="avulso-nome"
               type="text"
@@ -228,7 +244,7 @@ export default function ImportarPage() {
             />
           </div>
           <div>
-            <label htmlFor="avulso-tel" className="mb-1 block text-sm text-gray-600">Telefone (com DDD)</label>
+            <label htmlFor="avulso-tel" className="mb-1 block text-sm text-gray-600">Telefone (com DDD) <span className="text-red-500">*</span></label>
             <input
               id="avulso-tel"
               type="tel"
@@ -238,15 +254,86 @@ export default function ImportarPage() {
               className="w-full rounded border px-3 py-2 text-sm"
             />
           </div>
+          <div>
+            <label htmlFor="avulso-empresa" className="mb-1 block text-sm text-gray-600">Empresa <span className="text-gray-400">(opcional)</span></label>
+            <input
+              id="avulso-empresa"
+              type="text"
+              value={avulsoEmpresa}
+              onChange={(e) => setAvulsoEmpresa(e.target.value)}
+              placeholder="Ex: Sicredi Univales"
+              className="w-full rounded border px-3 py-2 text-sm"
+              maxLength={200}
+            />
+          </div>
+          <div>
+            <label htmlFor="avulso-cidade" className="mb-1 block text-sm text-gray-600">Cidade <span className="text-gray-400">(opcional)</span></label>
+            <input
+              id="avulso-cidade"
+              type="text"
+              value={avulsoCidade}
+              onChange={(e) => setAvulsoCidade(e.target.value)}
+              placeholder="Ex: Toledo - PR"
+              className="w-full rounded border px-3 py-2 text-sm"
+              maxLength={100}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex gap-2">
           <button
             onClick={handleAddAvulso}
             disabled={!avulsoName.trim() || !avulsoPhone.trim() || savingAvulso}
             className="rounded bg-green-600 px-6 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:bg-gray-300"
           >
-            {savingAvulso ? "Salvando..." : "Adicionar"}
+            {savingAvulso ? "Salvando..." : "Adicionar contato"}
           </button>
+          {avulsoSaved && (
+            <button
+              type="button"
+              onClick={() => setAvulsoSaved(null)}
+              className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              Limpar
+            </button>
+          )}
         </div>
-        {avulsoMsg && <p className="mt-3 text-sm text-green-700">{avulsoMsg}</p>}
+
+        {/* Card de sucesso com botão "Iniciar conversa" */}
+        {avulsoSaved && (
+          <div className="mt-4 rounded-lg border-2 border-green-300 bg-green-50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-green-600 text-white text-lg">
+                ✓
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-green-900">
+                  Contato &quot;{avulsoSaved.name}&quot; {avulsoSaved.created ? "cadastrado" : "atualizado"} com sucesso
+                </p>
+                <p className="mt-1 text-sm text-green-700">
+                  Quer iniciar uma conversa agora?
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openChatWith(avulsoSaved.id)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#1db954]"
+                  >
+                    💬 Iniciar conversa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAvulsoSaved(null)}
+                    className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50"
+                  >
+                    Cadastrar outro
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {avulsoErr && <p className="mt-3 text-sm text-red-600">❌ {avulsoErr}</p>}
       </div>
 
