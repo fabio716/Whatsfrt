@@ -4,6 +4,7 @@ import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
+import { validatePhoneCached } from "@/lib/whatsappValidation"
 
 interface SendMessageBody {
   contactId: string
@@ -60,6 +61,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       error: "Não é possível enviar mensagens para este contato. O número não é um telefone válido (formato @lid).",
     }, { status: 400 })
+  }
+
+  // 0.5 — Valida automaticamente que o número está cadastrado no WhatsApp
+  // ANTES de criar a Message. Evita que o agente fique esperando entrega
+  // que nunca vai chegar. Cache de 7 dias evita custo extra.
+  // Grupos e contatos com histórico de inbound recente pulam — assume válidos.
+  const isGroup = contact.whatsappId.endsWith("@g.us")
+  if (!isGroup) {
+    const recentInbound = await prisma.message.count({
+      where: {
+        contactId,
+        direction: MessageDirection.INBOUND,
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }, // 30 dias
+      },
+    })
+    if (recentInbound === 0) {
+      const validated = await validatePhoneCached(contact.whatsappId)
+      if (validated === false) {
+        return NextResponse.json({
+          error: "Este número não está cadastrado no WhatsApp. A mensagem não vai chegar — confirme o número com o cliente.",
+          code: "INVALID_WHATSAPP_NUMBER",
+        }, { status: 422 })
+      }
+    }
   }
 
   // 1 — Cria PENDING com clientKey (se houver).

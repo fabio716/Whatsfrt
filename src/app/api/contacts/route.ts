@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getSessionFromRequest } from "@/lib/auth"
 import { normalizePhone } from "@/lib/contactImport"
+import { validatePhoneCached } from "@/lib/whatsappValidation"
 
 // POST /api/contacts — create a single contact for the logged-in user.
 // Available to every authenticated user (admins and agents). The contact is
@@ -61,6 +62,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     select: { id: true, name: true, whatsappId: true, empresa: true, cidade: true },
   })
 
+  // Validação automática do número no WhatsApp. Não bloqueia — só avisa.
+  // Resultado fica em cache 7 dias e é consultado em /api/messages/send.
+  const validated = await validatePhoneCached(whatsappId)
+
   const created = !existing
-  return NextResponse.json({ ...contact, created }, { status: created ? 201 : 200 })
+  return NextResponse.json({
+    ...contact,
+    created,
+    whatsappValidated: validated,
+    warning: validated === false
+      ? "⚠️ Este número NÃO está cadastrado no WhatsApp. Mensagens não vão chegar."
+      : null,
+  }, { status: created ? 201 : 200 })
 }

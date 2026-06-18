@@ -477,13 +477,10 @@ export default function ChatsClient({
   const handleSend = async () => {
     if (!inputValue.trim() || !activeId || isSending || !isOwner) return
     const text = inputValue.trim()
-    setInputValue("")
     setIsSending(true)
-    // Idempotency-Key: garante que duplo-clique / retry de rede do navegador
-    // não envie a mesma mensagem 2x. Mesma chave → mesma Message no servidor.
     const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     try {
-      await fetch("/api/messages/send", {
+      const res = await fetch("/api/messages/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -491,6 +488,21 @@ export default function ChatsClient({
         },
         body: JSON.stringify({ contactId: activeId, text }),
       })
+      if (res.ok) {
+        setInputValue("") // limpa só se enviou
+      } else if (res.status === 422) {
+        const data = await res.json().catch(() => ({})) as { error?: string; code?: string }
+        // Mantém o texto digitado pra o agente poder copiar/corrigir
+        alert(`⚠️ ${data.error ?? "Não foi possível enviar a mensagem"}`)
+      } else if (res.status >= 500 || res.status === 502) {
+        // Falha técnica — Message foi salva como FAILED no servidor, UI atualiza via SSE
+        setInputValue("")
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        alert(`Erro: ${data.error ?? res.status}`)
+      }
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
     } finally {
       setIsSending(false)
     }

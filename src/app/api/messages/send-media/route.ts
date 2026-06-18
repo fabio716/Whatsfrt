@@ -4,6 +4,7 @@ import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendMedia as sendWhatsAppMedia } from "@/lib/whatsapp"
+import { validatePhoneCached } from "@/lib/whatsappValidation"
 import {
   isMimeAllowed,
   MAX_UPLOAD_BYTES,
@@ -68,6 +69,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       error: "Não é possível enviar para este contato. O número não é um telefone válido (formato @lid).",
     }, { status: 400 })
+  }
+
+  // Valida número no WhatsApp antes de processar a mídia (evita upload em vão).
+  if (!contact.whatsappId.endsWith("@g.us")) {
+    const recentInbound = await prisma.message.count({
+      where: {
+        contactId,
+        direction: MessageDirection.INBOUND,
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    })
+    if (recentInbound === 0) {
+      const validated = await validatePhoneCached(contact.whatsappId)
+      if (validated === false) {
+        return NextResponse.json({
+          error: "Este número não está cadastrado no WhatsApp. A mídia não vai chegar — confirme o número com o cliente.",
+          code: "INVALID_WHATSAPP_NUMBER",
+        }, { status: 422 })
+      }
+    }
   }
 
   const bytes = await file.arrayBuffer()

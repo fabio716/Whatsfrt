@@ -31,7 +31,13 @@ export default function ImportarPage() {
   const [avulsoEmpresa, setAvulsoEmpresa] = useState("")
   const [avulsoCidade, setAvulsoCidade] = useState("")
   const [savingAvulso, setSavingAvulso] = useState(false)
-  const [avulsoSaved, setAvulsoSaved] = useState<{ id: string; name: string; created: boolean } | null>(null)
+  const [avulsoSaved, setAvulsoSaved] = useState<{
+    id: string
+    name: string
+    created: boolean
+    whatsappValidated: boolean | null
+    warning: string | null
+  } | null>(null)
   const [avulsoErr, setAvulsoErr] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [whatsCheck, setWhatsCheck] = useState<{ exists: boolean | null; message: string } | null>(null)
@@ -71,9 +77,22 @@ export default function ImportarPage() {
           cidade: avulsoCidade.trim() || undefined,
         }),
       })
-      const data = (await res.json()) as { id?: string; name?: string; created?: boolean; error?: string }
+      const data = (await res.json()) as {
+        id?: string
+        name?: string
+        created?: boolean
+        error?: string
+        whatsappValidated?: boolean | null
+        warning?: string | null
+      }
       if (!res.ok || !data.id) throw new Error(data.error ?? "Erro ao cadastrar contato")
-      setAvulsoSaved({ id: data.id, name: data.name ?? "", created: !!data.created })
+      setAvulsoSaved({
+        id: data.id,
+        name: data.name ?? "",
+        created: !!data.created,
+        whatsappValidated: data.whatsappValidated ?? null,
+        warning: data.warning ?? null,
+      })
       // Limpa os campos pra próximo cadastro (mas mantém saved card visível com botão Conversar)
       setAvulsoName("")
       setAvulsoPhone("")
@@ -340,32 +359,61 @@ export default function ImportarPage() {
           )}
         </div>
 
-        {/* Card de sucesso com botão "Iniciar conversa" */}
+        {/* Card de sucesso com botão "Iniciar conversa" — cores conforme validação */}
         {avulsoSaved && (
-          <div className="mt-4 rounded-lg border-2 border-green-300 bg-green-50 p-4">
+          <div className={`mt-4 rounded-lg border-2 p-4 ${
+            avulsoSaved.whatsappValidated === false
+              ? "border-red-300 bg-red-50"
+              : avulsoSaved.whatsappValidated === true
+                ? "border-green-300 bg-green-50"
+                : "border-amber-300 bg-amber-50"
+          }`}>
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-green-600 text-white text-lg">
-                ✓
+              <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-white text-lg ${
+                avulsoSaved.whatsappValidated === false ? "bg-red-600" :
+                avulsoSaved.whatsappValidated === true ? "bg-green-600" : "bg-amber-600"
+              }`}>
+                {avulsoSaved.whatsappValidated === false ? "✕" : "✓"}
               </div>
               <div className="flex-1">
-                <p className="font-semibold text-green-900">
-                  Contato &quot;{avulsoSaved.name}&quot; {avulsoSaved.created ? "cadastrado" : "atualizado"} com sucesso
+                <p className={`font-semibold ${
+                  avulsoSaved.whatsappValidated === false ? "text-red-900" :
+                  avulsoSaved.whatsappValidated === true ? "text-green-900" : "text-amber-900"
+                }`}>
+                  Contato &quot;{avulsoSaved.name}&quot; {avulsoSaved.created ? "cadastrado" : "atualizado"}
                 </p>
-                <p className="mt-1 text-sm text-green-700">
-                  Quer iniciar uma conversa agora?
-                </p>
+
+                {avulsoSaved.whatsappValidated === true && (
+                  <p className="mt-1 text-sm text-green-700">
+                    ✅ Número validado no WhatsApp. Suas mensagens vão chegar.
+                  </p>
+                )}
+                {avulsoSaved.whatsappValidated === false && (
+                  <p className="mt-1 text-sm font-medium text-red-700">
+                    {avulsoSaved.warning}<br/>
+                    Confirme o número com o cliente antes de tentar conversar.
+                  </p>
+                )}
+                {avulsoSaved.whatsappValidated === null && (
+                  <p className="mt-1 text-sm text-amber-700">
+                    ⚠️ Não foi possível validar o número agora. Pode tentar a conversa mesmo assim.
+                  </p>
+                )}
+
                 <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openChatWith(avulsoSaved.id)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#1db954]"
-                  >
-                    💬 Iniciar conversa
-                  </button>
+                  {avulsoSaved.whatsappValidated !== false && (
+                    <button
+                      type="button"
+                      onClick={() => openChatWith(avulsoSaved.id)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#1db954]"
+                    >
+                      💬 Iniciar conversa
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setAvulsoSaved(null)}
-                    className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50"
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
                     Cadastrar outro
                   </button>
