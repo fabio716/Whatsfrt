@@ -511,35 +511,43 @@ const SECTIONS: Section[] = [
         title: "Passo 1 — Preparar o arquivo CSV",
         content: (
           <div className="space-y-3 text-zinc-600">
-            <p>Seu CSV precisa ter pelo menos <strong>duas colunas</strong>:</p>
+            <p>Seu CSV precisa ter pelo menos <strong>duas colunas obrigatórias</strong> e aceita até <strong>duas opcionais</strong>:</p>
             <div className="rounded-lg border border-zinc-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-zinc-700">Coluna</th>
-                    <th className="px-3 py-2 text-left font-medium text-zinc-700">Nomes aceitos</th>
+                    <th className="px-3 py-2 text-left font-medium text-zinc-700">Obrigatória?</th>
+                    <th className="px-3 py-2 text-left font-medium text-zinc-700">Nomes aceitos no cabeçalho</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  <tr><td className="px-3 py-2 font-medium">Nome</td><td className="px-3 py-2 text-zinc-500">nome, name, contato, cliente</td></tr>
-                  <tr><td className="px-3 py-2 font-medium">Telefone</td><td className="px-3 py-2 text-zinc-500">telefone, phone, celular, whatsapp, tel</td></tr>
+                  <tr><td className="px-3 py-2 font-medium">Nome</td><td className="px-3 py-2 text-green-600">sim</td><td className="px-3 py-2 text-zinc-500">nome, name, contato, cliente</td></tr>
+                  <tr><td className="px-3 py-2 font-medium">Telefone</td><td className="px-3 py-2 text-green-600">sim</td><td className="px-3 py-2 text-zinc-500">telefone, phone, celular, whatsapp, tel</td></tr>
+                  <tr><td className="px-3 py-2 font-medium">Empresa</td><td className="px-3 py-2 text-zinc-400">opcional</td><td className="px-3 py-2 text-zinc-500">empresa, company, organizacao</td></tr>
+                  <tr><td className="px-3 py-2 font-medium">Cidade</td><td className="px-3 py-2 text-zinc-400">opcional</td><td className="px-3 py-2 text-zinc-500">cidade, city, municipio</td></tr>
                 </tbody>
               </table>
             </div>
-            <p className="text-sm">Exemplo:</p>
+            <p className="text-sm">Exemplo com empresa e cidade (ideal pra buscar depois):</p>
             <div className="rounded-lg border border-zinc-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50">
-                  <tr><th className="px-3 py-2 text-left">nome</th><th className="px-3 py-2 text-left">telefone</th></tr>
+                  <tr>
+                    <th className="px-3 py-2 text-left">nome</th>
+                    <th className="px-3 py-2 text-left">telefone</th>
+                    <th className="px-3 py-2 text-left">empresa</th>
+                    <th className="px-3 py-2 text-left">cidade</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  <tr><td className="px-3 py-2">João Silva</td><td className="px-3 py-2">11 99999-8888</td></tr>
-                  <tr><td className="px-3 py-2">Maria Souza</td><td className="px-3 py-2">47 98765-4321</td></tr>
+                  <tr><td className="px-3 py-2">João Silva</td><td className="px-3 py-2">11 99999-8888</td><td className="px-3 py-2">Sicredi Toledo</td><td className="px-3 py-2">Toledo - PR</td></tr>
+                  <tr><td className="px-3 py-2">Maria Souza</td><td className="px-3 py-2">47 98765-4321</td><td className="px-3 py-2">Cresol</td><td className="px-3 py-2">Cascavel - PR</td></tr>
                 </tbody>
               </table>
             </div>
             <div className="rounded-lg bg-green-50 p-3 text-green-700 text-sm">
-              ✅ Aceita números com ou sem DDI 55, com ou sem traços/parênteses.
+              ✅ Aceita números com ou sem DDI 55, com ou sem traços/parênteses. Empresa e Cidade preenchidas ajudam a buscar o cliente depois em <strong>Clientes Cadastrados</strong>.
             </div>
           </div>
         ),
@@ -562,13 +570,181 @@ const SECTIONS: Section[] = [
         content: (
           <div className="space-y-3 text-zinc-600">
             <ol className="space-y-2 list-decimal list-inside">
-              <li>Menu → <strong>Importar Contatos</strong></li>
-              <li>Clica em <strong>Escolher arquivo</strong> e seleciona o CSV</li>
-              <li>(Admin) Pode atribuir os contatos a um agente específico</li>
-              <li>Clica em <strong>Importar</strong></li>
+              <li>Menu → <strong>Adicionar Contato</strong></li>
+              <li>Na seção <strong>"Importar vários por CSV"</strong>, clica em <strong>Escolher arquivo</strong></li>
+              <li>Clica em <strong>🔍 Analisar e Limpar</strong> — mostra prévia + estatísticas</li>
+              <li>Confere o número de duplicados / inválidos / prontos</li>
+              <li>Clica em <strong>✅ Importar X Contatos</strong></li>
             </ol>
             <div className="rounded-lg bg-green-50 p-3 text-green-700 text-sm">
-              ✅ No fim mostra quantos foram <strong>criados</strong>, <strong>atualizados</strong> (já existiam, atualizou) e <strong>ignorados</strong> (formato inválido).
+              ✅ Mostra quantos foram <strong>criados</strong>, <strong>atualizados</strong> (já existiam) e <strong>ignorados</strong> (telefone inválido).
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Cadastrar UM contato avulso (sem CSV)",
+        content: (
+          <div className="space-y-3 text-zinc-600">
+            <p>Pra cadastrar apenas um cliente novo na hora:</p>
+            <ol className="space-y-2 list-decimal list-inside">
+              <li>Menu → <strong>Adicionar Contato</strong></li>
+              <li>Na seção <strong>"Adicionar contato avulso"</strong>, preenche:
+                <ul className="ml-6 mt-1 list-disc list-inside text-sm">
+                  <li><strong>Nome</strong> (obrigatório)</li>
+                  <li><strong>Telefone</strong> com DDD (obrigatório)</li>
+                  <li><strong>Empresa</strong> (opcional, mas ajuda a buscar depois)</li>
+                  <li><strong>Cidade</strong> (opcional)</li>
+                </ul>
+              </li>
+              <li>Clica em <strong>Adicionar contato</strong></li>
+              <li>Aparece um <strong>card verde de confirmação</strong> com 2 botões:
+                <ul className="ml-6 mt-1 list-disc list-inside text-sm">
+                  <li><strong>💬 Iniciar conversa</strong> — abre a conversa daquele cliente direto na tela de Chats</li>
+                  <li><strong>Cadastrar outro</strong> — limpa o card pra continuar cadastrando</li>
+                </ul>
+              </li>
+            </ol>
+            <div className="rounded-lg bg-blue-50 p-3 text-blue-700 text-sm">
+              💡 Use isso quando um cliente entrar em contato por outro canal (ligação, e-mail) e você quiser começar uma conversa no WhatsApp.
+            </div>
+            <div className="rounded-lg bg-amber-50 p-3 text-amber-700 text-sm">
+              ⚠️ Se o número já estiver cadastrado pra OUTRO agente, o sistema avisa e não rouba o contato — você precisa pedir transferência.
+            </div>
+          </div>
+        ),
+      },
+    ],
+  },
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: "clientes",
+    title: "Clientes Cadastrados",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+    ),
+    steps: [
+      {
+        title: "Pra que serve essa tela",
+        content: (
+          <div className="space-y-2 text-zinc-600">
+            <p>É a sua <strong>agenda de clientes</strong> — todos os contatos cadastrados, com busca rápida por nome, empresa, cidade ou telefone.</p>
+            <ul className="space-y-1 list-disc list-inside text-sm pt-2">
+              <li><strong>Agente</strong>: vê apenas a sua carteira (clientes atribuídos a você)</li>
+              <li><strong>Admin</strong>: vê todos os contatos do sistema</li>
+            </ul>
+            <div className="rounded-lg bg-blue-50 p-3 text-blue-700 text-sm">
+              💡 Diferente da tela <strong>Chats</strong>, que mostra só conversas <strong>em andamento</strong>. Aqui você acha qualquer cliente cadastrado, mesmo que nunca tenha conversado.
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Buscar por nome",
+        content: (
+          <div className="space-y-3 text-zinc-600">
+            <ol className="space-y-2 list-decimal list-inside">
+              <li>Menu → <strong>Clientes Cadastrados</strong></li>
+              <li>Selecione a aba <strong>Nome</strong> (vem selecionada por padrão)</li>
+              <li>Digite ao menos <strong>3 letras</strong> do nome no campo de busca</li>
+              <li>Lista filtra automaticamente em até 250 ms</li>
+            </ol>
+            <div className="rounded-lg bg-blue-50 p-3 text-blue-700 text-sm">
+              💡 Busca <strong>em qualquer parte do nome</strong>, não só no começo. Ex: digitar "Silva" encontra "João Silva", "Silva Júnior" e "Maria da Silva".
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Buscar por empresa ou cidade",
+        content: (
+          <div className="space-y-3 text-zinc-600">
+            <ol className="space-y-2 list-decimal list-inside">
+              <li>Menu → <strong>Clientes Cadastrados</strong></li>
+              <li>Clica na aba <strong>Empresa</strong> ou <strong>Cidade</strong></li>
+              <li>Digita o termo no campo de busca</li>
+              <li>Lista filtra somente os contatos que têm aquele valor cadastrado</li>
+            </ol>
+            <div className="rounded-lg bg-amber-50 p-3 text-amber-700 text-sm">
+              ⚠️ Só funciona se você preencheu esses dados no cadastro. Se não tinha, edite o contato (botão <strong>Editar</strong>) e preencha empresa/cidade.
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Buscar por telefone",
+        content: (
+          <div className="space-y-3 text-zinc-600">
+            <ol className="space-y-2 list-decimal list-inside">
+              <li>Menu → <strong>Clientes Cadastrados</strong></li>
+              <li>Clica na aba <strong>Telefone</strong></li>
+              <li>Digita os <strong>dígitos do número</strong> (sem traços, parênteses ou DDI)</li>
+              <li>Encontra mesmo que vc digite só parte do número (ex: digite "9999" pra achar todos que terminam em 9999)</li>
+            </ol>
+          </div>
+        ),
+      },
+      {
+        title: "Abrir conversa com um cliente",
+        content: (
+          <div className="space-y-3 text-zinc-600">
+            <ol className="space-y-2 list-decimal list-inside">
+              <li>Encontra o cliente na lista após filtrar</li>
+              <li>Clica no botão <strong className="bg-emerald-500 text-white px-2 py-0.5 rounded text-xs">💬 Conversar</strong> ao lado dele</li>
+              <li>Você é levado direto pra <strong>Chats</strong> com a conversa daquele cliente aberta</li>
+              <li>Se o cliente está em URA / aguardando: aparece o aviso amarelo + botão <strong>"Assumir / Reassumir"</strong>. Clica e começa a digitar.</li>
+            </ol>
+            <div className="rounded-lg bg-green-50 p-3 text-green-700 text-sm">
+              ✅ Funciona mesmo pra clientes que <strong>nunca conversaram com você</strong>. Você inicia a primeira mensagem proativamente.
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Atualizar empresa e cidade",
+        content: (
+          <div className="space-y-3 text-zinc-600">
+            <p>Se um cliente foi importado sem empresa/cidade, ou se mudou:</p>
+            <ol className="space-y-2 list-decimal list-inside">
+              <li>Encontra ele na lista</li>
+              <li>Clica em <strong>Editar</strong> ao lado dele</li>
+              <li>Janelinha abre com 2 campos: <strong>Empresa</strong> e <strong>Cidade</strong></li>
+              <li>Preenche e clica em <strong>Salvar</strong></li>
+            </ol>
+            <div className="rounded-lg bg-blue-50 p-3 text-blue-700 text-sm">
+              💡 Depois de preencher, as buscas por empresa/cidade já encontram esse contato.
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Status do cliente (etiquetas coloridas)",
+        content: (
+          <div className="space-y-3 text-zinc-600">
+            <p>Cada linha mostra o status atual do contato:</p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 rounded-lg border border-zinc-100 p-2.5">
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-bold text-zinc-500">LIVRE</span>
+                <span className="text-sm">Sem atendimento em andamento — você pode iniciar</span>
+              </div>
+              <div className="flex items-center gap-3 rounded-lg border border-zinc-100 p-2.5">
+                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">URA</span>
+                <span className="text-sm">Cliente está respondendo o menu automático</span>
+              </div>
+              <div className="flex items-center gap-3 rounded-lg border border-zinc-100 p-2.5">
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">AGUARDANDO</span>
+                <span className="text-sm">Cliente escolheu opção da URA e está na fila esperando agente</span>
+              </div>
+              <div className="flex items-center gap-3 rounded-lg border border-zinc-100 p-2.5">
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">EM ATENDIMENTO</span>
+                <span className="text-sm">Está sendo atendido por algum agente neste momento</span>
+              </div>
+              <div className="flex items-center gap-3 rounded-lg border border-zinc-100 p-2.5">
+                <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-bold text-purple-700">AVALIANDO</span>
+                <span className="text-sm">Acabou de receber o pedido de nota e tá pra responder 1-5</span>
+              </div>
             </div>
           </div>
         ),
