@@ -10,7 +10,7 @@
 import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
-import { sendEvolutionText } from "@/lib/evolution"
+import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { markWaitingForAgent } from "@/lib/serviceTracking"
@@ -25,13 +25,16 @@ interface ContactSnapshot {
 }
 
 async function sendUraMessage(contact: ContactSnapshot, text: string): Promise<void> {
-  const ok = await sendEvolutionText(contact.whatsappId, text)
+  // Usa dispatcher (Z-API ou Evolution conforme env) e captura messageId
+  // para que ticks ✓/✓✓/✓✓ azul funcionem nas mensagens da URA também.
+  const result = await sendWhatsAppText(contact.whatsappId, text)
   const saved = await prisma.message.create({
     data: {
       body: text,
       direction: MessageDirection.OUTBOUND,
-      status: ok ? MessageStatus.SENT : MessageStatus.FAILED,
+      status: result.ok ? MessageStatus.SENT : MessageStatus.FAILED,
       contactId: contact.id,
+      ...(result.messageId ? { whatsappKeyId: result.messageId } : {}),
     },
   })
   broadcast({

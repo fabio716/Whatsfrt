@@ -130,12 +130,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const finalStatus = result.ok ? MessageStatus.SENT : MessageStatus.FAILED
 
   // 3 — Persiste estado final + telemetria.
+  // CRÍTICO: salvar o messageId retornado pelo provedor (Z-API / Evolution) em
+  // whatsappKeyId. É por esse ID que os webhooks de status DELIVERED/READ
+  // identificam a mensagem original. Sem isso, os ticks ✓✓ azuis nunca
+  // aparecem porque o handleMessageStatus não acha o registro.
   const updated = await prisma.message.update({
     where: { id: message.id },
     data: {
       status: finalStatus,
       attempts: result.attempts,
       errorMsg: result.ok ? null : result.errorMsg,
+      ...(result.messageId ? { whatsappKeyId: result.messageId } : {}),
     },
   })
 

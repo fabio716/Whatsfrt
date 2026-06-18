@@ -138,9 +138,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const attempts = sendResult.attempts
   const errorMsg = sendResult.ok ? null : sendResult.errorMsg
 
+  // Salva o messageId do provedor — necessário pra webhook MessageStatus
+  // achar a mensagem e atualizar os ticks ✓✓ azul (entregue/lido).
   await prisma.message.update({
     where: { id: msg.id },
-    data: { status: finalStatus, attempts, errorMsg },
+    data: {
+      status: finalStatus,
+      attempts,
+      errorMsg,
+      ...(sendResult.messageId ? { whatsappKeyId: sendResult.messageId } : {}),
+    },
   })
 
   broadcast({
