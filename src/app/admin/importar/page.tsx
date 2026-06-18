@@ -33,6 +33,27 @@ export default function ImportarPage() {
   const [savingAvulso, setSavingAvulso] = useState(false)
   const [avulsoSaved, setAvulsoSaved] = useState<{ id: string; name: string; created: boolean } | null>(null)
   const [avulsoErr, setAvulsoErr] = useState<string | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [whatsCheck, setWhatsCheck] = useState<{ exists: boolean | null; message: string } | null>(null)
+
+  const handleCheckWhatsApp = async () => {
+    if (!avulsoPhone.trim() || checking) return
+    setChecking(true)
+    setWhatsCheck(null)
+    try {
+      const res = await fetch("/api/contacts/check-whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: avulsoPhone.trim() }),
+      })
+      const data = (await res.json()) as { exists: boolean | null; message: string }
+      setWhatsCheck(data)
+    } catch (err) {
+      setWhatsCheck({ exists: null, message: err instanceof Error ? err.message : "Erro ao verificar" })
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const handleAddAvulso = async () => {
     if (!avulsoName.trim() || !avulsoPhone.trim() || savingAvulso) return
@@ -245,14 +266,34 @@ export default function ImportarPage() {
           </div>
           <div>
             <label htmlFor="avulso-tel" className="mb-1 block text-sm text-gray-600">Telefone (com DDD) <span className="text-red-500">*</span></label>
-            <input
-              id="avulso-tel"
-              type="tel"
-              value={avulsoPhone}
-              onChange={(e) => setAvulsoPhone(e.target.value)}
-              placeholder="Ex: 11 99999-9999"
-              className="w-full rounded border px-3 py-2 text-sm"
-            />
+            <div className="flex gap-2">
+              <input
+                id="avulso-tel"
+                type="tel"
+                value={avulsoPhone}
+                onChange={(e) => { setAvulsoPhone(e.target.value); setWhatsCheck(null) }}
+                placeholder="Ex: 11 99999-9999"
+                className="flex-1 rounded border px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleCheckWhatsApp}
+                disabled={!avulsoPhone.trim() || checking}
+                className="rounded border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                title="Verifica se o número está cadastrado no WhatsApp"
+              >
+                {checking ? "..." : "🔍 Verificar"}
+              </button>
+            </div>
+            {whatsCheck && (
+              <p className={`mt-1 text-xs ${
+                whatsCheck.exists === true ? "text-green-700" :
+                whatsCheck.exists === false ? "text-red-700" :
+                "text-amber-700"
+              }`}>
+                {whatsCheck.exists === true ? "✅" : whatsCheck.exists === false ? "❌" : "⚠️"} {whatsCheck.message}
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="avulso-empresa" className="mb-1 block text-sm text-gray-600">Empresa <span className="text-gray-400">(opcional)</span></label>

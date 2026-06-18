@@ -90,6 +90,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // 2 — Dispara para o provider ativo (Evolution OU Z-API) com retry+backoff.
   const result = await sendWhatsAppText(contact.whatsappId, text.trim())
+
+  // Mensagem de erro mais clara quando Z-API recusa por número inválido
+  // (ajuda agentes a entenderem por que "não chegou").
+  if (!result.ok && result.errorMsg) {
+    const err = result.errorMsg.toLowerCase()
+    if (err.includes("not exist") || err.includes("not registered") || err.includes("invalid number")) {
+      result.errorMsg = "Número não está cadastrado no WhatsApp"
+    } else if (err.includes("blocked") || err.includes("banned")) {
+      result.errorMsg = "Número bloqueou ou nos bloqueou no WhatsApp"
+    }
+  }
+
   const finalStatus = result.ok ? MessageStatus.SENT : MessageStatus.FAILED
 
   // 3 — Persiste estado final + telemetria.

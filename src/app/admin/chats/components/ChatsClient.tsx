@@ -199,11 +199,22 @@ export default function ChatsClient({
   const activeContact = contacts.find((c) => c.id === activeId) ?? null
   const isOwner = activeContact?.assignedUserId === currentUserId
 
-  const filteredContacts = agentFilter === "all"
-    ? contacts
-    : agentFilter === "unassigned"
-      ? contacts.filter((c) => !c.assignedUserId)
-      : contacts.filter((c) => c.assignedUserId === agentFilter)
+  const filteredContacts = (
+    agentFilter === "all"
+      ? contacts
+      : agentFilter === "unassigned"
+        ? contacts.filter((c) => !c.assignedUserId)
+        : contacts.filter((c) => c.assignedUserId === agentFilter)
+  ).filter((c) => {
+    // Sempre mostra o contato explicitamente pedido via URL ?contact=
+    if (c.id === requestedContactId) return true
+    // Sempre mostra o contato que está aberto agora
+    if (c.id === activeId) return true
+    // Esconde contatos IDLE (Inativo) — eles ficavam poluindo a lista após
+    // encerramento automático ou avaliação completa, e o agente achava que
+    // tinha "duplicatas".
+    return c.chatStatus !== "IDLE"
+  })
 
   // Scroll
   useEffect(() => {
