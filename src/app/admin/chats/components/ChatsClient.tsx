@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
+import { useSearchParams } from "next/navigation"
 import type { SSEPayload } from "@/lib/sse-emitter"
 import type { ContactData, MessageData } from "@/app/admin/dashboard/types"
 
@@ -171,8 +172,11 @@ export default function ChatsClient({
   currentUserId: string
   isAgent?: boolean
 }>) {
+  const searchParams = useSearchParams()
+  const requestedContactId = searchParams.get("contact")
+
   const [contacts, setContacts] = useState<ContactData[]>(initial)
-  const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null)
+  const [activeId, setActiveId] = useState<string | null>(requestedContactId ?? initial[0]?.id ?? null)
   const [agentFilter, setAgentFilter] = useState<string>("all")
   const [taking, setTaking] = useState(false)
   const [ending, setEnding] = useState(false)

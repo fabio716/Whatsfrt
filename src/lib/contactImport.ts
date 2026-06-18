@@ -68,6 +68,10 @@ export async function importContactsFromCsv(
   const middleNameCol = findCol(headers, ["middle name"])
   const lastNameCol = findCol(headers, ["last name", "sobrenome"])
 
+  // Campos comerciais opcionais — não bloqueiam import se ausentes
+  const empresaCol = findCol(headers, ["empresa", "company", "organizacao", "organization", "company name"])
+  const cidadeCol = findCol(headers, ["cidade", "city", "municipio", "localidade"])
+
   if (!phoneCol) {
     return {
       error: `Coluna de telefone não encontrada. Esperado: telefone, phone, celular, etc. Encontrado: ${headers.join(", ")}`,
@@ -75,7 +79,7 @@ export async function importContactsFromCsv(
     }
   }
 
-  type Row = { whatsappId: string; name: string }
+  type Row = { whatsappId: string; name: string; empresa: string | null; cidade: string | null }
   const rows: Row[] = []
   const skipped: string[] = []
   const seen = new Set<string>()
@@ -99,7 +103,14 @@ export async function importContactsFromCsv(
     if (!jid) { skipped.push(rawPhone); continue }
     if (seen.has(jid)) continue
     seen.add(jid)
-    rows.push({ whatsappId: jid, name: rawName })
+
+    const empresa = empresaCol ? (record[empresaCol]?.trim() ?? null) : null
+    const cidade = cidadeCol ? (record[cidadeCol]?.trim() ?? null) : null
+    rows.push({
+      whatsappId: jid, name: rawName,
+      empresa: empresa && empresa.length > 0 ? empresa.slice(0, 200) : null,
+      cidade: cidade && cidade.length > 0 ? cidade.slice(0, 100) : null,
+    })
   }
 
   if (!rows.length) {
@@ -119,15 +130,19 @@ export async function importContactsFromCsv(
           create: {
             whatsappId: r.whatsappId,
             name: r.name,
+            empresa: r.empresa,
+            cidade: r.cidade,
             assignedUserId: opts.assignedUserId,
             ...(opts.cooperativeId ? { cooperativeId: opts.cooperativeId } : {}),
             chatStatus: "IDLE",
           },
           update: {
             name: r.name,
+            // Só sobrescreve empresa/cidade do CSV se o CSV trouxer valor
+            ...(r.empresa ? { empresa: r.empresa } : {}),
+            ...(r.cidade ? { cidade: r.cidade } : {}),
             assignedUserId: opts.assignedUserId,
             ...(opts.cooperativeId ? { cooperativeId: opts.cooperativeId } : {}),
-            chatStatus: "IDLE",
           },
         }),
       ),

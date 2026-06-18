@@ -9,27 +9,48 @@ export const dynamic = "force-dynamic"
 
 export const metadata = { title: "Chats · WhatsFRT" }
 
-export default async function ChatsPage() {
+export default async function ChatsPage(
+  { searchParams }: Readonly<{ searchParams: Promise<{ contact?: string }> }>
+) {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value
   const session = token ? await verifySessionToken(token) : null
 
-  // Sem sessão = sem acesso. Não há mais fallback que tratava anônimo como ADMIN.
   if (!session) redirect("/login")
 
   const isAgent = session.role === "AGENT"
+  const { contact: requestedContactId } = await searchParams
 
-  const [rawContacts, allAgents] = await Promise.all([
-    prisma.contact.findMany({
-      where: {
+  // 1 — IN_SERVICE: chats ativos (lista padrão)
+  const inServiceWhere = {
+    deletedAt: null,
+    chatStatus: "IN_SERVICE" as const,
+    ...(isAgent ? { assignedUserId: session.id } : {}),
+  }
+
+  // 2 — Se a URL pede um contato específico (?contact=…), inclui ele
+  //     mesmo que não esteja em IN_SERVICE. Útil pra abrir conversa
+  //     a partir de /admin/clientes.
+  const requestedWhere = requestedContactId
+    ? {
+        id: requestedContactId,
         deletedAt: null,
-        chatStatus: "IN_SERVICE",
-        // Agents only ever see their own assigned conversations.
         ...(isAgent ? { assignedUserId: session.id } : {}),
-      },
+      }
+    : null
+
+  const [inServiceContacts, requestedContact, allAgents] = await Promise.all([
+    prisma.contact.findMany({
+      where: inServiceWhere,
       include: { messages: { orderBy: { createdAt: "asc" } } },
       orderBy: { updatedAt: "desc" },
     }),
+    requestedWhere
+      ? prisma.contact.findUnique({
+          where: { id: requestedContactId! },
+          include: { messages: { orderBy: { createdAt: "asc" } } },
+        })
+      : Promise.resolve(null),
     prisma.user.findMany({
       where: { isActive: true },
       select: { id: true, name: true },
@@ -37,7 +58,18 @@ export default async function ChatsPage() {
     }),
   ])
 
-  // Agents must never receive other users' names (filter is admin-only).
+  // Junta: se o contato pedido não está na lista IN_SERVICE, adiciona ele.
+  // Garante que /admin/chats?contact=X sempre abre X, mesmo IDLE.
+  const rawContacts = [...inServiceContacts]
+  if (
+    requestedContact &&
+    !rawContacts.some((c) => c.id === requestedContact.id) &&
+    // Reforço de segurança: AGENT só pode ver contato próprio
+    (!isAgent || requestedContact.assignedUserId === session.id)
+  ) {
+    rawContacts.unshift(requestedContact)
+  }
+
   const agents = isAgent ? [] : allAgents
 
   const contacts: ContactData[] = rawContacts.map((c) => ({
