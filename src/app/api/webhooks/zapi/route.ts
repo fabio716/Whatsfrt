@@ -239,21 +239,29 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
 
 // ─── Tipo: status (entregue/lido) ────────────────────────────────────────────
 
-async function handleMessageStatus(p: ZapiStatusPayload): Promise<void> {
+interface StatusUpdateResult {
+  matched: boolean
+  skipped?: string
+  oldStatus?: string
+  newStatus?: string
+}
+
+async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateResult> {
   const isRead = p.status === "READ" || p.status === "VIEWED" || p.status === "PLAYED"
   const isDelivered = p.status === "DELIVERED" || p.status === "RECEIVED"
-  if (!isRead && !isDelivered) return
+  if (!isRead && !isDelivered) return { matched: false, skipped: `status=${p.status}` }
 
   const message = await prisma.message.findFirst({
     where: { whatsappKeyId: p.messageId },
     select: { id: true, contactId: true, status: true },
   })
-  if (!message) return
+  if (!message) return { matched: false, skipped: `messageId=${p.messageId} not found in DB` }
 
-  // Não regride status (READ > DELIVERED > SENT)
   const ranks: Record<string, number> = { PENDING: 0, SENT: 1, FAILED: 1, DELIVERED: 2, READ: 3 }
   const newStatus = isRead ? MessageStatus.READ : MessageStatus.DELIVERED
-  if ((ranks[newStatus] ?? 0) <= (ranks[message.status] ?? 0)) return
+  if ((ranks[newStatus] ?? 0) <= (ranks[message.status] ?? 0)) {
+    return { matched: true, skipped: `already at ${message.status}`, oldStatus: message.status, newStatus }
+  }
 
   await prisma.message.update({
     where: { id: message.id },
@@ -265,13 +273,14 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<void> {
     data: { id: message.id, status: newStatus, contactId: message.contactId },
   })
 
-  // CampaignLog (mesmo schema do Evolution path)
   await prisma.campaignLog.updateMany({
     where: { messageKeyId: p.messageId },
     data: isRead
       ? { status: "READ", readAt: new Date(), deliveredAt: new Date() }
       : { status: "DELIVERED", deliveredAt: new Date() },
   })
+
+  return { matched: true, oldStatus: message.status, newStatus }
 }
 
 // ─── Tipo: conexão (banner vermelho ↔ verde) ─────────────────────────────────
@@ -303,15 +312,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
+  // Log estratégico — todo webhook que chega aparece aqui pra debug.
+  console.log(`[zapi-webhook] type=${payload.type}`,
+    payload.type === "MessageStatusCallback"
+      ? `messageId=${(payload as ZapiStatusPayload).messageId} status=${(payload as ZapiStatusPayload).status}`
+      : payload.type === "ReceivedCallback"
+        ? `from=${(payload as ZapiTextPayload).phone}`
+        : "")
+
   try {
     switch (payload.type) {
       case "ReceivedCallback":
         await handleReceived(payload)
         return NextResponse.json({ received: true, processed: true, event: payload.type })
 
-      case "MessageStatusCallback":
-        await handleMessageStatus(payload)
-        return NextResponse.json({ received: true, processed: true, event: payload.type })
+      case "MessageStatusCallback": {
+        const result = await handleMessageStatus(payload)
+        console.log(`[zapi-webhook] status update result:`, result)
+        return NextResponse.json({ received: true, processed: true, event: payload.type, ...result })
+      }
 
       case "ConnectedCallback":
       case "DisconnectedCallback":
