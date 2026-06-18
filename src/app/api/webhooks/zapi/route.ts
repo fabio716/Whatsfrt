@@ -49,9 +49,20 @@ interface ZapiTextPayload {
 
 interface ZapiStatusPayload {
   type: "MessageStatusCallback"
-  messageId: string
+  // Z-API usa nomes diferentes entre versões. Aceitamos qualquer um:
+  messageId?: string
+  id?: string
+  ids?: string[]
   phone: string
   status: "SENT" | "RECEIVED" | "DELIVERED" | "READ" | "VIEWED" | "PLAYED"
+}
+
+// Extrai o messageId aceitando os 3 formatos possíveis do Z-API
+function extractStatusMessageId(p: ZapiStatusPayload): string | null {
+  if (p.messageId) return p.messageId
+  if (p.id) return p.id
+  if (Array.isArray(p.ids) && p.ids.length > 0) return p.ids[0]
+  return null
 }
 
 interface ZapiConnectionPayload {
@@ -251,11 +262,14 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
   const isDelivered = p.status === "DELIVERED" || p.status === "RECEIVED"
   if (!isRead && !isDelivered) return { matched: false, skipped: `status=${p.status}` }
 
+  const messageId = extractStatusMessageId(p)
+  if (!messageId) return { matched: false, skipped: `no messageId in payload (keys: ${Object.keys(p).join(",")})` }
+
   const message = await prisma.message.findFirst({
-    where: { whatsappKeyId: p.messageId },
+    where: { whatsappKeyId: messageId },
     select: { id: true, contactId: true, status: true },
   })
-  if (!message) return { matched: false, skipped: `messageId=${p.messageId} not found in DB` }
+  if (!message) return { matched: false, skipped: `messageId=${messageId} not found in DB` }
 
   const ranks: Record<string, number> = { PENDING: 0, SENT: 1, FAILED: 1, DELIVERED: 2, READ: 3 }
   const newStatus = isRead ? MessageStatus.READ : MessageStatus.DELIVERED
@@ -274,7 +288,7 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
   })
 
   await prisma.campaignLog.updateMany({
-    where: { messageKeyId: p.messageId },
+    where: { messageKeyId: messageId },
     data: isRead
       ? { status: "READ", readAt: new Date(), deliveredAt: new Date() }
       : { status: "DELIVERED", deliveredAt: new Date() },
@@ -313,12 +327,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Log estratégico — todo webhook que chega aparece aqui pra debug.
-  console.log(`[zapi-webhook] type=${payload.type}`,
-    payload.type === "MessageStatusCallback"
-      ? `messageId=${(payload as ZapiStatusPayload).messageId} status=${(payload as ZapiStatusPayload).status}`
-      : payload.type === "ReceivedCallback"
-        ? `from=${(payload as ZapiTextPayload).phone}`
-        : "")
+  if (payload.type === "MessageStatusCallback") {
+    const p = payload as ZapiStatusPayload
+    console.log(`[zapi-webhook] type=MessageStatusCallback status=${p.status} messageId=${extractStatusMessageId(p)} (raw keys: ${Object.keys(p).join(",")})`)
+  } else if (payload.type === "ReceivedCallback") {
+    console.log(`[zapi-webhook] type=ReceivedCallback from=${(payload as ZapiTextPayload).phone}`)
+  } else {
+    console.log(`[zapi-webhook] type=${payload.type}`)
+  }
 
   try {
     switch (payload.type) {
