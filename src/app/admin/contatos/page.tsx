@@ -139,7 +139,7 @@ export default function ContatosPage() {
   const inService = contacts.filter((c) => c.chatStatus === "IN_SERVICE").length
 
   return (
-    <main className="min-h-screen bg-[#f4f5f7] font-sans">
+    <main className="h-full overflow-y-auto bg-zinc-50 font-sans">
 
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white px-8 py-5">

@@ -79,13 +79,22 @@ function HourlyVolume({ volume }: Readonly<{ volume: number[] }>) {
   )
 }
 
-// ─── Agentes online ─────────────────────────────────────────────────────────
+// ─── Equipe — quem está atendendo ──────────────────────────────────────────
+// Importante: nao mostramos "online" porque nao temos tracking real de
+// presenca (sessao SSE por agente). Mostramos estado factivel: ATENDENDO
+// (tem chat IN_SERVICE) ou LIVRE (cadastrado e ativo, sem chat).
 function AgentList({ agents }: Readonly<{ agents: HomeStats["agents"] }>) {
+  const attending = agents.filter((a) => a.status === "ATTENDING")
   return (
     <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Equipe — {agents.length} ativos</p>
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Equipe</p>
+        <p className="text-[11px] font-medium text-zinc-500">
+          {attending.length} atendendo · {agents.length - attending.length} livre{agents.length - attending.length === 1 ? "" : "s"}
+        </p>
+      </div>
       {agents.length === 0 && (
-        <p className="mt-4 text-[12px] text-zinc-400">Nenhum agente ativo no momento.</p>
+        <p className="mt-4 text-[12px] text-zinc-400">Nenhum agente cadastrado.</p>
       )}
       <ul className="mt-3 space-y-2">
         {agents.map((a) => (
@@ -101,8 +110,8 @@ function AgentList({ agents }: Readonly<{ agents: HomeStats["agents"] }>) {
                 Atendendo · {a.attendingCount}
               </span>
             ) : (
-              <span className="flex-shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                Online
+              <span className="flex-shrink-0 rounded-full bg-zinc-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                Livre
               </span>
             )}
           </li>

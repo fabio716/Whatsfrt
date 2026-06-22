@@ -624,12 +624,22 @@ export default function ChatsClient({
       <aside className="flex w-72 flex-shrink-0 flex-col overflow-hidden border-r border-zinc-100 bg-white">
         <div className="border-b border-zinc-100 px-4 py-3">
           <h1 className="text-[14px] font-semibold text-zinc-900">{isAgent ? "Meus Chats" : "Chats Globais"}</h1>
-          <p className="text-[11px] text-zinc-400">{contacts.length} contatos</p>
+          <p className="text-[11px] text-zinc-400">
+            {/* Mostra contagem filtrada vs total quando ha filtro ativo,
+                pra evitar a percepcao de "conversas sumiram" quando na
+                verdade so foi aplicado filtro de agente. */}
+            {filteredContacts.length === contacts.length
+              ? `${contacts.length} contato${contacts.length === 1 ? "" : "s"}`
+              : `${filteredContacts.length} de ${contacts.length} contatos`}
+          </p>
         </div>
 
         {/* Agent filter (admins only) */}
         {!isAgent && (
           <div className="border-b border-zinc-100 px-4 py-2.5">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+              Filtrar por agente
+            </label>
             <select
               value={agentFilter}
               onChange={(e) => setAgentFilter(e.target.value)}
