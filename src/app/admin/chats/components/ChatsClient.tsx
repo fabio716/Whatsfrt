@@ -191,6 +191,8 @@ export default function ChatsClient({
   const [recordedBlob, setRecordedBlob] = useState<{ blob: Blob; url: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+  const headerMenuRef = useRef<HTMLDivElement>(null)
   const [windowStatus, setWindowStatus] = useState<{
     windowOpen: boolean
     lastInboundAt: string | null
@@ -231,6 +233,16 @@ export default function ChatsClient({
     prevActiveRef.current = activeId
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
   }, [activeId, activeContact?.messages.length])
+
+  // Menu "..." do header: fecha em clique fora.
+  useEffect(() => {
+    if (!showHeaderMenu) return
+    const handler = (e: MouseEvent) => {
+      if (!headerMenuRef.current?.contains(e.target as Node)) setShowHeaderMenu(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [showHeaderMenu])
 
   // Janela de 24h: revalida ao trocar contato OU ao chegar novo inbound.
   // Sem isso, o banner ficava preso no estado de quando o chat foi aberto.
@@ -690,16 +702,19 @@ export default function ChatsClient({
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={activeContact.chatStatus} />
-                {!isAgent && (
+
+                {/* Ação primária — uma só, depende do contexto.
+                    isOwner + IN_SERVICE → Encerrar (verde, ação mais comum)
+                    !isOwner             → Assumir (preto, alto contraste) */}
+                {isOwner && activeContact.chatStatus === "IN_SERVICE" && (
                   <button
                     type="button"
-                    onClick={() => setConfirmDelete(true)}
-                    title="Excluir chat"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    onClick={() => void handleEndService()}
+                    disabled={ending}
+                    title="Encerrar e pedir nota ao cliente"
+                    className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
+                    {ending ? "Encerrando..." : "Encerrar atendimento"}
                   </button>
                 )}
                 {!isOwner && (
@@ -707,31 +722,63 @@ export default function ChatsClient({
                     type="button"
                     onClick={() => void handleTakeOver()}
                     disabled={taking}
-                    className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
+                    className="rounded-lg bg-zinc-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
                   >
-                    {taking ? "Assumindo..." : "Assumir Atendimento"}
+                    {taking ? "Assumindo..." : "Assumir atendimento"}
                   </button>
                 )}
+
+                {/* Menu "..." — só admin. Agrupa ações secundárias e
+                    a destrutiva (Apagar) atrás de mais um clique,
+                    evitando erro humano e header sobrecarregado. */}
                 {!isAgent && (
-                  <button
-                    type="button"
-                    onClick={() => setShowTransfer(true)}
-                    title="Transferir esta conversa pra outro atendente"
-                    className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
-                  >
-                    🔁 Transferir
-                  </button>
-                )}
-                {isOwner && activeContact.chatStatus === "IN_SERVICE" && (
-                  <button
-                    type="button"
-                    onClick={() => void handleEndService()}
-                    disabled={ending}
-                    title="Encerrar e pedir nota ao cliente"
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
-                  >
-                    {ending ? "Encerrando..." : "Encerrar e pedir nota"}
-                  </button>
+                  <div ref={headerMenuRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowHeaderMenu((v) => !v)}
+                      title="Mais ações"
+                      aria-haspopup="menu"
+                      aria-expanded={showHeaderMenu}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                        <circle cx="5" cy="12" r="1.6" />
+                        <circle cx="12" cy="12" r="1.6" />
+                        <circle cx="19" cy="12" r="1.6" />
+                      </svg>
+                    </button>
+
+                    {showHeaderMenu && (
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-9 z-20 w-56 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg shadow-zinc-200/40"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMenu(false); setShowTransfer(true) }}
+                          role="menuitem"
+                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-zinc-700 transition-colors hover:bg-zinc-50"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m-4 6H4m0 0l4 4m-4-4l4-4" />
+                          </svg>
+                          Transferir conversa
+                        </button>
+                        <div className="my-0.5 h-px bg-zinc-100" />
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMenu(false); setConfirmDelete(true) }}
+                          role="menuitem"
+                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-red-600 transition-colors hover:bg-red-50"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Apagar conversa
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </header>
@@ -840,7 +887,7 @@ export default function ChatsClient({
                     onClick={() => void sendAudio()}
                     disabled={isUploading}
                     title="Enviar áudio"
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[#25D366] text-white shadow hover:bg-[#1db954] disabled:opacity-50"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-white shadow hover:bg-emerald-600 disabled:opacity-50"
                   >
                     {isUploading ? (
                       <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -914,7 +961,7 @@ export default function ChatsClient({
                       onClick={() => void startRecording()}
                       disabled={isUploading || isSending}
                       title="Gravar áudio"
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition-all hover:bg-[#1db954] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md transition-all hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
                         <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z" />
@@ -925,7 +972,7 @@ export default function ChatsClient({
                     <button
                       onClick={() => void handleSend()}
                       disabled={isSending || isUploading}
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition-all hover:bg-[#1db954] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md transition-all hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />

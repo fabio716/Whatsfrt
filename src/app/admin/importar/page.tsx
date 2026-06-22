@@ -405,7 +405,7 @@ export default function ImportarPage() {
                     <button
                       type="button"
                       onClick={() => openChatWith(avulsoSaved.id)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#1db954]"
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-600"
                     >
                       💬 Iniciar conversa
                     </button>

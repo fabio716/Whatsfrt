@@ -41,7 +41,7 @@ const DEFAULT_HOURS: BizHour[] = [0,1,2,3,4,5,6].map((d) => ({
 // ─── Toggle component ─────────────────────────────────────────────────────────
 
 function Toggle({ checked, onChange, green }: Readonly<{ checked: boolean; onChange: () => void; green?: boolean }>) {
-  const activeColor = green ? "bg-[#25D366]" : "bg-zinc-800"
+  const activeColor = green ? "bg-emerald-500" : "bg-zinc-800"
   return (
     <button type="button" role="switch" aria-checked={checked} onClick={onChange}
       className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${checked ? activeColor : "bg-zinc-200"}`}>

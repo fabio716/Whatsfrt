@@ -135,14 +135,14 @@ export default function ConnectPage() {
         <div className="overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-xl shadow-zinc-200/50">
 
           {/* Top accent stripe */}
-          <div className="h-[3px] bg-gradient-to-r from-[#25D366] to-[#128C7E]" />
+          <div className="h-[3px] bg-gradient-to-r from-emerald-500 to-emerald-700" />
 
           <div className="space-y-7 p-8">
 
             {/* ── Header ── */}
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[#edfaf2] text-[#25D366]">
+                <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
                   <WhatsAppIcon />
                 </span>
                 <div>

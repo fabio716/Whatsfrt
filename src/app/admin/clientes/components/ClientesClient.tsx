@@ -212,7 +212,7 @@ export default function ClientesClient({ isAgent }: Readonly<{ isAgent: boolean 
                         </button>
                         <button
                           onClick={() => openChat(c)}
-                          className="rounded-lg bg-[#25D366] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1db954]"
+                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-emerald-600"
                           title="Abrir conversa"
                         >
                           💬 Conversar

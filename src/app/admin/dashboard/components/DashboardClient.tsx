@@ -469,7 +469,7 @@ export default function DashboardClient({ contacts: initialContacts }: Readonly<
                 onClick={() => setActiveId(contact.id)}
                 className={`flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors ${
                   isActive
-                    ? "border-l-[3px] border-[#25D366] bg-[#f0fdf4]"
+                    ? "border-l-[3px] border-emerald-500 bg-emerald-50"
                     : "border-l-[3px] border-transparent hover:bg-zinc-50"
                 }`}
               >
@@ -622,7 +622,7 @@ export default function DashboardClient({ contacts: initialContacts }: Readonly<
               <button
                 onClick={() => void handleSend()}
                 disabled={!inputValue.trim() || isSending || isUploading}
-                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md shadow-emerald-200 transition-all hover:bg-[#1db954] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md shadow-emerald-200 transition-all hover:bg-emerald-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
               >
                 <SendIcon />
               </button>

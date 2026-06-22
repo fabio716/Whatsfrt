@@ -256,7 +256,7 @@ export default function ContatosPage() {
                       <td className="px-5 py-3.5 text-right">
                         <button
                           onClick={() => router.push(`/admin/chats?contact=${c.id}`)}
-                          className="rounded-lg bg-[#25D366] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1db954] transition-colors"
+                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-emerald-600 transition-colors"
                         >
                           💬 Conversar
                         </button>
