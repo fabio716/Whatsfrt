@@ -16,7 +16,10 @@ const SECURITY_HEADERS = [
       "img-src 'self' data: blob: https:",
       "media-src 'self' blob:",
       "font-src 'self' data:",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // 'unsafe-eval' removido — Next.js 16 nao precisa em runtime. Mantemos
+      // 'unsafe-inline' temporariamente porque Next injeta scripts hidratacao
+      // inline (pra eliminar de vez precisa setup de nonce-per-request).
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "connect-src 'self'",
       "frame-ancestors 'none'",

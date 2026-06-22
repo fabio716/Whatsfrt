@@ -75,19 +75,39 @@ type ZapiPayload = ZapiTextPayload | ZapiStatusPayload | ZapiConnectionPayload
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
-// IMPORTANT: validar webhook Z-API requer header SEPARADO do Client-Token.
-// O "Token de segurança da conta" do Z-API é pra NÓS enviarmos PRA eles
-// (header Client-Token em chamadas OUTBOUND), NÃO algo que eles incluem em
-// webhooks INBOUND. Por isso usamos ZAPI_WEBHOOK_SECRET separado.
+// Autenticação do webhook Z-API.
 //
-// Como Z-API (versão atual) não permite configurar header custom no webhook,
-// na prática ZAPI_WEBHOOK_SECRET fica vazio e aceitamos qualquer request.
-// Risco mitigado por: URL secreta + dedupe por whatsappKeyId + HTTPS.
-// Quando Z-API suportar header custom no webhook, basta setar a env.
+// Política:
+//   - Produção: ZAPI_WEBHOOK_SECRET é OBRIGATÓRIO. Sem ele, a rota REJEITA
+//     todo request. Sem isso, qualquer pessoa que descubra a URL pode forjar
+//     mensagens inbound e status updates em nome de qualquer telefone.
+//   - Desenvolvimento: tolerante (aceita sem secret) pra facilitar testes
+//     locais com curl/postman.
+//
+// Como Z-API não permite configurar header custom no webhook, suportamos
+// 3 formas de receber o secret (ordem de preferência):
+//   1. Header  X-Webhook-Secret              (se algum provider permitir)
+//   2. Query string  ?key=THE_SECRET         ← Z-API: usar essa
+//   3. Header  Client-Token                  (legado)
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.ZAPI_WEBHOOK_SECRET
-  if (!expected) return true // sem verificação se não configurado
-  const received = request.headers.get("x-webhook-secret") ?? request.headers.get("client-token") ?? ""
+
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[CRITICAL] ZAPI_WEBHOOK_SECRET ausente em producao — rejeitando webhook")
+      return false
+    }
+    return true // dev OK sem secret
+  }
+
+  const url = new URL(request.url)
+  const received =
+    request.headers.get("x-webhook-secret") ??
+    url.searchParams.get("key") ??
+    request.headers.get("client-token") ??
+    ""
+
+  if (!received) return false
   const a = Buffer.from(received)
   const b = Buffer.from(expected)
   if (a.length !== b.length) return false
@@ -267,9 +287,25 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
 
   const message = await prisma.message.findFirst({
     where: { whatsappKeyId: messageId },
-    select: { id: true, contactId: true, status: true },
+    select: {
+      id: true,
+      contactId: true,
+      status: true,
+      contact: { select: { whatsappId: true } },
+    },
   })
   if (!message) return { matched: false, skipped: `messageId=${messageId} not found in DB` }
+
+  // Anti-spoofing: o payload tem que vir do mesmo telefone dono da mensagem.
+  // Sem isso, atacante com webhook acesso poderia forjar READ pra mensagens
+  // alheias (✓✓ azul falso). Comparacao tolera os 2 formatos (com/sem
+  // sufixo @s.whatsapp.net).
+  const expectedPhone = message.contact.whatsappId.replace(/@.*$/, "")
+  const receivedPhone = (p.phone ?? "").replace(/@.*$/, "")
+  if (receivedPhone && expectedPhone && receivedPhone !== expectedPhone) {
+    console.warn(`[zapi-webhook] status spoofing? messageId=${messageId} expected=${expectedPhone} got=${receivedPhone}`)
+    return { matched: false, skipped: `phone mismatch (expected ${expectedPhone}, got ${receivedPhone})` }
+  }
 
   const ranks: Record<string, number> = { PENDING: 0, SENT: 1, FAILED: 1, DELIVERED: 2, READ: 3 }
   const newStatus = isRead ? MessageStatus.READ : MessageStatus.DELIVERED

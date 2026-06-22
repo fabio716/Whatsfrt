@@ -300,15 +300,33 @@ async function handleMessageStatusUpdate(data: EvolutionStatusUpdate): Promise<v
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
+// Politica:
+//   - Producao: EVOLUTION_WEBHOOK_SECRET OBRIGATORIO. Sem ele rejeita.
+//   - Dev: tolerante.
+//
+// Evolution permite header custom (configurado via WEBHOOK_GLOBAL_HEADER_APIKEY
+// no container). Tambem aceitamos query string ?key= como fallback caso a
+// configuracao do header nao esteja propagada.
 function isAuthorizedWebhook(request: NextRequest): boolean {
   const expected = process.env.EVOLUTION_WEBHOOK_SECRET
+
   if (!expected) {
-    // Secret not configured — allow but warn. Configure EVOLUTION_WEBHOOK_SECRET
-    // + WEBHOOK_GLOBAL_HEADER_APIKEY in the Evolution container for production hardening.
-    console.warn("[webhook] EVOLUTION_WEBHOOK_SECRET não configurado — aceitando sem verificação.")
+    if (process.env.NODE_ENV === "production") {
+      console.error("[CRITICAL] EVOLUTION_WEBHOOK_SECRET ausente em producao — rejeitando webhook")
+      return false
+    }
+    console.warn("[webhook] EVOLUTION_WEBHOOK_SECRET nao configurado (dev) — aceitando")
     return true
   }
-  const received = request.headers.get("apikey") ?? ""
+
+  const url = new URL(request.url)
+  const received =
+    request.headers.get("apikey") ??
+    request.headers.get("x-webhook-secret") ??
+    url.searchParams.get("key") ??
+    ""
+
+  if (!received) return false
   const a = Buffer.from(received)
   const b = Buffer.from(expected)
   if (a.length !== b.length) return false
