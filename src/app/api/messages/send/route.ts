@@ -5,6 +5,7 @@ import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 import { checkTemplateSpam, checkColdOutreach, getDailyMessageCount } from "@/lib/antispam"
+import { checkRateLimit } from "@/lib/rateLimit"
 
 interface SendMessageBody {
   contactId: string
@@ -61,6 +62,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       error: "Não é possível enviar mensagens para este contato. O número não é um telefone válido (formato @lid).",
     }, { status: 400 })
+  }
+
+  // ─── Anti-spam check 0: burst limit por minuto ──────────────────────────
+  // Limite diario nao protege contra envio explosivo em um minuto (bot rodando
+  // dentro do navegador, por exemplo). 10 msg/minuto/agente eh confortavel pro
+  // uso humano e bloqueia automacao agressiva antes do WhatsApp banir o numero.
+  const burst = await checkRateLimit(`send-burst:${session.id}`, 10, 60)
+  if (!burst.allowed) {
+    return NextResponse.json({
+      error: `Você enviou ${burst.count} mensagens em menos de 1 minuto. Aguarde ${burst.retryAfterSec}s.`,
+      code: "BURST_LIMIT",
+      retryAfterSec: burst.retryAfterSec,
+    }, { status: 429, headers: { "Retry-After": String(burst.retryAfterSec) } })
   }
 
   // ─── Anti-spam check 1: limite diário do agente ─────────────────────────

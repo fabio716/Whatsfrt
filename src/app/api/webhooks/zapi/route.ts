@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast, broadcastSystemEvent } from "@/lib/sse-emitter"
 import { saveMediaBuffer } from "@/lib/mediaStorage"
+import { safeFetchBuffer } from "@/lib/safeFetch"
 import { enqueueInbound } from "@/lib/reliability/queue"
 import { applyRating, parseRating } from "@/lib/serviceTracking"
 import { sendTextOk } from "@/lib/whatsapp"
@@ -116,6 +117,15 @@ function isAuthorized(request: NextRequest): boolean {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Mascara um telefone pra log — mantem so os 4 ultimos digitos visiveis.
+// Reduz exposicao de PII em logs centralizados (Datadog, Splunk, etc).
+function maskPhone(p: string | undefined | null): string {
+  if (!p) return "<vazio>"
+  const stripped = p.replace(/@.*$/, "")
+  if (stripped.length <= 4) return `***${stripped}`
+  return `***${stripped.slice(-4)}`
+}
+
 // Normaliza phone do Z-API ("5511999999999") pro nosso formato interno
 // que usa "5511999999999@s.whatsapp.net" pra individuais e "@g.us" pra grupos.
 function toWhatsappId(phone: string, isGroup: boolean): string {
@@ -141,15 +151,8 @@ function extractText(p: ZapiTextPayload): string {
 }
 
 async function downloadMediaToBuffer(url: string): Promise<Buffer | null> {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return null
-    const arr = await res.arrayBuffer()
-    return Buffer.from(arr)
-  } catch (err) {
-    console.error("[zapi-webhook] download mídia falhou:", err)
-    return null
-  }
+  // safeFetchBuffer aplica whitelist SSRF + timeout + limite de tamanho.
+  return safeFetchBuffer(url)
 }
 
 // ─── Tipo: mensagem recebida ─────────────────────────────────────────────────
@@ -303,8 +306,8 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
   const expectedPhone = message.contact.whatsappId.replace(/@.*$/, "")
   const receivedPhone = (p.phone ?? "").replace(/@.*$/, "")
   if (receivedPhone && expectedPhone && receivedPhone !== expectedPhone) {
-    console.warn(`[zapi-webhook] status spoofing? messageId=${messageId} expected=${expectedPhone} got=${receivedPhone}`)
-    return { matched: false, skipped: `phone mismatch (expected ${expectedPhone}, got ${receivedPhone})` }
+    console.warn(`[zapi-webhook] status spoofing? messageId=${messageId} expected=${maskPhone(expectedPhone)} got=${maskPhone(receivedPhone)}`)
+    return { matched: false, skipped: `phone mismatch` }
   }
 
   const ranks: Record<string, number> = { PENDING: 0, SENT: 1, FAILED: 1, DELIVERED: 2, READ: 3 }
@@ -367,7 +370,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const p = payload as ZapiStatusPayload
     console.log(`[zapi-webhook] type=MessageStatusCallback status=${p.status} messageId=${extractStatusMessageId(p)} (raw keys: ${Object.keys(p).join(",")})`)
   } else if (payload.type === "ReceivedCallback") {
-    console.log(`[zapi-webhook] type=ReceivedCallback from=${(payload as ZapiTextPayload).phone}`)
+    console.log(`[zapi-webhook] type=ReceivedCallback from=${maskPhone((payload as ZapiTextPayload).phone)}`)
   } else {
     console.log(`[zapi-webhook] type=${payload.type}`)
   }

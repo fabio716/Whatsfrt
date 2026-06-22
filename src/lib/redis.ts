@@ -140,6 +140,14 @@ class RedisClient {
     return this.safeExecute(() => this.client!.ping(), null)
   }
 
+  async incr(key: string): Promise<number> {
+    return this.safeExecute(() => this.client!.incr(key), 0)
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    return this.safeExecute(() => this.client!.expire(key, seconds), 0)
+  }
+
   // Move tudo da fila "processing" de volta para "inbound" (replay no boot).
   async drainProcessing(processingKey: string, inboundKey: string): Promise<number> {
     if (!this.client || !this.isConnected) return 0

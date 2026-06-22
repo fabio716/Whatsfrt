@@ -56,12 +56,31 @@ export async function getSessionFromRequest(
   return verifySessionToken(token)
 }
 
+// ─── Origin guard ─────────────────────────────────────────────────────────────
+// Defesa em profundidade contra CSRF: além de SameSite=Lax no cookie, em
+// requisições mutadoras (POST/PUT/PATCH/DELETE) checamos se Origin (quando
+// presente) bate com APP_PUBLIC_URL. Quando Origin ausente (server-to-server,
+// alguns clientes desktop), NÃO bloqueamos — auth JWT ainda cobre.
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
+
+function originAllowed(request: NextRequest): boolean {
+  if (!MUTATING_METHODS.has(request.method)) return true
+  const origin = request.headers.get("origin")
+  if (!origin) return true
+  const allowed = process.env.APP_PUBLIC_URL
+  if (!allowed) return true
+  return origin.replace(/\/+$/, "") === allowed.replace(/\/+$/, "")
+}
+
 // ─── Guards para route handlers ───────────────────────────────────────────────
 // Retornam ou a sessão (sucesso) ou um NextResponse com erro (falha).
 
 export async function requireSession(
   request: NextRequest,
 ): Promise<SessionPayload | NextResponse> {
+  if (!originAllowed(request)) {
+    return NextResponse.json({ error: "Origin não permitido" }, { status: 403 })
+  }
   const session = await getSessionFromRequest(request)
   if (!session) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
@@ -72,6 +91,9 @@ export async function requireSession(
 export async function requireAdmin(
   request: NextRequest,
 ): Promise<SessionPayload | NextResponse> {
+  if (!originAllowed(request)) {
+    return NextResponse.json({ error: "Origin não permitido" }, { status: 403 })
+  }
   const session = await getSessionFromRequest(request)
   if (!session) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
