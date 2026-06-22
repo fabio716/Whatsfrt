@@ -16,7 +16,7 @@ interface HomeStats {
   agents: Array<{
     id: string
     name: string
-    status: "ATTENDING" | "ONLINE"
+    status: "ATTENDING" | "ONLINE" | "OFFLINE"
     attendingCount: number
   }>
 }
@@ -29,13 +29,15 @@ function greeting(): string {
 }
 
 // ─── KPI card ───────────────────────────────────────────────────────────────
+// loading=true: mostra retângulo pulsando no lugar do valor (skeleton).
 function Kpi({
-  label, value, hint, accent,
+  label, value, hint, accent, loading,
 }: Readonly<{
   label: string
   value: string
   hint?: string
   accent?: "neutral" | "emerald" | "amber" | "sky"
+  loading?: boolean
 }>) {
   const accentCls = {
     neutral: "text-zinc-900",
@@ -44,10 +46,18 @@ function Kpi({
     sky:     "text-sky-600",
   }[accent ?? "neutral"]
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
+    <div className="anim-slide-up rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</p>
-      <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${accentCls}`}>{value}</p>
-      {hint && <p className="mt-1 text-[11px] text-zinc-400">{hint}</p>}
+      {loading ? (
+        <div className="mt-2.5 h-8 w-16 animate-pulse rounded-md bg-zinc-100" />
+      ) : (
+        <p className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${accentCls}`}>{value}</p>
+      )}
+      {loading ? (
+        <div className="mt-2 h-3 w-24 animate-pulse rounded bg-zinc-100/70" />
+      ) : (
+        hint && <p className="mt-1 text-[11px] text-zinc-400">{hint}</p>
+      )}
     </div>
   )
 }
@@ -57,7 +67,7 @@ function HourlyVolume({ volume }: Readonly<{ volume: number[] }>) {
   const max = Math.max(1, ...volume)
   const total = volume.reduce((a, b) => a + b, 0)
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
+    <div className="anim-slide-up rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
       <div className="flex items-baseline justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Mensagens hoje por hora</p>
         <p className="text-[11px] font-medium text-zinc-500">{total} no total</p>
@@ -79,43 +89,61 @@ function HourlyVolume({ volume }: Readonly<{ volume: number[] }>) {
   )
 }
 
-// ─── Equipe — quem está atendendo ──────────────────────────────────────────
-// Importante: nao mostramos "online" porque nao temos tracking real de
-// presenca (sessao SSE por agente). Mostramos estado factivel: ATENDENDO
-// (tem chat IN_SERVICE) ou LIVRE (cadastrado e ativo, sem chat).
+// ─── Equipe — presença real ────────────────────────────────────────────────
+// Presença derivada do Set de clientes SSE no servidor (quem tem aba aberta
+// no momento). Tres estados:
+//   ATTENDING  → tem chat IN_SERVICE  (emerald)
+//   ONLINE     → conectado mas sem chat (verde claro)
+//   OFFLINE    → cadastrado mas sem aba aberta (cinza)
 function AgentList({ agents }: Readonly<{ agents: HomeStats["agents"] }>) {
-  const attending = agents.filter((a) => a.status === "ATTENDING")
+  const attending = agents.filter((a) => a.status === "ATTENDING").length
+  const online    = agents.filter((a) => a.status === "ONLINE").length
+  const offline   = agents.filter((a) => a.status === "OFFLINE").length
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
+    <div className="anim-slide-up rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
       <div className="flex items-baseline justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Equipe</p>
         <p className="text-[11px] font-medium text-zinc-500">
-          {attending.length} atendendo · {agents.length - attending.length} livre{agents.length - attending.length === 1 ? "" : "s"}
+          {attending} atendendo · {online} online · {offline} offline
         </p>
       </div>
       {agents.length === 0 && (
         <p className="mt-4 text-[12px] text-zinc-400">Nenhum agente cadastrado.</p>
       )}
       <ul className="mt-3 space-y-2">
-        {agents.map((a) => (
-          <li key={a.id} className="flex items-center gap-3 py-1">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[12px] font-semibold text-zinc-600">
-              {a.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-zinc-800">{a.name}</p>
-            </div>
-            {a.status === "ATTENDING" ? (
-              <span className="flex-shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                Atendendo · {a.attendingCount}
-              </span>
-            ) : (
-              <span className="flex-shrink-0 rounded-full bg-zinc-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
-                Livre
-              </span>
-            )}
-          </li>
-        ))}
+        {agents.map((a) => {
+          const dotCls = a.status === "ATTENDING" ? "bg-emerald-500"
+                       : a.status === "ONLINE"    ? "bg-emerald-300"
+                       : "bg-zinc-300"
+          return (
+            <li key={a.id} className="flex items-center gap-3 py-1">
+              <div className="relative flex-shrink-0">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-[12px] font-semibold text-zinc-600">
+                  {a.name.charAt(0).toUpperCase()}
+                </div>
+                <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${dotCls}`} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className={`truncate text-[13px] font-medium ${a.status === "OFFLINE" ? "text-zinc-400" : "text-zinc-800"}`}>{a.name}</p>
+              </div>
+              {a.status === "ATTENDING" && (
+                <span className="flex-shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                  Atendendo · {a.attendingCount}
+                </span>
+              )}
+              {a.status === "ONLINE" && (
+                <span className="flex-shrink-0 rounded-full bg-emerald-50/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-600">
+                  Online
+                </span>
+              )}
+              {a.status === "OFFLINE" && (
+                <span className="flex-shrink-0 rounded-full bg-zinc-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                  Offline
+                </span>
+              )}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
@@ -131,7 +159,7 @@ function Shortcuts({ isAdmin }: Readonly<{ isAdmin: boolean }>) {
   ].filter((i) => !i.adminOnly || isAdmin)
 
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
+    <div className="anim-slide-up rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm shadow-zinc-100/60">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Atalhos</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
         {items.map((it) => (
@@ -218,23 +246,27 @@ export default function HomeClient({ userName, userRole }: Readonly<{ userName: 
             value={stats ? String(stats.kpis.inService) : "—"}
             hint="chats ativos agora"
             accent="emerald"
+            loading={!stats}
           />
           <Kpi
             label="Aguardando agente"
             value={stats ? String(stats.kpis.waiting) : "—"}
             hint="clientes na fila"
             accent={stats && stats.kpis.waiting > 0 ? "amber" : "neutral"}
+            loading={!stats}
           />
           <Kpi
             label="CSAT 24h"
             value={stats?.kpis.csat.avg !== null && stats?.kpis.csat.avg !== undefined ? `${stats.kpis.csat.avg.toFixed(1)} ★` : "—"}
             hint={stats ? `${stats.kpis.csat.count} avaliação${stats.kpis.csat.count === 1 ? "" : "ões"}` : "—"}
             accent="sky"
+            loading={!stats}
           />
           <Kpi
             label="Resposta média"
             value={stats?.kpis.avgResponseMin !== null && stats?.kpis.avgResponseMin !== undefined ? `${stats.kpis.avgResponseMin}m` : "—"}
             hint="primeira resposta 24h"
+            loading={!stats}
           />
         </section>
 

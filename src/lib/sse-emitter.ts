@@ -89,6 +89,18 @@ export function removeSSEClient(ctrl: ReadableStreamDefaultController<string>): 
   }
 }
 
+// Quem está com aba aberta agora — derivado direto do Set de clientes SSE.
+// Cada userId pode aparecer mais de uma vez (multi-aba), por isso o Set
+// final dedup pelo id. Usado pela home executiva pra distinguir agente
+// REALMENTE online de agente apenas cadastrado.
+export function getOnlineUserIds(): Set<string> {
+  const online = new Set<string>()
+  for (const c of getClients()) {
+    online.add(c.userId)
+  }
+  return online
+}
+
 // Broadcast irrestrito para TODOS os clientes conectados (admin + agente).
 // Usado por eventos de sistema (status do Evolution, manutenção, etc.) que
 // não têm dono específico e todo mundo precisa ver.

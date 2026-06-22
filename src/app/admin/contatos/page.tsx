@@ -213,16 +213,46 @@ export default function ContatosPage() {
             nao cortem a coluna de Acoes em monitores menores. */}
         <div className="overflow-x-auto overflow-y-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm">
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-sm text-zinc-400">
-              <svg className="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-              Carregando contatos...
+            // Skeleton: 8 linhas pulsando no formato da tabela. Da percepcao
+            // imediata de que a estrutura ja existe, conteudo so falta chegar.
+            <div className="divide-y divide-zinc-50">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-5 py-4 animate-pulse">
+                  <div className="h-8 w-8 flex-shrink-0 rounded-full bg-zinc-100" />
+                  <div className="h-3 w-32 rounded bg-zinc-100" />
+                  <div className="h-3 w-40 rounded bg-zinc-100/70" />
+                  <div className="h-3 w-24 rounded bg-zinc-100/70" />
+                  <div className="ml-auto h-6 w-20 rounded-full bg-zinc-100/60" />
+                </div>
+              ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="py-20 text-center text-sm text-zinc-400">
-              {contacts.length === 0 ? "Nenhum contato cadastrado. Importe um CSV para começar." : "Nenhum contato encontrado."}
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100">
+                <svg viewBox="0 0 24 24" className="h-5 w-5 text-zinc-400" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              {contacts.length === 0 ? (
+                <>
+                  <p className="text-[13px] font-semibold text-zinc-700">Nenhum contato cadastrado</p>
+                  <p className="text-[12px] text-zinc-400">Importe um CSV ou adicione contatos manualmente.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[13px] font-semibold text-zinc-700">Nenhum contato encontrado</p>
+                  <p className="text-[12px] text-zinc-400">Tente outro termo ou limpe os filtros.</p>
+                  {(search || filterAgent) && (
+                    <button
+                      type="button"
+                      onClick={() => { setSearch(""); setFilterAgent("") }}
+                      className="mt-1 rounded-lg border border-zinc-200 bg-white px-3.5 py-1.5 text-[12px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 active:scale-95"
+                    >
+                      Limpar filtros
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             <table className="w-full min-w-[860px] text-sm">

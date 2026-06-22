@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { MessageDirection } from "@/generated/prisma/enums"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
+import { getOnlineUserIds } from "@/lib/sse-emitter"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -98,6 +99,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     volumeByHour[h] += 1
   }
 
+  // Presença real: derivada do Set de clientes SSE (quem tem aba aberta).
+  // Sem isso, antes mostravamos todo agente cadastrado como "online" — ruim
+  // pro admin que via "4 online" 3h da manha.
+  const online = getOnlineUserIds()
+
   return NextResponse.json({
     timestamp: now.toISOString(),
     kpis: {
@@ -110,11 +116,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       avgResponseMin,
     },
     volumeByHour,
-    agents: agents.map((a) => ({
-      id: a.id,
-      name: a.name,
-      status: a.assignedContacts.length > 0 ? "ATTENDING" : "ONLINE",
-      attendingCount: a.assignedContacts.length,
-    })),
+    agents: agents.map((a) => {
+      const isOnline = online.has(a.id)
+      const attending = a.assignedContacts.length
+      let status: "ATTENDING" | "ONLINE" | "OFFLINE"
+      if (attending > 0) status = "ATTENDING"
+      else if (isOnline) status = "ONLINE"
+      else status = "OFFLINE"
+      return { id: a.id, name: a.name, status, attendingCount: attending }
+    }),
   })
 }

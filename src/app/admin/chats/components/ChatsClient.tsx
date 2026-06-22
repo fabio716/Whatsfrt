@@ -200,6 +200,7 @@ export default function ChatsClient({
     consecutiveOutbound: number
     hasEverReceivedInbound: boolean
   } | null>(null)
+  const [quota, setQuota] = useState<{ sent: number; limit: number; ratio: number } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
   const mediaRecRef     = useRef<MediaRecorder | null>(null)
@@ -233,6 +234,22 @@ export default function ChatsClient({
     prevActiveRef.current = activeId
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
   }, [activeId, activeContact?.messages.length])
+
+  // Quota diaria do agente — busca uma vez ao montar e revalida a cada
+  // envio bem sucedido (via dependency em contacts.messages).
+  useEffect(() => {
+    if (!isAgent) return // admin nao tem limite pessoal
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch("/api/me/quota", { cache: "no-store" })
+        if (!res.ok || cancelled) return
+        const data = await res.json() as { sent: number; limit: number; ratio: number }
+        if (!cancelled) setQuota(data)
+      } catch { /* falha silenciosa */ }
+    })()
+    return () => { cancelled = true }
+  }, [isAgent, contacts])
 
   // Menu "..." do header: fecha em clique fora.
   useEffect(() => {
@@ -632,6 +649,30 @@ export default function ChatsClient({
               ? `${contacts.length} contato${contacts.length === 1 ? "" : "s"}`
               : `${filteredContacts.length} de ${contacts.length} contatos`}
           </p>
+          {/* Quota diaria — só pra agente, aviso visual antes de bater no 429.
+              Vermelho >= 90%, amarelo >= 70%, verde abaixo. */}
+          {isAgent && quota && quota.limit > 0 && (
+            <div className="mt-2">
+              <div className="flex items-baseline justify-between text-[10px] font-medium">
+                <span className="text-zinc-400">Mensagens hoje</span>
+                <span className={
+                  quota.ratio >= 0.9 ? "text-red-600"
+                  : quota.ratio >= 0.7 ? "text-amber-600"
+                  : "text-emerald-600"
+                }>{quota.sent} / {quota.limit}</span>
+              </div>
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-zinc-100">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    quota.ratio >= 0.9 ? "bg-red-500"
+                    : quota.ratio >= 0.7 ? "bg-amber-500"
+                    : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${quota.ratio * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Agent filter (admins only) */}
