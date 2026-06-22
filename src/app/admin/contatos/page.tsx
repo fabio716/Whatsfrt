@@ -12,6 +12,8 @@ interface ContactRow {
   id: string
   name: string
   whatsappId: string
+  empresa: string | null
+  cidade: string | null
   chatStatus: "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE"
   assignedUser: { id: string; name: string } | null
   cooperative: { id: string; name: string } | null
@@ -73,11 +75,18 @@ export default function ContatosPage() {
 
   useEffect(() => { void load() }, [load])
 
-  // ── filtered list
+  // ── filtered list — busca multi-campo (nome, telefone, empresa, cidade).
+  // Antes era so nome+telefone. Empresa+cidade vieram da fusao com Clientes
+  // Cadastrados.
   const filtered = contacts.filter((c) => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || c.name.toLowerCase().includes(q) || phone(c.whatsappId).includes(q)
-    const matchAgent  = !filterAgent || c.assignedUser?.id === filterAgent
+    const q = search.toLowerCase().trim()
+    const matchSearch = !q
+      || c.name.toLowerCase().includes(q)
+      || phone(c.whatsappId).includes(q)
+      || (c.empresa?.toLowerCase().includes(q) ?? false)
+      || (c.cidade?.toLowerCase().includes(q) ?? false)
+    const matchAgent = !filterAgent
+      || (filterAgent === "__none__" ? c.assignedUser === null : c.assignedUser?.id === filterAgent)
     return matchSearch && matchAgent
   })
 
@@ -186,7 +195,7 @@ export default function ContatosPage() {
             </svg>
             <input
               type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nome ou telefone..."
+              placeholder="Buscar por nome, telefone, empresa ou cidade..."
               className="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-3.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/5"
             />
           </div>
@@ -218,8 +227,8 @@ export default function ContatosPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-100">
-                  {["Nome", "Telefone", "Status", "Agente", "Empresa", "Cadastrado em", ""].map((h, i) => (
-                    <th key={`${h}-${i}`} className={`px-5 py-3.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 ${i === 6 ? "text-right" : "text-left"}`}>{h}</th>
+                  {["Nome", "Empresa", "Cidade", "Telefone", "Status", "Agente", ""].map((h, i, arr) => (
+                    <th key={`${h}-${i}`} className={`px-5 py-3.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 ${i === arr.length - 1 ? "text-right" : "text-left"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -236,6 +245,12 @@ export default function ContatosPage() {
                           <span className="font-medium text-zinc-800">{c.name}</span>
                         </div>
                       </td>
+                      <td className="px-5 py-3.5 text-zinc-600">
+                        {c.empresa ?? <span className="text-zinc-300">—</span>}
+                      </td>
+                      <td className="px-5 py-3.5 text-zinc-600">
+                        {c.cidade ?? <span className="text-zinc-300">—</span>}
+                      </td>
                       <td className="px-5 py-3.5 font-mono text-xs text-zinc-500">{phone(c.whatsappId)}</td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
@@ -244,14 +259,6 @@ export default function ContatosPage() {
                         {c.assignedUser
                           ? <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-blue-400" />{c.assignedUser.name}</span>
                           : <span className="text-zinc-300">—</span>}
-                      </td>
-                      <td className="px-5 py-3.5 text-zinc-500">
-                        {c.cooperative
-                          ? <span className="text-zinc-600">{c.cooperative.name}</span>
-                          : <span className="text-zinc-300">—</span>}
-                      </td>
-                      <td className="px-5 py-3.5 text-xs text-zinc-400">
-                        {new Date(c.createdAt).toLocaleDateString("pt-BR")}
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <button

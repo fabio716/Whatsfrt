@@ -12,6 +12,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       id: true,
       name: true,
       whatsappId: true,
+      empresa: true,
+      cidade: true,
       chatStatus: true,
       createdAt: true,
       assignedUser: { select: { id: true, name: true } },
