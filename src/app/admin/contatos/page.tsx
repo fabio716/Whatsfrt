@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ function phone(jid: string) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ContatosPage() {
+  const router = useRouter()
   const [contacts, setContacts]       = useState<ContactRow[]>([])
   const [agents,   setAgents]         = useState<AgentOption[]>([])
   const [cooperatives, setCooperatives] = useState<CooperativeOption[]>([])
@@ -216,8 +218,8 @@ export default function ContatosPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-100">
-                  {["Nome", "Telefone", "Status", "Agente", "Empresa", "Cadastrado em"].map((h, i) => (
-                    <th key={h} className={`px-5 py-3.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 ${i === 0 ? "text-left" : "text-left"}`}>{h}</th>
+                  {["Nome", "Telefone", "Status", "Agente", "Empresa", "Cadastrado em", ""].map((h, i) => (
+                    <th key={`${h}-${i}`} className={`px-5 py-3.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 ${i === 6 ? "text-right" : "text-left"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -250,6 +252,14 @@ export default function ContatosPage() {
                       </td>
                       <td className="px-5 py-3.5 text-xs text-zinc-400">
                         {new Date(c.createdAt).toLocaleDateString("pt-BR")}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          onClick={() => router.push(`/admin/chats?contact=${c.id}`)}
+                          className="rounded-lg bg-[#25D366] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1db954] transition-colors"
+                        >
+                          💬 Conversar
+                        </button>
                       </td>
                     </tr>
                   )
