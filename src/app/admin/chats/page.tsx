@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
+import { ChatStatus } from "@/generated/prisma/enums"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
 import { ContactData } from "@/app/admin/dashboard/types"
 import ChatsClient from "./components/ChatsClient"
@@ -21,11 +22,17 @@ export default async function ChatsPage(
   const isAgent = session.role === "AGENT"
   const { contact: requestedContactId } = await searchParams
 
-  // 1 — IN_SERVICE: chats ativos (lista padrão)
+  // Mesma janela do Dashboard: chats ativos OU com msg nos últimos 7 dias.
+  // Antes mostrava só IN_SERVICE e admin via "0 contatos" mesmo com
+  // dezenas de conversas em aberto noutro estado.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   const inServiceWhere = {
     deletedAt: null,
-    chatStatus: "IN_SERVICE" as const,
     ...(isAgent ? { assignedUserId: session.id } : {}),
+    OR: [
+      { chatStatus: { in: [ChatStatus.IN_URA, ChatStatus.WAITING_AGENT, ChatStatus.IN_SERVICE, ChatStatus.AWAITING_RATING] } },
+      { messages: { some: { createdAt: { gte: sevenDaysAgo } } } },
+    ],
   }
 
   // 2 — Se a URL pede um contato específico (?contact=…), inclui ele
