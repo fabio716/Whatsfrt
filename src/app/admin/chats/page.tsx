@@ -52,7 +52,9 @@ export default async function ChatsPage(
         })
       : Promise.resolve(null),
     prisma.user.findMany({
-      where: { isActive: true },
+      // Admin nao recebe chats — manter na lista confunde o filtro do painel
+      // (admin se autoselecionava sem querer e via 0 contatos).
+      where: { isActive: true, role: "AGENT" },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
