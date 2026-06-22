@@ -299,15 +299,15 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
   })
   if (!message) return { matched: false, skipped: `messageId=${messageId} not found in DB` }
 
-  // Anti-spoofing: o payload tem que vir do mesmo telefone dono da mensagem.
-  // Sem isso, atacante com webhook acesso poderia forjar READ pra mensagens
-  // alheias (✓✓ azul falso). Comparacao tolera os 2 formatos (com/sem
-  // sufixo @s.whatsapp.net).
+  // Anti-spoofing relaxado: o campo p.phone do Z-API nem sempre eh o
+  // destinatario (pode vir como phoneDevice/sender em alguns callbacks).
+  // Em vez de REJEITAR o update, apenas logamos warning quando diferente.
+  // Defesa principal eh o secret de webhook (so o Z-API consegue chamar);
+  // o phone-check seria reforco que pode causar falsos negativos.
   const expectedPhone = message.contact.whatsappId.replace(/@.*$/, "")
   const receivedPhone = (p.phone ?? "").replace(/@.*$/, "")
   if (receivedPhone && expectedPhone && receivedPhone !== expectedPhone) {
-    console.warn(`[zapi-webhook] status spoofing? messageId=${messageId} expected=${maskPhone(expectedPhone)} got=${maskPhone(receivedPhone)}`)
-    return { matched: false, skipped: `phone mismatch` }
+    console.warn(`[zapi-webhook] phone mismatch (nao bloqueando) messageId=${messageId} expected=${maskPhone(expectedPhone)} got=${maskPhone(receivedPhone)}`)
   }
 
   const ranks: Record<string, number> = { PENDING: 0, SENT: 1, FAILED: 1, DELIVERED: 2, READ: 3 }

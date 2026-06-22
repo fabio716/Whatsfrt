@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { MessageDirection } from "@/generated/prisma/enums"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
 import { getOnlineUserIds } from "@/lib/sse-emitter"
 
@@ -9,10 +8,14 @@ export const fetchCache = "force-no-store"
 
 // GET /api/admin/home-stats — KPIs da home executiva.
 //
-// Foi feito enxuto de proposito: nao reusa /metrics (que carrega ALL contacts
-// com messages, lento) nem /team/live (que devolve mais coisa do que precisa).
-// Aqui só o que aparece no topo da home: 4 KPIs + volume por hora + lista
-// curta de agentes online com ocupação atual.
+// IMPORTANTE: esse endpoint roda a cada 30s pra CADA aba aberta. Tem que
+// ser MUITO leve. Versao anterior fazia findMany de mensagens 24h e hoje,
+// degradava todo o DB. Agora so usa COUNT e GROUP BY agregados no Postgres.
+//
+// avgResponseMin foi simplificado: usamos waiting time medio das
+// ServiceSessions encerradas nas ultimas 24h (proxy razoavel pra "quanto
+// tempo o cliente espera ate ser atendido"). Antes calculavamos a partir
+// de TODAS as mensagens, o que era caro e nao escalava.
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin(request)
   if (isErrorResponse(auth)) return auth
@@ -22,11 +25,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   todayStart.setHours(0, 0, 0, 0)
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
 
+  // Tudo em paralelo, tudo agregado direto no Postgres.
   const [
     inServiceCount,
     waitingCount,
     csatAgg,
-    inboundToday,
+    waitingAgg,
+    volumeRows,
     agents,
   ] = await Promise.all([
     prisma.contact.count({
@@ -40,14 +45,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       _avg: { rating: true },
       _count: { rating: true },
     }),
-    prisma.message.findMany({
-      where: {
-        direction: MessageDirection.INBOUND,
-        createdAt: { gte: todayStart },
-      },
-      select: { createdAt: true },
-      orderBy: { createdAt: "asc" },
-    }),
+    // Tempo medio de espera ate o atendimento (proxy pra "resposta media").
+    // Bem mais barato que walking todas as mensagens, e mais fiel ao SLA.
+    prisma.$queryRaw<Array<{ avg_sec: number | null; count: bigint }>>`
+      SELECT
+        AVG(EXTRACT(EPOCH FROM ("startedAt" - "waitingFrom")))::DOUBLE PRECISION AS avg_sec,
+        COUNT(*) AS count
+      FROM service_sessions
+      WHERE "endedAt" >= ${yesterday} AND "endedAt" IS NOT NULL
+    `,
+    // Volume por hora hoje, agregado direto no Postgres (24 linhas no max).
+    prisma.$queryRaw<Array<{ hour: number; count: bigint }>>`
+      SELECT EXTRACT(HOUR FROM "createdAt")::INT AS hour, COUNT(*)::INT AS count
+      FROM messages
+      WHERE "createdAt" >= ${todayStart} AND direction = 'INBOUND'
+      GROUP BY hour
+      ORDER BY hour
+    `,
     prisma.user.findMany({
       where: { isActive: true, role: "AGENT" },
       select: {
@@ -62,46 +76,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }),
   ])
 
-  // Resposta média (últimas 24h): tempo entre inbound do cliente e
-  // primeiro outbound do agente que o atende.
-  const recentMessages = await prisma.message.findMany({
-    where: { createdAt: { gte: yesterday } },
-    select: { contactId: true, direction: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
-  })
-  const byContact = new Map<string, Array<{ d: MessageDirection; t: number }>>()
-  for (const m of recentMessages) {
-    const arr = byContact.get(m.contactId) ?? []
-    arr.push({ d: m.direction, t: m.createdAt.getTime() })
-    byContact.set(m.contactId, arr)
-  }
-  let respSum = 0
-  let respCount = 0
-  for (const msgs of byContact.values()) {
-    for (let i = 0; i < msgs.length; i++) {
-      if (msgs[i].d === MessageDirection.INBOUND) {
-        const nextOut = msgs.slice(i + 1).find((m) => m.d === MessageDirection.OUTBOUND)
-        if (nextOut) {
-          respSum += nextOut.t - msgs[i].t
-          respCount += 1
-        }
-      }
+  // Monta os 24 buckets a partir das linhas retornadas (nem toda hora tem dado).
+  const volumeByHour = new Array<number>(24).fill(0)
+  for (const row of volumeRows) {
+    if (row.hour >= 0 && row.hour < 24) {
+      volumeByHour[row.hour] = Number(row.count)
     }
   }
-  const avgResponseMin = respCount > 0
-    ? +(respSum / respCount / 60_000).toFixed(1)
-    : null
 
-  // Volume hoje agrupado por hora (24 buckets, 0-23).
-  const volumeByHour = new Array(24).fill(0) as number[]
-  for (const m of inboundToday) {
-    const h = m.createdAt.getHours()
-    volumeByHour[h] += 1
-  }
+  const avgWaitSec = waitingAgg[0]?.avg_sec ?? null
+  const avgResponseMin = avgWaitSec !== null ? +(avgWaitSec / 60).toFixed(1) : null
 
-  // Presença real: derivada do Set de clientes SSE (quem tem aba aberta).
-  // Sem isso, antes mostravamos todo agente cadastrado como "online" — ruim
-  // pro admin que via "4 online" 3h da manha.
   const online = getOnlineUserIds()
 
   return NextResponse.json({

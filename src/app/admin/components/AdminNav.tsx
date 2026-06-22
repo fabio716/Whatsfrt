@@ -1,6 +1,7 @@
 "use client"
 
 import { usePathname, useRouter } from "next/navigation"
+import { APP_VERSION } from "@/lib/version"
 
 type Role = "ADMIN" | "AGENT"
 
@@ -227,6 +228,9 @@ export default function AdminNav({ userRole }: Readonly<{ userRole: Role }>) {
           </svg>
           Sair
         </button>
+        <p className="mt-2 px-3 text-[10px] font-medium text-zinc-300">
+          WhatsFRT v{APP_VERSION}
+        </p>
       </div>
     </nav>
   )
