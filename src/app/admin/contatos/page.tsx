@@ -209,8 +209,9 @@ export default function ContatosPage() {
           </select>
         </div>
 
-        {/* Table */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm">
+        {/* Table — overflow-x-auto pra que tabelas largas (com varios campos)
+            nao cortem a coluna de Acoes em monitores menores. */}
+        <div className="overflow-x-auto overflow-y-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-sm text-zinc-400">
               <svg className="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -224,10 +225,10 @@ export default function ContatosPage() {
               {contacts.length === 0 ? "Nenhum contato cadastrado. Importe um CSV para começar." : "Nenhum contato encontrado."}
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[860px] text-sm">
               <thead>
                 <tr className="border-b border-zinc-100">
-                  {["Nome", "Empresa", "Cidade", "Telefone", "Status", "Agente", ""].map((h, i, arr) => (
+                  {["Nome", "Empresa / Cidade", "Telefone", "Status", "Agente", ""].map((h, i, arr) => (
                     <th key={`${h}-${i}`} className={`px-5 py-3.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 ${i === arr.length - 1 ? "text-right" : "text-left"}`}>{h}</th>
                   ))}
                 </tr>
@@ -246,10 +247,14 @@ export default function ContatosPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3.5 text-zinc-600">
-                        {c.empresa ?? <span className="text-zinc-300">—</span>}
-                      </td>
-                      <td className="px-5 py-3.5 text-zinc-600">
-                        {c.cidade ?? <span className="text-zinc-300">—</span>}
+                        {c.empresa || c.cidade ? (
+                          <div className="space-y-0.5">
+                            {c.empresa && <p className="truncate text-zinc-700">{c.empresa}</p>}
+                            {c.cidade && <p className="truncate text-[11px] text-zinc-400">{c.cidade}</p>}
+                          </div>
+                        ) : (
+                          <span className="text-zinc-300">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 font-mono text-xs text-zinc-500">{phone(c.whatsappId)}</td>
                       <td className="px-5 py-3.5">
