@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { endActiveSession, markAwaitingRating } from "@/lib/serviceTracking"
-import { sendEvolutionText } from "@/lib/evolution"
+import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 import { broadcast } from "@/lib/sse-emitter"
 import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 
@@ -75,15 +75,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, ratingRequested: false })
   }
 
-  // 3 — Pede a nota. Envia mensagem outbound + marca AWAITING_RATING.
-  const sent = await sendEvolutionText(contact.whatsappId, RATING_REQUEST)
+  // 3 — Pede a nota. Envia via dispatcher (Z-API ou Evolution conforme env).
+  // Salva messageId pra status ticks funcionarem.
+  const result = await sendWhatsAppText(contact.whatsappId, RATING_REQUEST)
   const saved = await prisma.message.create({
     data: {
       body: RATING_REQUEST,
       direction: MessageDirection.OUTBOUND,
-      status: sent ? MessageStatus.SENT : MessageStatus.FAILED,
+      status: result.ok ? MessageStatus.SENT : MessageStatus.FAILED,
       contactId,
       agentId: session.id,
+      ...(result.messageId ? { whatsappKeyId: result.messageId } : {}),
+      ...(result.ok ? {} : { errorMsg: result.errorMsg }),
     },
   })
 
