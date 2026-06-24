@@ -5,7 +5,53 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { prisma } from "@/lib/prisma"
-import { ChatStatus } from "@/generated/prisma/enums"
+import { ChatStatus, Department } from "@/generated/prisma/enums"
+
+// Roteamento da URA: dado um departamento alvo, escolhe o agente menos
+// carregado (menos contatos IN_SERVICE no momento) que esteja ativo e
+// pertença ao departamento. Sem ninguém no setor → fallback pra qualquer
+// AGENT ativo (melhor entregar que perder o contato na fila invisível).
+// Sem ninguém ativo no sistema → retorna null e quem chamou mantém em
+// WAITING_AGENT pro admin assumir.
+export async function pickAgentForDepartment(
+  targetDepartment: string,
+): Promise<string | null> {
+  const validDept = Object.values(Department).includes(
+    targetDepartment as Department,
+  )
+    ? (targetDepartment as Department)
+    : null
+
+  const candidates = await prisma.user.findMany({
+    where: {
+      role: "AGENT",
+      isActive: true,
+      ...(validDept ? { department: validDept } : {}),
+    },
+    select: {
+      id: true,
+      _count: { select: { assignedContacts: { where: { chatStatus: ChatStatus.IN_SERVICE } } } },
+    },
+  })
+
+  if (candidates.length === 0 && validDept) {
+    // Fallback: nenhum agente naquele setor — pega qualquer AGENT ativo.
+    const fallback = await prisma.user.findMany({
+      where: { role: "AGENT", isActive: true },
+      select: {
+        id: true,
+        _count: { select: { assignedContacts: { where: { chatStatus: ChatStatus.IN_SERVICE } } } },
+      },
+    })
+    if (fallback.length === 0) return null
+    fallback.sort((a, b) => a._count.assignedContacts - b._count.assignedContacts)
+    return fallback[0].id
+  }
+
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => a._count.assignedContacts - b._count.assignedContacts)
+  return candidates[0].id
+}
 
 // Chamado quando a URA decide que o contato precisa de agente humano.
 export async function markWaitingForAgent(contactId: string): Promise<void> {

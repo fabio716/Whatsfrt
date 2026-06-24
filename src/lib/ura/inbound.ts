@@ -13,7 +13,7 @@ import { broadcast } from "@/lib/sse-emitter"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
-import { markWaitingForAgent } from "@/lib/serviceTracking"
+import { markWaitingForAgent, pickAgentForDepartment, assignAgent } from "@/lib/serviceTracking"
 
 interface ContactSnapshot {
   id: string
@@ -88,7 +88,8 @@ export async function handleInboundForUra(
   const cfg = await getUraConfigCached()
   if (!cfg.isActive) return
 
-  const optionMap = Object.fromEntries(cfg.options.map((o) => [o.digit, o.label]))
+  // digit → opção completa (label + targetDepartment) pra rotear ao setor certo.
+  const optionMap = Object.fromEntries(cfg.options.map((o) => [o.digit, o]))
 
   if (contact.chatStatus === ChatStatus.IDLE) {
     const bizStatus = isBusinessHour(cfg)
@@ -109,15 +110,42 @@ export async function handleInboundForUra(
 
   if (contact.chatStatus === ChatStatus.IN_URA) {
     const option = inboundText.trim()
-    const label = optionMap[option]
-    if (label) {
-      // Marca o instante em que entrou em fila — base para "tempo de espera"
-      // na tela Equipe ao vivo.
+    const chosen = optionMap[option]
+    if (chosen) {
+      // 1 — Marca tempo de espera (base do cronômetro em Equipe ao vivo).
       await markWaitingForAgent(contact.id)
-      await sendUraMessage(
-        contact,
-        `✅ Você selecionou *${label}*.\nUm agente irá te atender em breve. Aguarde! 🙏`,
-      )
+
+      // 2 — Tenta auto-atribuir ao agente do setor escolhido. Sem isso o
+      // contato fica WAITING_AGENT sem dono, e como o painel filtra por
+      // assignedUserId pro AGENT, ninguém do setor vê e só o admin enxerga.
+      const agentId = await pickAgentForDepartment(chosen.targetDepartment)
+      if (agentId) {
+        await assignAgent(contact.id, agentId)
+        await sendUraMessage(
+          contact,
+          `✅ Você selecionou *${chosen.label}*.\nUm de nossos atendentes já vai te responder. 🙏`,
+        )
+        // Notifica o agente atribuído pra abrir conversa em tempo real.
+        broadcast({
+          type: "new_message",
+          data: {
+            id: `ura-route-${contact.id}-${Date.now()}`,
+            body: "[URA] Contato roteado pra você",
+            direction: MessageDirection.INBOUND,
+            status: MessageStatus.DELIVERED,
+            createdAt: new Date().toISOString(),
+            agentId: null,
+            contactId: contact.id,
+            contact: { ...contact, assignedUserId: agentId, chatStatus: ChatStatus.IN_SERVICE },
+          },
+        }, agentId)
+      } else {
+        // Sem agente disponível no setor — mantém WAITING_AGENT pro admin assumir.
+        await sendUraMessage(
+          contact,
+          `✅ Você selecionou *${chosen.label}*.\nUm agente irá te atender em breve. Aguarde! 🙏`,
+        )
+      }
     } else {
       await sendUraMessage(contact, `⚠️ Opção inválida. Por favor, escolha:\n\n${cfg.greetingText}`)
     }
