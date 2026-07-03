@@ -20,7 +20,9 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
       <AdminNav userRole={session.role} />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <EvolutionStatusBanner />
-        {children}
+        <div className="flex-1 overflow-y-auto">
+          {children}
+        </div>
       </main>
     </div>
   )
