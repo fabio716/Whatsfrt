@@ -14,6 +14,34 @@ import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { markWaitingForAgent, pickAgentForDepartment, assignAgent } from "@/lib/serviceTracking"
+import { markAwaitingUf, isAwaitingUf, clearAwaitingUf, parseUf, pickAgentForUf } from "@/lib/ura/salesFlow"
+
+const ASK_UF_MESSAGE =
+  "🗺️ Perfeito! Para te encaminhar pra vendedora que atende sua região, " +
+  "me conta: *qual é o seu estado?*\n\n" +
+  "Você pode responder com a sigla (ex: *SP*, *RJ*, *PR*) ou o nome completo."
+
+async function routeToAgent(
+  contact: ContactSnapshot,
+  agentId: string,
+  successMsg: string,
+): Promise<void> {
+  await assignAgent(contact.id, agentId)
+  await sendUraMessage(contact, successMsg)
+  broadcast({
+    type: "new_message",
+    data: {
+      id: `ura-route-${contact.id}-${Date.now()}`,
+      body: "[URA] Contato roteado pra você",
+      direction: MessageDirection.INBOUND,
+      status: MessageStatus.DELIVERED,
+      createdAt: new Date().toISOString(),
+      agentId: null,
+      contactId: contact.id,
+      contact: { ...contact, assignedUserId: agentId, chatStatus: ChatStatus.IN_SERVICE },
+    },
+  }, agentId)
+}
 
 interface ContactSnapshot {
   id: string
@@ -109,9 +137,63 @@ export async function handleInboundForUra(
   }
 
   if (contact.chatStatus === ChatStatus.IN_URA) {
+    // ─── Sub-fluxo Vendas: aguardando UF do cliente ─────────────────────────
+    // Setado quando ele acabou de escolher Vendas no menu. Proxima msg dele
+    // deve ser o estado (sigla ou nome). Rota vai pra vendedora do Territory
+    // correspondente; se nao rolar (UF invalida ou sem cobertura), cai no
+    // fallback do departamento VENDAS.
+    if (await isAwaitingUf(contact.whatsappId)) {
+      const uf = parseUf(inboundText)
+      if (!uf) {
+        await sendUraMessage(
+          contact,
+          "⚠️ Não consegui identificar seu estado.\n\n" +
+          "Responde só com a sigla (ex: *SP*, *RJ*, *PR*, *RS*) ou digita o nome completo.",
+        )
+        return
+      }
+
+      await markWaitingForAgent(contact.id)
+      await clearAwaitingUf(contact.whatsappId)
+
+      const territoryAgent = await pickAgentForUf(uf)
+      if (territoryAgent) {
+        await routeToAgent(
+          contact,
+          territoryAgent,
+          `✅ Estado *${uf}* confirmado.\nA vendedora que atende sua região já vai te responder. 🙏`,
+        )
+        return
+      }
+
+      // Territorio sem cobertura — cai no rateio geral de VENDAS.
+      const fallbackAgent = await pickAgentForDepartment("VENDAS")
+      if (fallbackAgent) {
+        await routeToAgent(
+          contact,
+          fallbackAgent,
+          `✅ Estado *${uf}* recebido.\nUm de nossos vendedores já vai te responder. 🙏`,
+        )
+      } else {
+        await sendUraMessage(
+          contact,
+          `✅ Estado *${uf}* recebido.\nUm agente irá te atender em breve. Aguarde! 🙏`,
+        )
+      }
+      return
+    }
+
     const option = inboundText.trim()
     const chosen = optionMap[option]
     if (chosen) {
+      // Vendas tem passo extra: perguntar UF antes de rotear, pra escolher a
+      // vendedora do Territory certo. Outros setores vao direto pro rateio.
+      if (chosen.targetDepartment === "VENDAS") {
+        await markAwaitingUf(contact.whatsappId)
+        await sendUraMessage(contact, ASK_UF_MESSAGE)
+        return
+      }
+
       // 1 — Marca tempo de espera (base do cronômetro em Equipe ao vivo).
       await markWaitingForAgent(contact.id)
 
@@ -120,25 +202,11 @@ export async function handleInboundForUra(
       // assignedUserId pro AGENT, ninguém do setor vê e só o admin enxerga.
       const agentId = await pickAgentForDepartment(chosen.targetDepartment)
       if (agentId) {
-        await assignAgent(contact.id, agentId)
-        await sendUraMessage(
+        await routeToAgent(
           contact,
+          agentId,
           `✅ Você selecionou *${chosen.label}*.\nUm de nossos atendentes já vai te responder. 🙏`,
         )
-        // Notifica o agente atribuído pra abrir conversa em tempo real.
-        broadcast({
-          type: "new_message",
-          data: {
-            id: `ura-route-${contact.id}-${Date.now()}`,
-            body: "[URA] Contato roteado pra você",
-            direction: MessageDirection.INBOUND,
-            status: MessageStatus.DELIVERED,
-            createdAt: new Date().toISOString(),
-            agentId: null,
-            contactId: contact.id,
-            contact: { ...contact, assignedUserId: agentId, chatStatus: ChatStatus.IN_SERVICE },
-          },
-        }, agentId)
       } else {
         // Sem agente disponível no setor — mantém WAITING_AGENT pro admin assumir.
         await sendUraMessage(
