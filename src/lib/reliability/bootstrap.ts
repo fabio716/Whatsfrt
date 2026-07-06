@@ -34,7 +34,21 @@ export async function startReliabilityWorkers(): Promise<void> {
   startInboundWorker(handleInboundJob)
   startWatchdog()
   startReaper()
-  startServiceReaper()
+
+  // Service reaper (auto-encerrar atendimentos e pedidos de nota) esta
+  // DESLIGADO por default. Motivo: em 2026-07-06 varias agentes reportaram
+  // que conversas em andamento sumiam da tela de repente — porque o reaper
+  // encerrava sessoes com >30min sem msg mesmo estando ativas, e o painel
+  // do agente filtra por assignedUserId (que o reaper zerava).
+  // Politica atual: agente encerra manualmente com o botao 'Encerrar
+  // atendimento'. Nada some sozinho. Historico preservado.
+  // Pra reativar: SERVICE_REAPER=on no .env.
+  if (process.env.SERVICE_REAPER === "on") {
+    startServiceReaper()
+    console.log("[reliability] service reaper LIGADO (SERVICE_REAPER=on)")
+  } else {
+    console.log("[reliability] service reaper DESLIGADO (agente encerra manual)")
+  }
 
   console.log("[reliability] todos os workers ativos")
 }

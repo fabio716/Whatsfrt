@@ -95,7 +95,10 @@ export interface SendMediaArgs {
 export async function sendMedia(args: SendMediaArgs): Promise<SendResult> {
   const provider = activeProvider()
   const publicBase = resolvePublicBaseUrl()
-  const signed = signMediaUrl(args.filename, 300).queryString
+  // 30min de TTL — algumas vezes a Z-API baixa a midia com atraso (fila
+  // interna dela). Com 5min PDFs grandes davam token expirado antes de
+  // chegar no cliente.
+  const signed = signMediaUrl(args.filename, 30 * 60).queryString
   const url = publicBase
     ? `${publicBase}/api/media/${args.filename}?${signed}`
     : null

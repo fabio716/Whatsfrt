@@ -2,10 +2,18 @@
 // Service Reaper — encerra atendimentos esquecidos.
 //
 // Cenários cobertos:
-//   1. Agente assumiu, ficou 30min sem trocar mensagem → auto-encerra
-//   2. Cliente em AWAITING_RATING há > 30min sem responder → libera contato
+//   1. Agente assumiu, ficou MUITO tempo sem trocar mensagem → auto-encerra
+//      (default 4h; ajustavel via SERVICE_STALE_HOURS)
+//   2. Cliente em AWAITING_RATING há > 2h sem responder → libera contato
 //
 // Roda a cada 5 minutos. Idempotente — pode rodar 2x sem efeito.
+//
+// ⚠ IMPORTANTE: o auto-encerramento faz o contato SUMIR do painel do agente
+// (o filtro do /admin/chats e por assignedUserId=session.id, e o reaper
+// zera esse campo). Por isso o cutoff foi aumentado de 30min pra 4h em
+// 2026-07-06 — funcionarias reportaram conversas ativas sumindo do nada.
+// Pra desligar completamente sem tocar em codigo, defina SERVICE_REAPER=off
+// no .env.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { prisma } from "@/lib/prisma"
@@ -14,8 +22,9 @@ import { abandonRating, endActiveSession } from "@/lib/serviceTracking"
 import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 
 const REAP_INTERVAL_MS = 5 * 60 * 1000
-const STALE_SERVICE_AFTER_MS = 30 * 60 * 1000 // sem mensagem por 30min
-const STALE_RATING_AFTER_MS = 30 * 60 * 1000 // sem responder nota por 30min
+const STALE_SERVICE_HOURS = Number.parseFloat(process.env.SERVICE_STALE_HOURS ?? "4")
+const STALE_SERVICE_AFTER_MS = STALE_SERVICE_HOURS * 60 * 60 * 1000
+const STALE_RATING_AFTER_MS = 2 * 60 * 60 * 1000 // 2h sem responder nota
 
 const RATING_TIMEOUT_MSG = "Atendimento encerrado por inatividade. Se precisar de novo, é só mandar uma mensagem que voltamos a te atender."
 

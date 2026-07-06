@@ -114,6 +114,26 @@ function pickMediaEndpoint(mimetype: string): string {
   return "send-document"
 }
 
+// Extrai extensao (sem ponto) do fileName ou do mimetype.
+// send-document da Z-API EXIGE esse campo pro cliente ver o icone/nome
+// correto do arquivo. Sem ele, PDFs chegam como generic file ou falham.
+function pickExtension(fileName: string | undefined, mimetype: string): string {
+  if (fileName) {
+    const dot = fileName.lastIndexOf(".")
+    if (dot > 0 && dot < fileName.length - 1) {
+      return fileName.slice(dot + 1).toLowerCase()
+    }
+  }
+  // Fallback: derivar do mimetype (application/pdf -> pdf).
+  const slash = mimetype.lastIndexOf("/")
+  if (slash > -1) {
+    const sub = mimetype.slice(slash + 1).toLowerCase()
+    // Remove prefixos tipo 'x-' e sufixos com ';'.
+    return sub.replace(/^x-/, "").split(";")[0].trim() || "bin"
+  }
+  return "bin"
+}
+
 export interface ZapiMediaOpts {
   mediaUrlOrBase64: string  // ex: "https://app/api/media/abc?token=..." ou "<base64>"
   mimetype: string
@@ -129,6 +149,12 @@ export async function sendZapiMedia(
   const url = buildUrl(endpoint)
   if (!url) return { ok: false, messageId: null, attempts: 0, errorMsg: "ZAPI envs ausentes" }
 
+  // Documento requer path com extensao no endpoint (/send-document/{ext}) —
+  // Z-API usa isso pra indexar o tipo. Falta desse segmento fazia PDF chegar
+  // como arquivo generico ou nao chegar (funcionaria reportou 2026-07-06).
+  const extension = pickExtension(opts.fileName, opts.mimetype)
+  const finalUrl = endpoint === "send-document" ? `${url}/${extension}` : url
+
   // Campo específico por endpoint. Z-API espera "image"/"video"/"audio"/"document".
   const fieldName = endpoint === "send-image" ? "image"
     : endpoint === "send-video" ? "video"
@@ -141,8 +167,9 @@ export async function sendZapiMedia(
   }
   if (opts.caption) body.caption = opts.caption
   if (opts.fileName) body.fileName = opts.fileName
+  if (endpoint === "send-document") body.extension = extension
 
-  const res = await evolutionFetch(url, {
+  const res = await evolutionFetch(finalUrl, {
     label: `zapi:${endpoint}`,
     method: "POST",
     headers: commonHeaders(),
