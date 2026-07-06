@@ -15,13 +15,14 @@ import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { markWaitingForAgent, assignAgent } from "@/lib/serviceTracking"
 import {
-  markAwaitingVendedora,
-  isAwaitingVendedora,
-  clearAwaitingVendedora,
-  getVendedoras,
-  buildVendedorasMenu,
-  pickVendedoraByDigit,
-} from "@/lib/ura/vendedoraFlow"
+  markAwaitingSubMenu,
+  getAwaitingSubMenu,
+  clearAwaitingSubMenu,
+  getAgentsForSubMenu,
+  buildSubMenu,
+  pickAgentByDigit,
+  SUB_MENU_BY_DEPARTMENT,
+} from "@/lib/ura/subMenuFlow"
 
 interface ContactSnapshot {
   id: string
@@ -117,39 +118,47 @@ export async function handleInboundForUra(
   }
 
   if (contact.chatStatus === ChatStatus.IN_URA) {
-    // ─── Sub-fluxo Vendas: aguardando escolha da vendedora ────────────────
-    // Setado logo apos o cliente escolher "1 Vendas" no menu principal.
-    // Proxima msg dele deve ser o numero da vendedora. Se acertar, atribui
-    // direto pra ela (cliente escolheu explicitamente — pula fila). Se
-    // errar, mostra o menu de novo.
-    if (await isAwaitingVendedora(contact.whatsappId)) {
-      const vendedoras = await getVendedoras()
-      if (vendedoras.length === 0) {
-        // Nenhuma vendedora ativa agora — cai na fila padrao de VENDAS.
-        await clearAwaitingVendedora(contact.whatsappId)
-        await markWaitingForAgent(contact.id, "VENDAS")
+    // ─── Sub-fluxo: aguardando escolha do atendente ────────────────────────
+    // Setado logo apos o cliente escolher setor com sub-menu (Vendas ou
+    // Assistencia). Proxima msg dele deve ser o numero. Se acertar, atribui
+    // direto (cliente escolheu, pula fila). Se errar, mostra menu de novo.
+    const awaitingDepartments = await getAwaitingSubMenu(contact.whatsappId)
+    if (awaitingDepartments) {
+      // Reconstroi a config do sub-menu a partir do primeiro dept guardado.
+      const cfgKey = Object.keys(SUB_MENU_BY_DEPARTMENT).find((k) =>
+        SUB_MENU_BY_DEPARTMENT[k].departments.every(
+          (d) => awaitingDepartments.includes(d),
+        ),
+      )
+      const subCfg = cfgKey ? SUB_MENU_BY_DEPARTMENT[cfgKey] : null
+      const agents = await getAgentsForSubMenu(awaitingDepartments)
+      if (agents.length === 0 || !subCfg) {
+        // Ninguem ativo agora ou config sumiu — cai na fila padrao do 1o dept.
+        await clearAwaitingSubMenu(contact.whatsappId)
+        await markWaitingForAgent(contact.id, awaitingDepartments[0])
         await sendUraMessage(
           contact,
           "✅ Recebido!\nUm de nossos atendentes já vai te responder. 🙏",
         )
         return
       }
-      const picked = pickVendedoraByDigit(vendedoras, inboundText)
+      const picked = pickAgentByDigit(agents, inboundText)
       if (!picked) {
         await sendUraMessage(
           contact,
-          "⚠️ Não entendi. Por favor, escolha o número da vendedora:\n\n" +
-          buildVendedorasMenu(vendedoras),
+          "⚠️ Não entendi. Por favor, escolha o número da opção:\n\n" +
+          buildSubMenu(agents, subCfg),
         )
         return
       }
-      await clearAwaitingVendedora(contact.whatsappId)
+      await clearAwaitingSubMenu(contact.whatsappId)
       await assignAgent(contact.id, picked.id)
+      const prefix = subCfg.prefixByDept?.[picked.department] ?? ""
       await sendUraMessage(
         contact,
-        `✅ Você escolheu *${picked.name}*.\nEla já vai te responder. 🙏`,
+        `✅ Você escolheu *${prefix}${picked.name}*.\nJá vai te responder. 🙏`,
       )
-      // Notifica a vendedora escolhida via SSE (chat abre em tempo real).
+      // Notifica o agente escolhido via SSE (chat abre em tempo real).
       broadcast({
         type: "new_message",
         data: {
@@ -169,21 +178,22 @@ export async function handleInboundForUra(
     const option = inboundText.trim()
     const chosen = optionMap[option]
     if (chosen) {
-      // Vendas tem sub-menu: cliente escolhe qual vendedora quer falar. As
-      // demais opcoes vao direto pra Fila de espera do setor.
-      if (chosen.targetDepartment === "VENDAS") {
-        const vendedoras = await getVendedoras()
-        if (vendedoras.length === 0) {
-          // Sem vendedora cadastrada — cai direto na fila do setor.
-          await markWaitingForAgent(contact.id, "VENDAS")
+      // Setores com sub-menu (Vendas, Assistencia): cliente escolhe qual
+      // atendente. Demais setores: vao direto pra Fila de espera.
+      const subCfg = SUB_MENU_BY_DEPARTMENT[chosen.targetDepartment]
+      if (subCfg) {
+        const agents = await getAgentsForSubMenu(subCfg.departments)
+        if (agents.length === 0) {
+          // Sem agente cadastrado — cai direto na fila do setor.
+          await markWaitingForAgent(contact.id, chosen.targetDepartment)
           await sendUraMessage(
             contact,
             `✅ Você selecionou *${chosen.label}*.\nUm de nossos atendentes já vai te responder. 🙏`,
           )
           return
         }
-        await markAwaitingVendedora(contact.whatsappId)
-        await sendUraMessage(contact, buildVendedorasMenu(vendedoras))
+        await markAwaitingSubMenu(contact.whatsappId, subCfg.departments)
+        await sendUraMessage(contact, buildSubMenu(agents, subCfg))
         return
       }
 
