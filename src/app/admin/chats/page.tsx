@@ -79,7 +79,11 @@ export default async function ChatsPage(
     rawContacts.unshift(requestedContact)
   }
 
-  const agents = isAgent ? [] : allAgents
+  // Lista de agentes ativa vai pra AGENT tambem — usada pelo modal de
+  // Transferir conversa (agente pode transferir contato proprio pra colega).
+  // Antes vinha [] pra AGENT porque so admin transferia; agora AGENT tambem
+  // precisa ver a lista de destinatarios possiveis.
+  const agents = allAgents
 
   const contacts: ContactData[] = rawContacts.map((c) => ({
     id: c.id,
