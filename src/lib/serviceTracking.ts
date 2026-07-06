@@ -54,12 +54,19 @@ export async function pickAgentForDepartment(
 }
 
 // Chamado quando a URA decide que o contato precisa de agente humano.
-export async function markWaitingForAgent(contactId: string): Promise<void> {
+// Marca o contato como WAITING_AGENT e opcionalmente registra qual setor
+// ele escolheu na URA. pendingDepartment eh usado pela pagina Fila de espera
+// pra filtrar quais agentes veem o contato.
+export async function markWaitingForAgent(
+  contactId: string,
+  pendingDepartment?: string,
+): Promise<void> {
   await prisma.contact.update({
     where: { id: contactId },
     data: {
       chatStatus: ChatStatus.WAITING_AGENT,
       waitingAgentSince: new Date(),
+      ...(pendingDepartment ? { pendingDepartment } : {}),
     },
   })
 }
@@ -97,6 +104,7 @@ export async function assignAgent(
       assignedUserId: agentId,
       chatStatus: ChatStatus.IN_SERVICE,
       inServiceSince: now,
+      pendingDepartment: null,
     },
   })
 

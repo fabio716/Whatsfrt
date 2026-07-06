@@ -153,7 +153,9 @@ export async function handleInboundForUra(
         return
       }
 
-      await markWaitingForAgent(contact.id)
+      // Marca WAITING_AGENT ja registrando VENDAS como setor alvo. Assim,
+      // se ninguem cobrir a UF, a Fila de espera so mostra pros vendedores.
+      await markWaitingForAgent(contact.id, "VENDAS")
       await clearAwaitingUf(contact.whatsappId)
 
       const territoryAgent = await pickAgentForUf(uf)
@@ -194,8 +196,9 @@ export async function handleInboundForUra(
         return
       }
 
-      // 1 — Marca tempo de espera (base do cronômetro em Equipe ao vivo).
-      await markWaitingForAgent(contact.id)
+      // 1 — Marca tempo de espera + guarda o setor escolhido pra que a Fila
+      // de espera so mostre esse contato pros agentes do setor certo.
+      await markWaitingForAgent(contact.id, chosen.targetDepartment)
 
       // 2 — Tenta auto-atribuir ao agente do setor escolhido. Sem isso o
       // contato fica WAITING_AGENT sem dono, e como o painel filtra por

@@ -119,6 +119,13 @@ model Contact {
   empresa  String?
   cidade   String?
 
+  // Departamento alvo que o cliente escolheu na URA (ex: "VENDAS", "FINANCEIRO").
+  // Populado quando a URA nao consegue auto-atribuir (nenhum agente livre no
+  // setor) e o contato entra em WAITING_AGENT. Usado pela pagina Fila de
+  // espera pra mostrar cada contato APENAS pros agentes do setor escolhido —
+  // agente de Vendas nao ve fila do Financeiro e vice versa.
+  pendingDepartment String?
+
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
@@ -130,6 +137,7 @@ model Contact {
   @@index([assignedUserId])
   @@index([cooperativeId])
   @@index([chatStatus])
+  @@index([pendingDepartment])
   @@map("contacts")
 }
 

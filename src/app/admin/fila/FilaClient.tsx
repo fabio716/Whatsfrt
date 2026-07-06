@@ -10,6 +10,7 @@ interface QueueItem {
   profilePhotoUrl: string | null
   chatStatus: "WAITING_AGENT" | "IN_URA"
   waitingAgentSince: string | null
+  pendingDepartment: string | null
   empresa: string | null
   cidade: string | null
   lastMessage: string | null
@@ -122,6 +123,11 @@ export default function FilaClient({ userName }: Readonly<{ userName: string }>)
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-zinc-800">{q.name}</span>
+                    {q.pendingDepartment && (
+                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                        {q.pendingDepartment}
+                      </span>
+                    )}
                     {q.chatStatus === "IN_URA" && (
                       <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
                         na URA
