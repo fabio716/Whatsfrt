@@ -812,10 +812,10 @@ export default function ChatsClient({
                   </button>
                 )}
 
-                {/* Menu "..." — só admin. Agrupa ações secundárias e
-                    a destrutiva (Apagar) atrás de mais um clique,
-                    evitando erro humano e header sobrecarregado. */}
-                {!isAgent && (
+                {/* Menu "..." — agrupa acoes secundarias. Agente ve so
+                    'Transferir conversa' (quando e dono). Admin ve tudo:
+                    Transferir + Liberar + Apagar. */}
+                {(!isAgent || isOwner) && (
                   <div ref={headerMenuRef} className="relative">
                     <button
                       type="button"
@@ -848,32 +848,36 @@ export default function ChatsClient({
                           </svg>
                           Transferir conversa
                         </button>
-                        <div className="my-0.5 h-px bg-zinc-100" />
-                        <button
-                          type="button"
-                          onClick={() => { setShowHeaderMenu(false); void handleRelease() }}
-                          disabled={releasing}
-                          role="menuitem"
-                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
-                          title="Remove atribuicao e devolve o cliente pra URA"
-                        >
-                          <svg viewBox="0 0 24 24" className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                          {releasing ? "Liberando…" : "Liberar contato (voltar pra URA)"}
-                        </button>
-                        <div className="my-0.5 h-px bg-zinc-100" />
-                        <button
-                          type="button"
-                          onClick={() => { setShowHeaderMenu(false); setConfirmDelete(true) }}
-                          role="menuitem"
-                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-red-600 transition-colors hover:bg-red-50"
-                        >
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          Apagar conversa
-                        </button>
+                        {!isAgent && (
+                          <>
+                            <div className="my-0.5 h-px bg-zinc-100" />
+                            <button
+                              type="button"
+                              onClick={() => { setShowHeaderMenu(false); void handleRelease() }}
+                              disabled={releasing}
+                              role="menuitem"
+                              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                              title="Remove atribuicao e devolve o cliente pra URA"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              {releasing ? "Liberando…" : "Liberar contato (voltar pra URA)"}
+                            </button>
+                            <div className="my-0.5 h-px bg-zinc-100" />
+                            <button
+                              type="button"
+                              onClick={() => { setShowHeaderMenu(false); setConfirmDelete(true) }}
+                              role="menuitem"
+                              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-red-600 transition-colors hover:bg-red-50"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Apagar conversa
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1121,7 +1125,7 @@ export default function ChatsClient({
       </main>
 
       {/* ─── Transferir Conversa Modal ──────────────────────────────────── */}
-      {showTransfer && activeContact && !isAgent && (
+      {showTransfer && activeContact && (!isAgent || isOwner) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="text-[15px] font-semibold text-zinc-900">Transferir &quot;{activeContact.name}&quot;</h2>
@@ -1130,21 +1134,27 @@ export default function ChatsClient({
             </p>
 
             <div className="mt-4 space-y-2">
-              <button
-                type="button"
-                onClick={() => void handleTransfer({ toMe: true })}
-                disabled={transferring}
-                className="flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-zinc-900 px-3 py-2.5 text-[13px] font-semibold text-white hover:bg-zinc-700 disabled:opacity-50"
-              >
-                <span>👤 Trazer pra mim</span>
-                <span className="text-[11px] opacity-70">Eu (Admin)</span>
-              </button>
+              {/* 'Trazer pra mim' so pra admin — agente ja e dono quando ve
+                  esse modal (regra: agente so transfere contato proprio) */}
+              {!isAgent && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleTransfer({ toMe: true })}
+                    disabled={transferring}
+                    className="flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-zinc-900 px-3 py-2.5 text-[13px] font-semibold text-white hover:bg-zinc-700 disabled:opacity-50"
+                  >
+                    <span>👤 Trazer pra mim</span>
+                    <span className="text-[11px] opacity-70">Eu (Admin)</span>
+                  </button>
 
-              <div className="my-2 flex items-center gap-2">
-                <div className="h-px flex-1 bg-zinc-200" />
-                <span className="text-[10px] uppercase text-zinc-400">ou transferir para</span>
-                <div className="h-px flex-1 bg-zinc-200" />
-              </div>
+                  <div className="my-2 flex items-center gap-2">
+                    <div className="h-px flex-1 bg-zinc-200" />
+                    <span className="text-[10px] uppercase text-zinc-400">ou transferir para</span>
+                    <div className="h-px flex-1 bg-zinc-200" />
+                  </div>
+                </>
+              )}
 
               <div className="max-h-60 space-y-1 overflow-y-auto">
                 {agents

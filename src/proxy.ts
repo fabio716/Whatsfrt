@@ -33,6 +33,7 @@ const ADMIN_ONLY_PREFIXES = [
 // continua fazendo o gate por ownership/dept quando aplicavel.
 const AGENT_ALLOWED_ADMIN_APIS = [
   /^\/api\/admin\/contacts\/[^/]+\/assign$/,
+  /^\/api\/admin\/contacts\/[^/]+\/transfer$/,
 ]
 
 export async function proxy(request: NextRequest) {
