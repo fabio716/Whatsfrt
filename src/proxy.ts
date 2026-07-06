@@ -27,6 +27,14 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/avaliacoes",
 ]
 
+// APIs sob /api/admin/* que AGENT tambem pode chamar. Sao endpoints que
+// existem no path admin por historico, mas fazem parte do fluxo de
+// atendimento do agente (assumir contato da Fila). A auth interna da rota
+// continua fazendo o gate por ownership/dept quando aplicavel.
+const AGENT_ALLOWED_ADMIN_APIS = [
+  /^\/api\/admin\/contacts\/[^/]+\/assign$/,
+]
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const token = request.cookies.get(COOKIE_NAME)?.value
@@ -48,7 +56,8 @@ export async function proxy(request: NextRequest) {
 
     // AGENT acessando área admin-only: bloquear.
     const isAdminOnlyPage = ADMIN_ONLY_PREFIXES.some((p) => pathname.startsWith(p))
-    const isAdminOnlyApi = pathname.startsWith("/api/admin/")
+    const isAgentAllowed = AGENT_ALLOWED_ADMIN_APIS.some((re) => re.test(pathname))
+    const isAdminOnlyApi = pathname.startsWith("/api/admin/") && !isAgentAllowed
     if (isAdminOnlyPage) {
       return NextResponse.redirect(new URL("/admin/chats", request.url))
     }
