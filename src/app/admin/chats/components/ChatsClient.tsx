@@ -190,6 +190,7 @@ export default function ChatsClient({
   const [recordingSec, setRecordingSec] = useState(0)
   const [recordedBlob, setRecordedBlob] = useState<{ blob: Blob; url: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [releasing, setReleasing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
   const headerMenuRef = useRef<HTMLDivElement>(null)
@@ -404,6 +405,35 @@ export default function ChatsClient({
       setEnding(false)
     }
   }, [activeId, ending])
+
+  // Liberar contato — reseta pra IDLE (URA volta a disparar na proxima msg).
+  // Usado quando contato ficou colado num agente por causa de teste ou
+  // encerramento sem nota. So admin ve.
+  const handleRelease = useCallback(async () => {
+    if (!activeId || releasing) return
+    if (!confirm(
+      "Liberar contato?\n\n" +
+      "Isso remove a atribuicao de agente e volta o cliente pra URA na proxima mensagem. " +
+      "Nao apaga historico, nao pede nota, nao avisa o cliente.",
+    )) return
+    setReleasing(true)
+    try {
+      const res = await fetch(`/api/admin/contacts/${activeId}/release`, { method: "POST" })
+      if (res.ok) {
+        setContacts((prev) => prev.map((c) =>
+          c.id === activeId
+            ? { ...c, assignedUserId: null, chatStatus: "IDLE" as ContactData["chatStatus"] }
+            : c
+        ))
+        setActiveId(null)
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        alert(data.error ?? "Nao foi possivel liberar.")
+      }
+    } finally {
+      setReleasing(false)
+    }
+  }, [activeId, releasing])
 
   // Take over contact
   const handleTakeOver = useCallback(async () => {
@@ -814,6 +844,20 @@ export default function ChatsClient({
                             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m-4 6H4m0 0l4 4m-4-4l4-4" />
                           </svg>
                           Transferir conversa
+                        </button>
+                        <div className="my-0.5 h-px bg-zinc-100" />
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMenu(false); void handleRelease() }}
+                          disabled={releasing}
+                          role="menuitem"
+                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                          title="Remove atribuicao e devolve o cliente pra URA"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          {releasing ? "Liberando…" : "Liberar contato (voltar pra URA)"}
                         </button>
                         <div className="my-0.5 h-px bg-zinc-100" />
                         <button
