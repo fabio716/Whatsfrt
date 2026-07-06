@@ -13,7 +13,15 @@ import { broadcast } from "@/lib/sse-emitter"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
-import { markWaitingForAgent } from "@/lib/serviceTracking"
+import { markWaitingForAgent, assignAgent } from "@/lib/serviceTracking"
+import {
+  markAwaitingVendedora,
+  isAwaitingVendedora,
+  clearAwaitingVendedora,
+  getVendedoras,
+  buildVendedorasMenu,
+  pickVendedoraByDigit,
+} from "@/lib/ura/vendedoraFlow"
 
 interface ContactSnapshot {
   id: string
@@ -109,13 +117,77 @@ export async function handleInboundForUra(
   }
 
   if (contact.chatStatus === ChatStatus.IN_URA) {
+    // ─── Sub-fluxo Vendas: aguardando escolha da vendedora ────────────────
+    // Setado logo apos o cliente escolher "1 Vendas" no menu principal.
+    // Proxima msg dele deve ser o numero da vendedora. Se acertar, atribui
+    // direto pra ela (cliente escolheu explicitamente — pula fila). Se
+    // errar, mostra o menu de novo.
+    if (await isAwaitingVendedora(contact.whatsappId)) {
+      const vendedoras = await getVendedoras()
+      if (vendedoras.length === 0) {
+        // Nenhuma vendedora ativa agora — cai na fila padrao de VENDAS.
+        await clearAwaitingVendedora(contact.whatsappId)
+        await markWaitingForAgent(contact.id, "VENDAS")
+        await sendUraMessage(
+          contact,
+          "✅ Recebido!\nUm de nossos atendentes já vai te responder. 🙏",
+        )
+        return
+      }
+      const picked = pickVendedoraByDigit(vendedoras, inboundText)
+      if (!picked) {
+        await sendUraMessage(
+          contact,
+          "⚠️ Não entendi. Por favor, escolha o número da vendedora:\n\n" +
+          buildVendedorasMenu(vendedoras),
+        )
+        return
+      }
+      await clearAwaitingVendedora(contact.whatsappId)
+      await assignAgent(contact.id, picked.id)
+      await sendUraMessage(
+        contact,
+        `✅ Você escolheu *${picked.name}*.\nEla já vai te responder. 🙏`,
+      )
+      // Notifica a vendedora escolhida via SSE (chat abre em tempo real).
+      broadcast({
+        type: "new_message",
+        data: {
+          id: `ura-route-${contact.id}-${Date.now()}`,
+          body: "[URA] Cliente te escolheu no menu",
+          direction: MessageDirection.INBOUND,
+          status: MessageStatus.DELIVERED,
+          createdAt: new Date().toISOString(),
+          agentId: null,
+          contactId: contact.id,
+          contact: { ...contact, assignedUserId: picked.id, chatStatus: ChatStatus.IN_SERVICE },
+        },
+      }, picked.id)
+      return
+    }
+
     const option = inboundText.trim()
     const chosen = optionMap[option]
     if (chosen) {
-      // Sempre vai pra Fila de espera com o setor escolhido — nunca
-      // auto-atribui. Todos os agentes do setor veem em /admin/fila e o
-      // primeiro que clicar "Assumir" pega. Vendas por enquanto tambem
-      // segue essa regra (sem sub-fluxo de UF/Territory).
+      // Vendas tem sub-menu: cliente escolhe qual vendedora quer falar. As
+      // demais opcoes vao direto pra Fila de espera do setor.
+      if (chosen.targetDepartment === "VENDAS") {
+        const vendedoras = await getVendedoras()
+        if (vendedoras.length === 0) {
+          // Sem vendedora cadastrada — cai direto na fila do setor.
+          await markWaitingForAgent(contact.id, "VENDAS")
+          await sendUraMessage(
+            contact,
+            `✅ Você selecionou *${chosen.label}*.\nUm de nossos atendentes já vai te responder. 🙏`,
+          )
+          return
+        }
+        await markAwaitingVendedora(contact.whatsappId)
+        await sendUraMessage(contact, buildVendedorasMenu(vendedoras))
+        return
+      }
+
+      // Demais setores: sempre vai pra Fila de espera com o setor escolhido.
       await markWaitingForAgent(contact.id, chosen.targetDepartment)
       await sendUraMessage(
         contact,
