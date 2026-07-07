@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
+import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendMedia as sendWhatsAppMedia } from "@/lib/whatsapp"
@@ -133,6 +133,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     },
   })
 
+  // Enviar mídia = estou atendendo. Promove IDLE→IN_SERVICE (mesma razão do
+  // /api/messages/send): sem isso o contato ficava "Inativo" e sumia da lista.
+  let effectiveStatus: ChatStatus = contact.chatStatus
+  if (contact.chatStatus === ChatStatus.IDLE && contact.assignedUserId) {
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: {
+        chatStatus: ChatStatus.IN_SERVICE,
+        inServiceSince: contact.inServiceSince ?? new Date(),
+      },
+    })
+    effectiveStatus = ChatStatus.IN_SERVICE
+  }
+
   broadcast({
     type: "new_message",
     data: {
@@ -143,7 +157,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       contact: {
         id: contact.id, whatsappId: contact.whatsappId,
         name: contact.name, profilePhotoUrl: contact.profilePhotoUrl,
-        chatStatus: contact.chatStatus,
+        chatStatus: effectiveStatus,
         assignedUserId: contact.assignedUserId,
       },
     },

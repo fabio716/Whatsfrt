@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
+import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
@@ -189,6 +189,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     },
   })
 
+  // 3b — Enviar mensagem = estou atendendo. Se o contato estava IDLE (ex:
+  // cliente novo que a agente acabou de cadastrar e ainda não respondeu),
+  // promove pra IN_SERVICE. Sem isso ele ficava "Inativo" e o painel escondia
+  // da lista — a conversa "sumia" da tela da agente mesmo ela tendo enviado.
+  let effectiveStatus: ChatStatus = contact.chatStatus
+  if (contact.chatStatus === ChatStatus.IDLE && contact.assignedUserId) {
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: {
+        chatStatus: ChatStatus.IN_SERVICE,
+        inServiceSince: contact.inServiceSince ?? new Date(),
+      },
+    })
+    effectiveStatus = ChatStatus.IN_SERVICE
+  }
+
   // 4 — Notifica clientes via SSE.
   // 4a — new_message: pro UI do agente exibir o balão verde imediato sem F5.
   broadcast({
@@ -208,7 +224,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         whatsappId: contact.whatsappId,
         name: contact.name,
         profilePhotoUrl: contact.profilePhotoUrl,
-        chatStatus: contact.chatStatus,
+        chatStatus: effectiveStatus,
         assignedUserId: contact.assignedUserId,
       },
     },

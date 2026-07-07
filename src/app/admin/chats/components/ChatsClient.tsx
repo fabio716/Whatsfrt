@@ -223,10 +223,12 @@ export default function ChatsClient({
     if (c.id === requestedContactId) return true
     // Sempre mostra o contato que está aberto agora
     if (c.id === activeId) return true
-    // Esconde contatos IDLE (Inativo) — eles ficavam poluindo a lista após
-    // encerramento automático ou avaliação completa, e o agente achava que
-    // tinha "duplicatas".
-    return c.chatStatus !== "IDLE"
+    // Esconde contatos IDLE (Inativo) SEM agente — esses são os encerrados/
+    // avaliados que poluíam a lista e pareciam "duplicatas".
+    // MAS um IDLE que ainda está atribuído a alguém é uma conversa que a
+    // agente iniciou (ex: cliente novo que ainda não respondeu). Esse NÃO pode
+    // sumir da tela — era a causa de "a conversa some e não consigo enviar".
+    return c.chatStatus !== "IDLE" || !!c.assignedUserId
   })
 
   // Scroll
