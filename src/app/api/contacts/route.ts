@@ -36,9 +36,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     select: { id: true, assignedUserId: true, deletedAt: true },
   })
 
-  // Prevent stealing a contact that already belongs to another user.
+  // Contato já pertence a outro vendedor. Não roubamos automaticamente — mas
+  // devolvemos os dados pra UI oferecer a ação "Requisitar cliente" (traz o
+  // cliente pra carteira de quem pediu, via /api/contacts/[id]/request-transfer).
   if (existing && !existing.deletedAt && existing.assignedUserId && existing.assignedUserId !== session.id) {
-    return NextResponse.json({ error: "Este contato já pertence a outro usuário" }, { status: 409 })
+    const owner = await prisma.user.findUnique({
+      where: { id: existing.assignedUserId },
+      select: { name: true },
+    })
+    return NextResponse.json(
+      {
+        error: `Este cliente já está na carteira de ${owner?.name ?? "outro vendedor"}.`,
+        contactId: existing.id,
+        currentOwnerName: owner?.name ?? null,
+        canRequest: true,
+      },
+      { status: 409 },
+    )
   }
 
   const contact = await prisma.contact.upsert({

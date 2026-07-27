@@ -41,6 +41,9 @@ export default function ImportarPage() {
   const [avulsoErr, setAvulsoErr] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [whatsCheck, setWhatsCheck] = useState<{ exists: boolean | null; message: string } | null>(null)
+  // Cliente que já está em outra carteira e pode ser requisitado (resposta 409).
+  const [requestable, setRequestable] = useState<{ contactId: string; ownerName: string | null } | null>(null)
+  const [requesting, setRequesting] = useState(false)
 
   const handleCheckWhatsApp = async () => {
     if (!avulsoPhone.trim() || checking) return
@@ -66,6 +69,7 @@ export default function ImportarPage() {
     setSavingAvulso(true)
     setAvulsoSaved(null)
     setAvulsoErr(null)
+    setRequestable(null)
     try {
       const res = await fetch("/api/contacts", {
         method: "POST",
@@ -84,6 +88,15 @@ export default function ImportarPage() {
         error?: string
         whatsappValidated?: boolean | null
         warning?: string | null
+        canRequest?: boolean
+        contactId?: string
+        currentOwnerName?: string | null
+      }
+      // Cliente já está na carteira de outro vendedor: oferece "Requisitar".
+      if (res.status === 409 && data.canRequest && data.contactId) {
+        setRequestable({ contactId: data.contactId, ownerName: data.currentOwnerName ?? null })
+        setAvulsoErr(data.error ?? "Este cliente já está em outra carteira.")
+        return
       }
       if (!res.ok || !data.id) throw new Error(data.error ?? "Erro ao cadastrar contato")
       setAvulsoSaved({
@@ -102,6 +115,44 @@ export default function ImportarPage() {
       setAvulsoErr(err instanceof Error ? err.message : "Erro ao cadastrar contato")
     } finally {
       setSavingAvulso(false)
+    }
+  }
+
+  // Requisita o cliente que está em outra carteira, trazendo-o para a minha.
+  const handleRequest = async () => {
+    if (!requestable || requesting) return
+    setRequesting(true)
+    setAvulsoErr(null)
+    try {
+      const res = await fetch(`/api/contacts/${requestable.contactId}/request-transfer`, {
+        method: "POST",
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        contactId?: string
+        name?: string
+        previousOwner?: string | null
+        error?: string
+      }
+      if (!res.ok || !data.contactId) throw new Error(data.error ?? "Erro ao requisitar cliente")
+      setAvulsoSaved({
+        id: data.contactId,
+        name: data.name ?? avulsoName.trim(),
+        created: false,
+        whatsappValidated: null,
+        warning: data.previousOwner
+          ? `Cliente trazido da carteira de ${data.previousOwner} para a sua.`
+          : "Cliente trazido para a sua carteira.",
+      })
+      setRequestable(null)
+      setAvulsoName("")
+      setAvulsoPhone("")
+      setAvulsoEmpresa("")
+      setAvulsoCidade("")
+    } catch (err) {
+      setAvulsoErr(err instanceof Error ? err.message : "Erro ao requisitar cliente")
+    } finally {
+      setRequesting(false)
     }
   }
 
@@ -290,7 +341,7 @@ export default function ImportarPage() {
                 id="avulso-tel"
                 type="tel"
                 value={avulsoPhone}
-                onChange={(e) => { setAvulsoPhone(e.target.value); setWhatsCheck(null) }}
+                onChange={(e) => { setAvulsoPhone(e.target.value); setWhatsCheck(null); setRequestable(null) }}
                 placeholder="Ex: 11 99999-9999"
                 className="flex-1 rounded border px-3 py-2 text-sm"
               />
@@ -424,6 +475,26 @@ export default function ImportarPage() {
         )}
 
         {avulsoErr && <p className="mt-3 text-sm text-red-600">❌ {avulsoErr}</p>}
+
+        {/* Cliente já está em outra carteira — oferece requisitar pra minha */}
+        {requestable && (
+          <div className="mt-3 rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
+            <p className="text-sm font-medium text-amber-900">
+              📇 Este cliente já está na carteira{requestable.ownerName ? ` de ${requestable.ownerName}` : " de outro vendedor"}.
+            </p>
+            <p className="mt-1 text-xs text-amber-700">
+              Você pode trazê-lo para a sua carteira para conseguir conversar com ele. O movimento fica registrado no histórico.
+            </p>
+            <button
+              type="button"
+              onClick={handleRequest}
+              disabled={requesting}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:bg-gray-300"
+            >
+              {requesting ? "Requisitando..." : "📥 Requisitar cliente para minha carteira"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow p-6 mb-6">

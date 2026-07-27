@@ -32,7 +32,9 @@ export interface ImportResult {
   success: boolean
   total: number
   created: number
-  updated: number
+  // Contatos que já existiam na base e foram MANTIDOS como estavam
+  // (dono/carteira preservado). A importação nunca sobrescreve existentes.
+  existing: number
   skipped: number
   skippedNumbers: string[]
 }
@@ -117,47 +119,39 @@ export async function importContactsFromCsv(
     return { error: "Nenhum contato válido encontrado no CSV", status: 422 }
   }
 
+  // Importação é ADITIVA: só insere números que ainda NÃO existem na base.
+  // Contatos já existentes são deixados exatamente como estão — o dono/carteira
+  // (assignedUserId) NUNCA é sobrescrito, evitando que uma importação "roube"
+  // clientes de outro vendedor. Para trazer um cliente já existente para a
+  // própria carteira existe a ação explícita "Requisitar cliente".
+  // A deduplicação dentro do arquivo já foi feita acima (Set `seen`); aqui o
+  // skipDuplicates cobre os que já estão no banco (whatsappId é @unique).
   let created = 0
-  let updated = 0
 
-  const BATCH = 100
+  const BATCH = 500
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH)
-    const results = await prisma.$transaction(
-      batch.map((r) =>
-        prisma.contact.upsert({
-          where: { whatsappId: r.whatsappId },
-          create: {
-            whatsappId: r.whatsappId,
-            name: r.name,
-            empresa: r.empresa,
-            cidade: r.cidade,
-            assignedUserId: opts.assignedUserId,
-            ...(opts.cooperativeId ? { cooperativeId: opts.cooperativeId } : {}),
-            chatStatus: "IDLE",
-          },
-          update: {
-            name: r.name,
-            // Só sobrescreve empresa/cidade do CSV se o CSV trouxer valor
-            ...(r.empresa ? { empresa: r.empresa } : {}),
-            ...(r.cidade ? { cidade: r.cidade } : {}),
-            assignedUserId: opts.assignedUserId,
-            ...(opts.cooperativeId ? { cooperativeId: opts.cooperativeId } : {}),
-          },
-        }),
-      ),
-    )
-    for (const r of results) {
-      const isNew = r.createdAt.getTime() === r.updatedAt.getTime()
-      if (isNew) created++; else updated++
-    }
+    const res = await prisma.contact.createMany({
+      data: batch.map((r) => ({
+        whatsappId: r.whatsappId,
+        name: r.name,
+        empresa: r.empresa,
+        cidade: r.cidade,
+        assignedUserId: opts.assignedUserId,
+        ...(opts.cooperativeId ? { cooperativeId: opts.cooperativeId } : {}),
+        chatStatus: "IDLE" as const,
+      })),
+      skipDuplicates: true,
+    })
+    created += res.count
   }
 
   return {
     success: true,
     total: rows.length,
     created,
-    updated,
+    // Tudo que estava no CSV (válido) e não foi criado é porque já existia.
+    existing: rows.length - created,
     skipped: skipped.length,
     skippedNumbers: skipped,
   }

@@ -21,7 +21,7 @@ interface ContactRow {
 }
 
 interface ImportResult {
-  total: number; created: number; updated: number; skipped: number; agentName: string | null
+  total: number; created: number; existing: number; skipped: number; agentName: string | null
 }
 
 // ─── Design helpers ───────────────────────────────────────────────────────────
@@ -393,7 +393,7 @@ export default function ContatosPage() {
               {importResult && (
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-[12px] text-emerald-700 space-y-0.5">
                   <p className="font-semibold">✓ Importação concluída{importResult.agentName ? ` para ${importResult.agentName}` : ""}</p>
-                  <p>Total: {importResult.total} · Novos: {importResult.created} · Atualizados: {importResult.updated} · Ignorados: {importResult.skipped}</p>
+                  <p>Total: {importResult.total} · Novos: {importResult.created} · Já existentes (mantidos): {importResult.existing} · Ignorados: {importResult.skipped}</p>
                 </div>
               )}
 

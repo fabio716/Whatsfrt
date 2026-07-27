@@ -367,6 +367,28 @@ model Cooperative {
   @@map("cooperatives")
 }
 
+// Histórico de requisição/transferência de carteira.
+// Registrado sempre que um cliente é trazido para a carteira de um vendedor
+// via "Requisitar cliente". Guarda snapshots dos nomes (contato/vendedores)
+// para o histórico sobreviver a mudanças de nome ou desativação de usuários.
+// Tabela puramente aditiva: não referencia (FK) contacts/users de propósito,
+// para o log não ser apagado se o contato/usuário for removido.
+model ContactTransferLog {
+  id           String   @id @default(cuid())
+  contactId    String
+  contactName  String   // snapshot do nome do cliente no momento
+  fromUserId   String?  // vendedor anterior (null se estava sem carteira)
+  fromUserName String?  // snapshot do nome do vendedor anterior
+  toUserId     String   // vendedor que requisitou (novo dono)
+  toUserName   String   // snapshot do nome do novo dono
+  createdAt    DateTime @default(now())
+
+  @@index([contactId])
+  @@index([toUserId])
+  @@index([fromUserId])
+  @@map("contact_transfer_logs")
+}
+
 // Territórios de Vendas (Geográfico) - Tab 4
 model Territory {
   id       String   @id @default(cuid())
