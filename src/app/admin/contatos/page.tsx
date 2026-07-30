@@ -14,7 +14,7 @@ interface ContactRow {
   whatsappId: string
   empresa: string | null
   cidade: string | null
-  chatStatus: "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE"
+  chatStatus: "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "AWAITING_RATING"
   assignedUser: { id: string; name: string } | null
   cooperative: { id: string; name: string } | null
   createdAt: string
@@ -27,11 +27,16 @@ interface ImportResult {
 // ─── Design helpers ───────────────────────────────────────────────────────────
 
 const STATUS_CFG: Record<ContactRow["chatStatus"], { label: string; cls: string }> = {
-  IDLE:          { label: "Livre",       cls: "bg-zinc-100 text-zinc-500" },
-  IN_URA:        { label: "Na URA",      cls: "bg-blue-50 text-blue-600" },
-  WAITING_AGENT: { label: "Aguardando",  cls: "bg-amber-50 text-amber-600" },
-  IN_SERVICE:    { label: "Em Serviço",  cls: "bg-emerald-50 text-emerald-700" },
+  IDLE:            { label: "Livre",        cls: "bg-zinc-100 text-zinc-500" },
+  IN_URA:          { label: "Na URA",       cls: "bg-blue-50 text-blue-600" },
+  WAITING_AGENT:   { label: "Aguardando",   cls: "bg-amber-50 text-amber-600" },
+  IN_SERVICE:      { label: "Em Serviço",   cls: "bg-emerald-50 text-emerald-700" },
+  AWAITING_RATING: { label: "Avaliando",    cls: "bg-violet-50 text-violet-600" },
 }
+
+// Fallback defensivo: qualquer status desconhecido/novo nao pode mais quebrar
+// a pagina (antes, um status fora do mapa gerava undefined -> tela preta).
+const STATUS_FALLBACK = { label: "—", cls: "bg-zinc-100 text-zinc-400" }
 
 function phone(jid: string) {
   return jid.replace("@s.whatsapp.net", "").replace("@g.us", "")
@@ -265,7 +270,7 @@ export default function ContatosPage() {
               </thead>
               <tbody className="divide-y divide-zinc-50">
                 {filtered.map((c) => {
-                  const st = STATUS_CFG[c.chatStatus]
+                  const st = STATUS_CFG[c.chatStatus] ?? STATUS_FALLBACK
                   return (
                     <tr key={c.id} className="transition-colors hover:bg-zinc-50/70">
                       <td className="px-5 py-3.5">
