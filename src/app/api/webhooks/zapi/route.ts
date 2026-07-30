@@ -288,6 +288,22 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
   const messageId = extractStatusMessageId(p)
   if (!messageId) return { matched: false, skipped: `no messageId in payload (keys: ${Object.keys(p).join(",")})` }
 
+  const newStatus = isRead ? MessageStatus.READ : MessageStatus.DELIVERED
+
+  // Recibos de TRANSMISSAO (CampaignLog): campanhas so criam linha em CampaignLog,
+  // nunca em Message. Por isso atualizamos aqui ANTES de procurar a Message —
+  // senao o recibo batia no early-return de "Message nao encontrada" e a
+  // transmissao ficava eternamente como "nao recebido".
+  // Guarda de ordem: um DELIVERED atrasado nao rebaixa um log ja em READ.
+  const campaignUpd = await prisma.campaignLog.updateMany({
+    where: isRead
+      ? { messageKeyId: messageId }
+      : { messageKeyId: messageId, status: { not: "READ" } },
+    data: isRead
+      ? { status: "READ", readAt: new Date(), deliveredAt: new Date() }
+      : { status: "DELIVERED", deliveredAt: new Date() },
+  })
+
   const message = await prisma.message.findFirst({
     where: { whatsappKeyId: messageId },
     select: {
@@ -297,7 +313,11 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
       contact: { select: { whatsappId: true } },
     },
   })
-  if (!message) return { matched: false, skipped: `messageId=${messageId} not found in DB` }
+  if (!message) {
+    // Sem Message de chat: se o recibo bateu numa transmissao, foi sucesso.
+    if (campaignUpd.count > 0) return { matched: true, newStatus }
+    return { matched: false, skipped: `messageId=${messageId} not found in DB` }
+  }
 
   // Anti-spoofing relaxado: o campo p.phone do Z-API nem sempre eh o
   // destinatario (pode vir como phoneDevice/sender em alguns callbacks).
@@ -311,7 +331,6 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
   }
 
   const ranks: Record<string, number> = { PENDING: 0, SENT: 1, FAILED: 1, DELIVERED: 2, READ: 3 }
-  const newStatus = isRead ? MessageStatus.READ : MessageStatus.DELIVERED
   if ((ranks[newStatus] ?? 0) <= (ranks[message.status] ?? 0)) {
     return { matched: true, skipped: `already at ${message.status}`, oldStatus: message.status, newStatus }
   }
@@ -324,13 +343,6 @@ async function handleMessageStatus(p: ZapiStatusPayload): Promise<StatusUpdateRe
   broadcast({
     type: "message_update",
     data: { id: message.id, status: newStatus, contactId: message.contactId },
-  })
-
-  await prisma.campaignLog.updateMany({
-    where: { messageKeyId: messageId },
-    data: isRead
-      ? { status: "READ", readAt: new Date(), deliveredAt: new Date() }
-      : { status: "DELIVERED", deliveredAt: new Date() },
   })
 
   return { matched: true, oldStatus: message.status, newStatus }
