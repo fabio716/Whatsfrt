@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { sendCampaignMessage } from "@/lib/evolution"
+import { sendText, sendMedia } from "@/lib/whatsapp"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Campaign Queue com Proteções Avançadas
@@ -152,18 +152,28 @@ export async function processCampaign(campaignId: string): Promise<void> {
       const personalizedMessage = campaign.messageText.replace(/\{nome\}/gi, log.contact.name)
 
       try {
-        const { ok, messageId } = await sendCampaignMessage(log.contact.whatsappId, {
-          text: personalizedMessage,
-          mediaUrl: campaign.mediaUrl,
-          mediaType: campaign.mediaType,
-        })
+        // Envia pelo dispatcher (lib/whatsapp), que respeita o provedor ativo
+        // (Z-API ou Evolution). Antes o disparo era cravado na Evolution, o que
+        // fazia TODA transmissao falhar quando o provedor conectado era a Z-API.
+        const hasMedia = Boolean(campaign.mediaUrl && campaign.mediaType)
+        const r = hasMedia
+          ? await sendMedia({
+              whatsappId: log.contact.whatsappId,
+              filename: (campaign.mediaUrl as string).replace(/^\/api\/media\//, ""),
+              mimetype: campaign.mediaType as string,
+              caption: personalizedMessage,
+              fileName: (campaign.mediaUrl as string).split("/").pop() ?? undefined,
+            })
+          : await sendText(log.contact.whatsappId, personalizedMessage)
+        const ok = r.ok
+        const messageId = r.messageId
         await prisma.campaignLog.update({
           where: { id: log.id },
           data: {
             status: ok ? "SENT" : "FAILED",
             sentAt: ok ? new Date() : null,
             messageKeyId: messageId,
-            errorMsg: ok ? null : "Evolution API retornou falha",
+            errorMsg: ok ? null : (r.errorMsg ?? "Falha no envio"),
           },
         })
 
