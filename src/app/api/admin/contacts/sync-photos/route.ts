@@ -17,7 +17,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
 
-  const BATCH = 150
+  // Lote pequeno de propósito: o site roda atrás de Cloudflare, que corta a
+  // conexão em ~100s. Um lote de 150 contatos (cada um com uma chamada à
+  // Z-API + 250ms de respiro) passava desse tempo e o Cloudflare devolvia
+  // 504 pro navegador, mesmo o processamento continuando no servidor por
+  // baixo dos panos — o front nunca via o resultado real.
+  const BATCH = 25
 
   let body: { cursorId?: string } = {}
   try {

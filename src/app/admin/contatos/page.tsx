@@ -164,8 +164,10 @@ export default function ContatosPage() {
     try {
       // Roda em loop, avançando pelo cursor (id) — sem isso, um lote onde
       // ninguém tem foto pública ficava reprocessando os MESMOS contatos pra
-      // sempre e nunca chegava no resto da base.
-      for (let i = 0; i < 60; i++) {
+      // sempre e nunca chegava no resto da base. Lote do servidor agora é
+      // pequeno (25, por causa do timeout do Cloudflare), então precisa de
+      // bem mais voltas pra cobrir uma base grande — até 400 chamadas.
+      for (let i = 0; i < 400; i++) {
         const res = await fetch("/api/admin/contacts/sync-photos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
