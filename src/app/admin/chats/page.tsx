@@ -94,16 +94,20 @@ export default async function ChatsPage(
     profilePhotoUrl: c.profilePhotoUrl,
     chatStatus: c.chatStatus,
     assignedUserId: c.assignedUserId,
-    messages: c.messages.map((m) => ({
-      id: m.id,
-      body: m.body,
-      direction: m.direction,
-      status: m.status,
-      createdAt: m.createdAt.toISOString(),
-      agentId: m.agentId,
-      mediaUrl: m.mediaUrl,
-      mediaType: m.mediaType,
-    })),
+    // Chat limpo pós-takeover: só mostra mensagens a partir do historyResetAt.
+    // Assim o novo dono não herda o histórico do agente anterior.
+    messages: c.messages
+      .filter((m) => !c.historyResetAt || m.createdAt >= c.historyResetAt!)
+      .map((m) => ({
+        id: m.id,
+        body: m.body,
+        direction: m.direction,
+        status: m.status,
+        createdAt: m.createdAt.toISOString(),
+        agentId: m.agentId,
+        mediaUrl: m.mediaUrl,
+        mediaType: m.mediaType,
+      })),
   }))
 
   return (

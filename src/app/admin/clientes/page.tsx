@@ -84,21 +84,14 @@ export default function MeusClientesPage() {
     return () => clearTimeout(t)
   }, [load])
 
-  // Contatos são compartilhados, mas o CHAT é privado. Ao clicar em Conversar:
-  //  - cliente livre  → traz pra minha carteira e abre o chat
-  //  - já é meu        → abre direto
-  //  - de outro vendedor → precisa de autorização (não abre)
+  // Contatos são abertos. Ao clicar em Conversar, o contato passa a ser meu
+  // (takeover imediato, sem autorização) e o chat abre LIMPO — sem o histórico
+  // do agente anterior. Se já é meu, apenas abre.
   const openChat = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`/api/contacts/${id}/request-transfer`, { method: "POST" })
-      // 202 = cliente é de outro vendedor → solicitação de autorização enviada.
-      if (res.status === 202) {
-        const data = (await res.json()) as { message?: string }
-        alert(data.message ?? "Solicitação enviada. Aguarde a autorização para assumir este cliente.")
-        return
-      }
+      await fetch(`/api/contacts/${id}/request-transfer`, { method: "POST" })
     } catch {
-      // se a requisição falhar por rede, ainda tenta abrir (pode ser meu)
+      // se falhar por rede, ainda tenta abrir (pode já ser meu)
     }
     router.push(`/admin/chats?contact=${id}`)
   }, [router])

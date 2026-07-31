@@ -125,6 +125,11 @@ model Contact {
   // setor escolhido — agente de Vendas nao ve fila do Financeiro e vice versa.
   pendingDepartment String?
 
+  // Marco de "recomeço" do chat. Quando um contato é ASSUMIDO de outro agente,
+  // é setado para now() — o chat passa a mostrar só as mensagens a partir daqui,
+  // sem herdar o histórico do agente anterior (atendimento começa limpo).
+  historyResetAt  DateTime?
+
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?

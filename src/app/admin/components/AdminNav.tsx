@@ -1,6 +1,5 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { APP_VERSION } from "@/lib/version"
 
@@ -51,16 +50,6 @@ const NAV_GROUPS: NavGroup[] = [
         icon: (
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12a8 8 0 01-11.7 7.1L4 20l1-4.3A8 8 0 1121 12z" />
-          </svg>
-        ),
-      },
-      {
-        href: "/admin/solicitacoes",
-        label: "Solicitações",
-        roles: ["ADMIN", "AGENT"],
-        icon: (
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         ),
       },
@@ -205,30 +194,6 @@ export default function AdminNav({ userRole }: Readonly<{ userRole: Role }>) {
   const pathname = usePathname()
   const router = useRouter()
 
-  // Contador de solicitações de atendimento pendentes (badge no menu).
-  const [pendingReq, setPendingReq] = useState(0)
-  useEffect(() => {
-    let alive = true
-    const load = async () => {
-      try {
-        const res = await fetch("/api/transfer-requests")
-        if (!res.ok || !alive) return
-        const data = (await res.json()) as { incoming?: unknown[] }
-        setPendingReq(data.incoming?.length ?? 0)
-      } catch { /* ignore */ }
-    }
-    void load()
-    const es = new EventSource("/api/sse")
-    es.onmessage = (e) => {
-      try {
-        const p = JSON.parse(e.data) as { type?: string }
-        if (p.type === "transfer_request" || p.type === "transfer_decision") void load()
-      } catch { /* ignore */ }
-    }
-    const t = setInterval(() => void load(), 20000)
-    return () => { alive = false; es.close(); clearInterval(t) }
-  }, [])
-
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" })
     router.push("/login")
@@ -272,12 +237,7 @@ export default function AdminNav({ userRole }: Readonly<{ userRole: Role }>) {
                     }`}
                   >
                     {item.icon}
-                    <span className="flex-1">{item.label}</span>
-                    {item.href === "/admin/solicitacoes" && pendingReq > 0 && (
-                      <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-                        {pendingReq}
-                      </span>
-                    )}
+                    {item.label}
                   </a>
                 )
               })}
