@@ -81,8 +81,16 @@ export async function handleInboundForUra(
   // Mensagem só de mídia (áudio/foto/vídeo/doc sem caption) NÃO dispara URA.
   // Quem manda áudio quer falar com humano, não escolher menu. Manda direto
   // pra fila de WAITING_AGENT pra um agente assumir e ouvir.
+  //
+  // MAS: se o cliente já está NO MEIO do menu (IN_URA, aguardando ele digitar
+  // uma opção — ex: mandou o print do carrinho como referência antes de
+  // escolher o setor), NÃO pula pra fila aqui. Isso já causou um bug real:
+  // cliente mandava uma imagem e, 2-3s depois, o número da opção — mas como
+  // o contato já tinha virado WAITING_AGENT (sem departamento) por causa da
+  // imagem, o dígito seguinte era descartado (não existe tratamento de opção
+  // em WAITING_AGENT) e o cliente ficava sem setor, preso na fila geral.
   if (!inboundText.trim()) {
-    if (contact.chatStatus === ChatStatus.IDLE || contact.chatStatus === ChatStatus.IN_URA) {
+    if (contact.chatStatus === ChatStatus.IDLE) {
       await prisma.contact.update({
         where: { id: contact.id },
         data: {

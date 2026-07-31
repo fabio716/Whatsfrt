@@ -3,13 +3,12 @@ import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { ChatStatus, MessageDirection } from "@/generated/prisma/enums"
 
-// Fila de espera. Admin ve TUDO; agente ve APENAS contatos cujo setor
-// escolhido na URA (pendingDepartment) bate com o departamento cadastrado
-// do agente — pra que agente de Financeiro nao pegue lead que era de Vendas
-// e vice versa.
-//
-// Contatos sem pendingDepartment (entrada fora do fluxo URA — audio-only,
-// contato importado, etc.) so aparecem pro admin decidir o destino.
+// Fila de espera. Admin ve TUDO; agente ve contatos cujo setor escolhido na
+// URA (pendingDepartment) bate com o departamento cadastrado do agente — pra
+// que agente de Financeiro nao pegue lead que era de Vendas e vice versa —
+// MAIS os contatos sem pendingDepartment (entrada fora do fluxo URA —
+// audio-only, contato importado, etc.), que ficam visiveis pra TODOS os
+// agentes, ja que ninguem especifico e dono deles ate alguem assumir.
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
@@ -22,11 +21,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       select: { department: true },
     })
     agentDepartment = user?.department ?? null
-    // Agente sem departamento cadastrado nao ve fila nenhuma — evita ver
-    // tudo por acidente. Admin deve corrigir o cadastro em /admin/users.
-    if (!agentDepartment) {
-      return NextResponse.json({ queue: [], timestamp: new Date().toISOString() })
-    }
   }
 
   const contacts = await prisma.contact.findMany({
@@ -34,7 +28,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       deletedAt: null,
       assignedUserId: null,
       chatStatus: { in: [ChatStatus.WAITING_AGENT, ChatStatus.IN_URA] },
-      ...(session.role === "AGENT" ? { pendingDepartment: agentDepartment } : {}),
+      ...(session.role === "AGENT"
+        ? {
+            OR: [
+              { pendingDepartment: null },
+              ...(agentDepartment ? [{ pendingDepartment: agentDepartment }] : []),
+            ],
+          }
+        : {}),
     },
     select: {
       id: true,
