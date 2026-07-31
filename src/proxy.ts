@@ -16,10 +16,12 @@ function getSecret(): Uint8Array {
 }
 
 // Áreas restritas a ADMIN. AGENT recebe 403/redirect para /admin/chats.
+// "/admin/contatos" saiu daqui: agora aberta pro AGENT tambem (só leitura +
+// sincronizar fotos + importar — exportar CSV e liberar contato continuam
+// admin-only via gate interno das respectivas rotas).
 const ADMIN_ONLY_PREFIXES = [
   "/admin/metrics",
   "/admin/users",
-  "/admin/contatos",
   "/admin/ura",
   "/admin/ura-motor",
   "/admin/connect",
@@ -34,6 +36,13 @@ const ADMIN_ONLY_PREFIXES = [
 const AGENT_ALLOWED_ADMIN_APIS = [
   /^\/api\/admin\/contacts\/[^/]+\/assign$/,
   /^\/api\/admin\/contacts\/[^/]+\/transfer$/,
+  // Tela de Contatos aberta pro agente — leitura, sincronizar fotos, importar.
+  // Exportar (/export) e liberar ([id]/release) NAO estao aqui, continuam
+  // admin-only (o proprio route.ts deles usa requireAdmin).
+  /^\/api\/admin\/contacts$/,
+  /^\/api\/admin\/contacts\/sync-photos$/,
+  /^\/api\/admin\/contacts\/import$/,
+  /^\/api\/admin\/ura\/cooperatives$/,
 ]
 
 export async function proxy(request: NextRequest) {

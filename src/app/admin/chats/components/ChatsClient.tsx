@@ -1023,7 +1023,9 @@ export default function ChatsClient({
                     const isOut = msg.direction === "OUTBOUND"
                     // Só dá pra editar texto puro (sem mídia), já enviado, e
                     // só o próprio autor (admin pode editar qualquer uma).
-                    const canEdit = isOut && !msg.mediaUrl && isOwner
+                    // NÃO depende de isOwner: admin edita mensagem que ele
+                    // mesmo mandou mesmo em contato que não é "dele".
+                    const canEdit = isOut && !msg.mediaUrl
                       && (!isAgent || msg.agentId === currentUserId)
                     const isEditingThis = editingMsgId === msg.id
                     return (
@@ -1066,7 +1068,7 @@ export default function ChatsClient({
                                   type="button"
                                   onClick={() => startEdit(msg)}
                                   title="Editar mensagem"
-                                  className="mr-1 text-zinc-400 opacity-0 transition-opacity hover:text-zinc-600 group-hover:opacity-100"
+                                  className="mr-1 text-zinc-500 opacity-60 transition-opacity hover:text-zinc-700 hover:opacity-100"
                                 >
                                   <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />

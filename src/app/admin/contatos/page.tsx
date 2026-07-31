@@ -65,27 +65,41 @@ export default function ContatosPage() {
   // Sincronização de fotos de perfil (roda em lote até acabar).
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  // Papel do usuário — exportar CSV continua exclusivo do admin mesmo com a
+  // tela aberta pro agente.
+  const [isAdmin, setIsAdmin] = useState(false)
   // Resumo final: quantas fotos foram encontradas x quantas não (contato sem
   // foto pública no WhatsApp) — fica visível depois de terminar a varredura.
   const [syncSummary, setSyncSummary] = useState<{ ok: number; semFoto: number } | null>(null)
 
   // ── load data
+  // Usa /api/internal/users (aberto pra qualquer autenticado) em vez de
+  // /api/admin/users — esse último devolve email e é exclusivo da tela de
+  // Equipe (admin). Aqui só precisamos de id/nome/role/department.
   const load = useCallback(async () => {
     const [cRes, uRes, coopRes] = await Promise.all([
       fetch("/api/admin/contacts"),
-      fetch("/api/admin/users"),
+      fetch("/api/internal/users"),
       fetch("/api/admin/ura/cooperatives"),
     ])
     if (cRes.ok) setContacts((await cRes.json()) as ContactRow[])
     if (uRes.ok) {
-      const users = (await uRes.json()) as (AgentOption & { role: string; isActive: boolean })[]
-      setAgents(users.filter((u) => u.role === "AGENT" && u.isActive))
+      const users = (await uRes.json()) as (AgentOption & { role: string })[]
+      setAgents(users.filter((u) => u.role === "AGENT"))
     }
     if (coopRes.ok) setCooperatives((await coopRes.json()) as CooperativeOption[])
     setLoading(false)
   }, [])
 
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    void fetch("/api/me").then(async (res) => {
+      if (!res.ok) return
+      const me = (await res.json()) as { role: string }
+      setIsAdmin(me.role === "ADMIN")
+    })
+  }, [])
 
   // ── filtered list — busca multi-campo (nome, telefone, empresa, cidade).
   // Antes era so nome+telefone. Empresa+cidade vieram da fusao com Clientes
@@ -229,15 +243,17 @@ export default function ContatosPage() {
               </svg>
               {syncing ? "Sincronizando…" : "Sincronizar fotos"}
             </button>
-            <button
-              onClick={() => void handleExport()}
-              className="flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-600 transition-all hover:bg-zinc-50"
-            >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3M8 9V2m0 7l-2.5-2.5M8 9l2.5-2.5" />
-              </svg>
-              Exportar CSV
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => void handleExport()}
+                className="flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-600 transition-all hover:bg-zinc-50"
+              >
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3M8 9V2m0 7l-2.5-2.5M8 9l2.5-2.5" />
+                </svg>
+                Exportar CSV
+              </button>
+            )}
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-1.5 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-zinc-700"

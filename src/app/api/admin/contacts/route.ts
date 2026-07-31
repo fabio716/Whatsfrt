@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAdmin } from "@/app/api/admin/users/route"
+import { requireSession, isErrorResponse } from "@/lib/auth"
 
+// Tela de Contatos (admin) — aberta também pro AGENT (só leitura + sincronizar
+// fotos + importar). Exportar CSV e liberar contato continuam admin-only.
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const session = await requireAdmin(request)
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
+  const auth = await requireSession(request)
+  if (isErrorResponse(auth)) return auth
 
   const contacts = await prisma.contact.findMany({
     where: { deletedAt: null },

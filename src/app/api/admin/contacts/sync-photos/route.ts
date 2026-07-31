@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAdmin } from "@/app/api/admin/users/route"
+import { requireSession, isErrorResponse } from "@/lib/auth"
 import { getProfilePicture } from "@/lib/whatsapp"
 
 // POST /api/admin/contacts/sync-photos
@@ -14,8 +14,8 @@ import { getProfilePicture } from "@/lib/whatsapp"
 // pra sempre e nunca avançava pro resto da base (6000+ contatos nunca eram
 // sequer tentados). Com cursor, cada chamada sempre avança na lista.
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const session = await requireAdmin(request)
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
+  const auth = await requireSession(request)
+  if (isErrorResponse(auth)) return auth
 
   const BATCH = 150
 

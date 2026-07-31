@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin } from "@/app/api/admin/users/route"
+import { requireSession, isErrorResponse } from "@/lib/auth"
 
-// GET - Lista cooperativas
+// GET - Lista cooperativas. Aberto pro AGENT tambem (usado no dropdown de
+// importar contatos na tela de Contatos). POST/PATCH/DELETE continuam admin.
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const session = await requireAdmin(request)
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
+  const auth = await requireSession(request)
+  if (isErrorResponse(auth)) return auth
 
   try {
     const cooperatives = await prisma.cooperative.findMany({

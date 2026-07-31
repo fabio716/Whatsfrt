@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAdmin } from "@/app/api/admin/users/route"
+import { requireSession, isErrorResponse } from "@/lib/auth"
 import { importContactsFromCsv } from "@/lib/contactImport"
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const session = await requireAdmin(request)
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
+  const auth = await requireSession(request)
+  if (isErrorResponse(auth)) return auth
 
   let formData: FormData
   try {
