@@ -23,6 +23,7 @@ import { safeFetchBuffer } from "@/lib/safeFetch"
 import { enqueueInbound } from "@/lib/reliability/queue"
 import { applyRating, parseRating } from "@/lib/serviceTracking"
 import { sendTextOk } from "@/lib/whatsapp"
+import { findOrCreateContact } from "@/lib/contactLookup"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -165,18 +166,11 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
   const messageText = extractText(p)
   const pushName = p.senderName ?? p.chatName ?? whatsappId
 
-  // 1 — Upsert contato
-  const contact = await prisma.contact.upsert({
-    where: { whatsappId },
-    create: {
-      whatsappId,
-      name: pushName,
-      profilePhotoUrl: p.senderPhoto ?? null,
-    },
-    update: {
-      ...(p.senderName ? { name: p.senderName } : {}),
-      ...(p.senderPhoto ? { profilePhotoUrl: p.senderPhoto } : {}),
-    },
+  // 1 — Acha (considerando variante com/sem 9º dígito) ou cria contato
+  const contact = await findOrCreateContact(whatsappId, {
+    name: p.senderName,
+    fallbackName: pushName,
+    profilePhotoUrl: p.senderPhoto,
   })
 
   // 2 — Baixa mídia se houver, salva privado, gera mediaUrl interno

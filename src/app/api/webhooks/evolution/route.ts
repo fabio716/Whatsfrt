@@ -7,6 +7,7 @@ import { fetchMediaBase64, sendEvolutionText } from "@/lib/evolution"
 import { saveMediaBuffer } from "@/lib/mediaStorage"
 import { enqueueInbound } from "@/lib/reliability/queue"
 import { applyRating, parseRating } from "@/lib/serviceTracking"
+import { findOrCreateContact } from "@/lib/contactLookup"
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -134,18 +135,12 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
   const remoteJid = normalizeRemoteJid(key.remoteJid)
   const messageText = extractMessageText(message)
 
-  // ── 1. Upsert contact — preserves assignedUserId and chatStatus ──────────
-  const contact = await prisma.contact.upsert({
-    where: { whatsappId: remoteJid },
-    create: {
-      whatsappId: remoteJid,
-      name: pushName ?? remoteJid,
-      profilePhotoUrl: profilePicUrl ?? null,
-    },
-    update: {
-      name: pushName ?? undefined,
-      ...(profilePicUrl ? { profilePhotoUrl: profilePicUrl } : {}),
-    },
+  // ── 1. Acha (considerando variante com/sem 9º dígito) ou cria contato ────
+  // preserva assignedUserId e chatStatus do contato existente.
+  const contact = await findOrCreateContact(remoteJid, {
+    name: pushName,
+    fallbackName: remoteJid,
+    profilePhotoUrl: profilePicUrl,
   })
 
   // ── 2. Always persist inbound message for audit ──────────────────────────
