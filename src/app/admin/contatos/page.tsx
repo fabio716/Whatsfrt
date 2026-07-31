@@ -62,6 +62,10 @@ export default function ContatosPage() {
   const [importError,  setImportError]  = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // Sincronização de fotos de perfil (roda em lote até acabar).
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
   // ── load data
   const load = useCallback(async () => {
     const [cRes, uRes, coopRes] = await Promise.all([
@@ -131,6 +135,31 @@ export default function ContatosPage() {
     URL.revokeObjectURL(url)
   }
 
+  // ── sincronizar fotos (busca foto de perfil no WhatsApp em lotes) ──
+  const handleSyncPhotos = async () => {
+    if (syncing) return
+    setSyncing(true)
+    setSyncMsg("Sincronizando fotos…")
+    let totalAtualizadas = 0
+    try {
+      // Roda em loop: cada chamada processa um lote e diz quantos faltam.
+      for (let i = 0; i < 60; i++) {
+        const res = await fetch("/api/admin/contacts/sync-photos", { method: "POST" })
+        if (!res.ok) { setSyncMsg("Erro ao sincronizar fotos."); break }
+        const d = (await res.json()) as { processados: number; updated: number; restantes: number }
+        totalAtualizadas += d.updated
+        setSyncMsg(`${totalAtualizadas} fotos atualizadas · faltam ${d.restantes}…`)
+        if (d.processados === 0 || d.restantes === 0) break
+      }
+      setSyncMsg(`✓ Concluído — ${totalAtualizadas} fotos atualizadas.`)
+      void load()
+    } catch {
+      setSyncMsg("Erro ao sincronizar fotos.")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const closeImport = () => {
     setShowImport(false)
     setImportResult(null)
@@ -151,9 +180,20 @@ export default function ContatosPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div>
             <h1 className="text-[15px] font-semibold tracking-tight text-zinc-900">Contatos</h1>
-            <p className="text-xs text-zinc-400">Gerencie e importe sua base de contatos</p>
+            <p className="text-xs text-zinc-400">{syncMsg ?? "Gerencie e importe sua base de contatos"}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => void handleSyncPhotos()}
+              disabled={syncing}
+              className="flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-600 transition-all hover:bg-zinc-50 disabled:opacity-60"
+              title="Busca a foto de perfil do WhatsApp dos contatos que ainda não têm"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 3a5 5 0 00-8.5 3M5 13a5 5 0 008.5-3M2 4v2.5h2.5M14 12V9.5h-2.5" />
+              </svg>
+              {syncing ? "Sincronizando…" : "Sincronizar fotos"}
+            </button>
             <button
               onClick={() => void handleExport()}
               className="flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-600 transition-all hover:bg-zinc-50"

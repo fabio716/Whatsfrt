@@ -18,6 +18,7 @@ import type { EvolutionState } from "@/lib/reliability/events"
 import {
   disconnectZapi,
   getZapiConnectionState,
+  getZapiProfilePicture,
   getZapiQrCode,
   isZapiEnvOk,
   sendZapiMedia,
@@ -166,6 +167,29 @@ export async function fetchInboundMediaBase64(
   // delegamos ao helper existente.
   if (activeProvider() === "zapi") return null
   return fetchEvolutionMediaBase64(key)
+}
+
+// Busca a foto de perfil do contato pelo provedor ativo. null se não houver.
+export async function getProfilePicture(whatsappId: string): Promise<string | null> {
+  if (activeProvider() === "zapi") return getZapiProfilePicture(whatsappId)
+  // Evolution
+  const apiUrl = process.env.EVOLUTION_API_URL
+  const apiKey = process.env.EVOLUTION_API_KEY
+  const instance = process.env.EVOLUTION_INSTANCE_NAME
+  if (!apiUrl || !apiKey || !instance) return null
+  const number = whatsappId.replace("@s.whatsapp.net", "").replace(/@.*$/, "")
+  const res = await evolutionFetch(`${apiUrl}/chat/fetchProfilePictureUrl/${instance}`, {
+    label: "evolution:profile-picture",
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ number }),
+    timeoutMs: 8_000,
+    maxAttempts: 1,
+  })
+  if (!res.ok) return null
+  const data = res.responseJson as { profilePictureUrl?: string | null } | null
+  const url = data?.profilePictureUrl
+  return url && url.startsWith("http") ? url : null
 }
 
 export async function validateNumberOnWhatsApp(whatsappId: string): Promise<boolean | null> {

@@ -71,6 +71,26 @@ export async function getZapiConnectionState(): Promise<EvolutionState> {
   return "unknown"
 }
 
+// ─── Foto de perfil ──────────────────────────────────────────────────────────
+// Busca a URL da foto de perfil de um contato na Z-API. Retorna null se o
+// contato não tem foto pública ou se a chamada falhar.
+export async function getZapiProfilePicture(whatsappId: string): Promise<string | null> {
+  const phone = normalizePhone(whatsappId)
+  const url = buildUrl(`profile-picture?phone=${encodeURIComponent(phone)}`)
+  if (!url) return null
+  const res = await evolutionFetch(url, {
+    label: "zapi:profile-picture",
+    headers: commonHeaders(),
+    method: "GET",
+    timeoutMs: 8_000,
+    maxAttempts: 1,
+  })
+  if (!res.ok) return null
+  const data = res.responseJson as { link?: string | null } | null
+  const link = data?.link
+  return link && link.startsWith("http") ? link : null
+}
+
 // ─── Envio de texto ──────────────────────────────────────────────────────────
 
 export interface ZapiSendResult {

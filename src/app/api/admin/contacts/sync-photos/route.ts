@@ -1,76 +1,51 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin } from "@/app/api/admin/users/route"
+import { getProfilePicture } from "@/lib/whatsapp"
 
-// Busca fotos de perfil da Evolution API para contatos sem foto
+// POST /api/admin/contacts/sync-photos
+// Busca a foto de perfil (pelo provedor ativo — Z-API ou Evolution) dos contatos
+// que ainda não têm foto e salva em profilePhotoUrl. Processa em LOTE (até 150
+// por chamada) pra não travar; devolve quantos ainda faltam pra rodar de novo.
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await requireAdmin(request)
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
 
-  const apiUrl = process.env.EVOLUTION_API_URL
-  const apiKey = process.env.EVOLUTION_API_KEY
-  const instance = process.env.EVOLUTION_INSTANCE_NAME
+  const BATCH = 150
 
-  if (!apiUrl || !apiKey || !instance) {
-    return NextResponse.json({ error: "Evolution API não configurada" }, { status: 500 })
-  }
+  const contacts = await prisma.contact.findMany({
+    where: { profilePhotoUrl: null, deletedAt: null },
+    select: { id: true, whatsappId: true },
+    take: BATCH,
+  })
 
-  try {
-    // Busca contatos sem foto
-    const contacts = await prisma.contact.findMany({
-      where: {
-        profilePhotoUrl: null,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        whatsappId: true,
-      },
-    })
-
-    let updated = 0
-    let failed = 0
-
-    for (const contact of contacts) {
-      try {
-        // Busca foto do contato na Evolution API
-        const number = contact.whatsappId.replace("@s.whatsapp.net", "")
-        const res = await fetch(`${apiUrl}/chat/fetchProfilePictureUrl/${instance}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: apiKey,
-          },
-          body: JSON.stringify({ number }),
-        })
-
-        if (res.ok) {
-          const data = await res.json()
-          if (data.profilePictureUrl) {
-            await prisma.contact.update({
-              where: { id: contact.id },
-              data: { profilePhotoUrl: data.profilePictureUrl },
-            })
-            updated++
-          }
-        }
-      } catch (err) {
-        console.error(`Failed to fetch photo for ${contact.whatsappId}:`, err)
-        failed++
+  let updated = 0
+  let semFoto = 0
+  for (const c of contacts) {
+    try {
+      const url = await getProfilePicture(c.whatsappId)
+      if (url) {
+        await prisma.contact.update({ where: { id: c.id }, data: { profilePhotoUrl: url } })
+        updated++
+      } else {
+        semFoto++
       }
-
-      // Delay para não sobrecarregar API
-      await new Promise((resolve) => setTimeout(resolve, 500))
+    } catch {
+      semFoto++
     }
-
-    return NextResponse.json({
-      success: true,
-      total: contacts.length,
-      updated,
-      failed,
-    })
-  } catch (err) {
-    console.error("Error syncing photos:", err)
-    return NextResponse.json({ error: "Erro ao sincronizar fotos" }, { status: 500 })
+    // Pequeno respiro pra não estourar rate-limit do provedor.
+    await new Promise((r) => setTimeout(r, 250))
   }
+
+  const restantes = await prisma.contact.count({
+    where: { profilePhotoUrl: null, deletedAt: null },
+  })
+
+  return NextResponse.json({
+    success: true,
+    processados: contacts.length,
+    updated,
+    semFoto,
+    restantes,
+  })
 }
