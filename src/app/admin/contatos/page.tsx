@@ -65,6 +65,9 @@ export default function ContatosPage() {
   // Sincronização de fotos de perfil (roda em lote até acabar).
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  // Resumo final: quantas fotos foram encontradas x quantas não (contato sem
+  // foto pública no WhatsApp) — fica visível depois de terminar a varredura.
+  const [syncSummary, setSyncSummary] = useState<{ ok: number; semFoto: number } | null>(null)
 
   // ── load data
   const load = useCallback(async () => {
@@ -140,18 +143,33 @@ export default function ContatosPage() {
     if (syncing) return
     setSyncing(true)
     setSyncMsg("Sincronizando fotos…")
-    let totalAtualizadas = 0
+    setSyncSummary(null)
+    let totalOk = 0
+    let totalSemFoto = 0
+    let cursorId: string | undefined
     try {
-      // Roda em loop: cada chamada processa um lote e diz quantos faltam.
+      // Roda em loop, avançando pelo cursor (id) — sem isso, um lote onde
+      // ninguém tem foto pública ficava reprocessando os MESMOS contatos pra
+      // sempre e nunca chegava no resto da base.
       for (let i = 0; i < 60; i++) {
-        const res = await fetch("/api/admin/contacts/sync-photos", { method: "POST" })
+        const res = await fetch("/api/admin/contacts/sync-photos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cursorId ? { cursorId } : {}),
+        })
         if (!res.ok) { setSyncMsg("Erro ao sincronizar fotos."); break }
-        const d = (await res.json()) as { processados: number; updated: number; restantes: number }
-        totalAtualizadas += d.updated
-        setSyncMsg(`${totalAtualizadas} fotos atualizadas · faltam ${d.restantes}…`)
-        if (d.processados === 0 || d.restantes === 0) break
+        const d = (await res.json()) as {
+          processados: number; updated: number; semFoto: number; restantes: number
+          nextCursor: string | null; fimDaLista: boolean
+        }
+        totalOk += d.updated
+        totalSemFoto += d.semFoto
+        cursorId = d.nextCursor ?? undefined
+        setSyncMsg(`✅ ${totalOk} com foto · ⚪ ${totalSemFoto} sem foto pública · faltam ${d.restantes}…`)
+        if (d.processados === 0 || d.fimDaLista) break
       }
-      setSyncMsg(`✓ Concluído — ${totalAtualizadas} fotos atualizadas.`)
+      setSyncMsg(`✓ Concluído — ✅ ${totalOk} com foto · ⚪ ${totalSemFoto} sem foto pública.`)
+      setSyncSummary({ ok: totalOk, semFoto: totalSemFoto })
       void load()
     } catch {
       setSyncMsg("Erro ao sincronizar fotos.")
@@ -181,6 +199,23 @@ export default function ContatosPage() {
           <div>
             <h1 className="text-[15px] font-semibold tracking-tight text-zinc-900">Contatos</h1>
             <p className="text-xs text-zinc-400">{syncMsg ?? "Gerencie e importe sua base de contatos"}</p>
+            {syncSummary && !syncing && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                  ✅ {syncSummary.ok} com foto
+                </span>
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500">
+                  ⚪ {syncSummary.semFoto} sem foto pública
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSyncSummary(null)}
+                  className="text-[11px] text-zinc-300 hover:text-zinc-500"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
