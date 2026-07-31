@@ -17,6 +17,7 @@ import { evolutionFetch } from "@/lib/reliability/evolutionFetch"
 import type { EvolutionState } from "@/lib/reliability/events"
 import {
   disconnectZapi,
+  editZapiText,
   getZapiConnectionState,
   getZapiProfilePicture,
   getZapiQrCode,
@@ -50,6 +51,20 @@ export async function sendText(whatsappId: string, text: string): Promise<SendRe
   }
   const r: EvolutionSendResult = await sendEvolutionTextDetailed(whatsappId, text)
   return r
+}
+
+// Edita uma mensagem de texto já enviada. Só suportado no provider Z-API —
+// Evolution não tem esse recurso, retorna erro claro nesse caso.
+export async function editText(
+  whatsappId: string,
+  newText: string,
+  providerMessageId: string,
+): Promise<SendResult> {
+  if (activeProvider() === "zapi") {
+    const r: ZapiSendResult = await editZapiText(whatsappId, newText, providerMessageId)
+    return r
+  }
+  return { ok: false, messageId: null, attempts: 0, errorMsg: "Edição de mensagem não é suportada no provedor Evolution" }
 }
 
 // Mais simples — quando só precisa saber se foi ou não.

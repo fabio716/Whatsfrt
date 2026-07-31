@@ -30,7 +30,9 @@ export interface SSENewMessagePayload {
 
 export interface SSEMessageUpdatePayload {
   type: "message_update"
-  data: { id: string; status: SSEMessageData["status"]; contactId: string }
+  // body preenchido só quando o evento é de uma EDIÇÃO de mensagem (não de
+  // mudança de status ✓/✓✓) — o client aplica a troca de texto em tempo real.
+  data: { id: string; status: SSEMessageData["status"]; contactId: string; body?: string }
 }
 
 // Eventos de sistema vão para TODOS os clientes (admin e agente). O UI decide

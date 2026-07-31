@@ -242,6 +242,10 @@ export default function ChatsClient({
     hasEverReceivedInbound: boolean
   } | null>(null)
   const [quota, setQuota] = useState<{ sent: number; limit: number; ratio: number } | null>(null)
+  // Edição de mensagem já enviada (só texto puro, dentro da janela do WhatsApp).
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState("")
+  const [savingEdit, setSavingEdit] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
   const mediaRecRef     = useRef<MediaRecorder | null>(null)
@@ -368,7 +372,14 @@ export default function ChatsClient({
           // emite FAILED para mensagens travadas em PENDING > 10min.
           setContacts((prev) => prev.map((c) =>
             c.id === p.data.contactId
-              ? { ...c, messages: c.messages.map((m) => m.id === p.data.id ? { ...m, status: p.data.status } : m) }
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === p.data.id
+                      ? { ...m, status: p.data.status, ...(p.data.body !== undefined ? { body: p.data.body } : {}) }
+                      : m
+                  ),
+                }
               : c
           ))
           return
@@ -710,6 +721,41 @@ export default function ChatsClient({
     }
   }
 
+  const startEdit = (msg: MessageData) => {
+    setEditingMsgId(msg.id)
+    setEditingText(msg.body)
+  }
+  const cancelEdit = () => {
+    setEditingMsgId(null)
+    setEditingText("")
+  }
+  const saveEdit = async (msgId: string) => {
+    const text = editingText.trim()
+    if (!text || savingEdit) return
+    setSavingEdit(true)
+    try {
+      const res = await fetch(`/api/messages/${msgId}/edit`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      })
+      const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
+      if (!res.ok) {
+        alert(`Não foi possível editar: ${data.error ?? res.status}`)
+        return
+      }
+      setContacts((prev) => prev.map((c) => ({
+        ...c,
+        messages: c.messages.map((m) => (m.id === msgId ? { ...m, body: data.body ?? text } : m)),
+      })))
+      cancelEdit()
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   const messageGroups = activeContact ? groupByDate(activeContact.messages) : []
 
   return (
@@ -975,17 +1021,62 @@ export default function ChatsClient({
                   </div>
                   {group.messages.map((msg) => {
                     const isOut = msg.direction === "OUTBOUND"
+                    // Só dá pra editar texto puro (sem mídia), já enviado, e
+                    // só o próprio autor (admin pode editar qualquer uma).
+                    const canEdit = isOut && !msg.mediaUrl && isOwner
+                      && (!isAgent || msg.agentId === currentUserId)
+                    const isEditingThis = editingMsgId === msg.id
                     return (
-                      <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+                      <div key={msg.id} className={`group flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
                         <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm ${isOut ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
-                          {msg.mediaUrl && msg.mediaType
-                            ? <MediaBubble mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />
-                            : <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
-                          }
-                          <div className={`mt-1 flex items-center gap-1 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
-                            <span className="text-[10px] text-zinc-400">{formatTime(msg.createdAt)}</span>
-                            {isOut && <MessageStatusIcon status={msg.status} />}
-                          </div>
+                          {isEditingThis ? (
+                            <div className="min-w-[220px] space-y-1.5">
+                              <textarea
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEdit(msg.id) }
+                                  if (e.key === "Escape") cancelEdit()
+                                }}
+                                rows={2}
+                                autoFocus
+                                className="w-full resize-none rounded-lg border border-emerald-300 bg-white px-2 py-1.5 text-[13px] text-zinc-800 outline-none"
+                              />
+                              <div className="flex justify-end gap-2">
+                                <button type="button" onClick={cancelEdit} className="text-[11px] font-medium text-zinc-500 hover:text-zinc-700">Cancelar</button>
+                                <button
+                                  type="button"
+                                  onClick={() => void saveEdit(msg.id)}
+                                  disabled={savingEdit || !editingText.trim()}
+                                  className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
+                                >
+                                  {savingEdit ? "Salvando…" : "Salvar"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : msg.mediaUrl && msg.mediaType ? (
+                            <MediaBubble mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />
+                          ) : (
+                            <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
+                          )}
+                          {!isEditingThis && (
+                            <div className={`mt-1 flex items-center gap-1 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit(msg)}
+                                  title="Editar mensagem"
+                                  className="mr-1 text-zinc-400 opacity-0 transition-opacity hover:text-zinc-600 group-hover:opacity-100"
+                                >
+                                  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                </button>
+                              )}
+                              <span className="text-[10px] text-zinc-400">{formatTime(msg.createdAt)}</span>
+                              {isOut && <MessageStatusIcon status={msg.status} />}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )

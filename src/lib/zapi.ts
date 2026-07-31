@@ -133,6 +133,35 @@ export async function sendZapiText(
   return { ok: true, messageId: data?.messageId ?? data?.id ?? null, attempts: res.attempts, errorMsg: null }
 }
 
+// Edita uma mensagem de texto já enviada. Z-API reaproveita o /send-text com
+// o campo editMessageId apontando pro messageId original. Só funciona dentro
+// da janela que o WhatsApp permite editar (alguns minutos após o envio) —
+// depois disso a Z-API retorna erro, que repassamos pro chamador.
+export async function editZapiText(
+  whatsappId: string,
+  newMessage: string,
+  editMessageId: string,
+): Promise<ZapiSendResult> {
+  const url = buildUrl("send-text")
+  if (!url) return { ok: false, messageId: null, attempts: 0, errorMsg: "ZAPI_INSTANCE_ID/ZAPI_TOKEN ausente" }
+
+  const res = await evolutionFetch(url, {
+    label: "zapi:edit-text",
+    method: "POST",
+    headers: commonHeaders(),
+    body: JSON.stringify({
+      phone: normalizePhone(whatsappId),
+      message: newMessage,
+      editMessageId,
+    }),
+  })
+  if (!res.ok) {
+    return { ok: false, messageId: null, attempts: res.attempts, errorMsg: res.lastError ?? `status ${res.status}` }
+  }
+  const data = res.responseJson as { messageId?: string; id?: string } | null
+  return { ok: true, messageId: data?.messageId ?? data?.id ?? editMessageId, attempts: res.attempts, errorMsg: null }
+}
+
 // ─── Envio de mídia ──────────────────────────────────────────────────────────
 // Z-API tem endpoints separados por tipo de mídia. Aceitam URL pública OU
 // base64 no campo. Preferimos URL (mais robusto).
