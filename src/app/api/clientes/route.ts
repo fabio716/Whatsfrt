@@ -27,11 +27,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const page = Math.max(1, Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1)
   const PAGE = 50
 
+  // Pool aberto: todos os usuários veem todos os clientes (sem filtro por
+  // carteira). `session` mantido pra exigir autenticação.
+  void session
   const where: Record<string, unknown> = {
     deletedAt: null,
-  }
-  if (session.role === "AGENT") {
-    where.assignedUserId = session.id
   }
 
   if (q.length > 0) {
@@ -78,11 +78,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 // PATCH /api/clientes/:id — atualiza empresa/cidade do contato.
-// Agente só pode atualizar contato próprio. Admin pode atualizar qualquer.
+// Pool aberto: qualquer usuário autenticado pode atualizar.
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
-  const session = auth
 
   let body: { id?: string; empresa?: string | null; cidade?: string | null }
   try {
@@ -95,13 +94,10 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
   const contact = await prisma.contact.findUnique({
     where: { id: body.id },
-    select: { assignedUserId: true },
+    select: { id: true },
   })
   if (!contact) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
-
-  if (session.role === "AGENT" && contact.assignedUserId !== session.id) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 })
-  }
+  // Pool aberto: qualquer usuário autenticado pode atualizar dados do cliente.
 
   const data: Record<string, unknown> = {}
   if ("empresa" in body) data.empresa = body.empresa?.trim() || null

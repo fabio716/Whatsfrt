@@ -26,9 +26,9 @@ export default async function ChatsPage(
   // Antes mostrava só IN_SERVICE e admin via "0 contatos" mesmo com
   // dezenas de conversas em aberto noutro estado.
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  // Pool aberto: todos veem todos os contatos (sem filtro por carteira).
   const inServiceWhere = {
     deletedAt: null,
-    ...(isAgent ? { assignedUserId: session.id } : {}),
     OR: [
       { chatStatus: { in: [ChatStatus.IN_URA, ChatStatus.WAITING_AGENT, ChatStatus.IN_SERVICE, ChatStatus.AWAITING_RATING] } },
       { messages: { some: { createdAt: { gte: sevenDaysAgo } } } },
@@ -39,11 +39,7 @@ export default async function ChatsPage(
   //     mesmo que não esteja em IN_SERVICE. Útil pra abrir conversa
   //     a partir de /admin/clientes.
   const requestedWhere = requestedContactId
-    ? {
-        id: requestedContactId,
-        deletedAt: null,
-        ...(isAgent ? { assignedUserId: session.id } : {}),
-      }
+    ? { id: requestedContactId, deletedAt: null }
     : null
 
   const [inServiceContacts, requestedContact, allAgents] = await Promise.all([
@@ -72,9 +68,7 @@ export default async function ChatsPage(
   const rawContacts = [...inServiceContacts]
   if (
     requestedContact &&
-    !rawContacts.some((c) => c.id === requestedContact.id) &&
-    // Reforço de segurança: AGENT só pode ver contato próprio
-    (!isAgent || requestedContact.assignedUserId === session.id)
+    !rawContacts.some((c) => c.id === requestedContact.id)
   ) {
     rawContacts.unshift(requestedContact)
   }

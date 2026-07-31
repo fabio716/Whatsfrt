@@ -164,12 +164,13 @@ function EmojiPicker({ onPick, onClose }: Readonly<{ onPick: (emoji: string) => 
 export default function ChatsClient({
   contacts: initial,
   agents,
-  currentUserId,
   isAgent = false,
 }: Readonly<{
   contacts: ContactData[]
   agents: Agent[]
-  currentUserId: string
+  // currentUserId ainda é aceito (o pai envia), mas não é mais usado desde o
+  // pool aberto — qualquer usuário pode responder qualquer conversa.
+  currentUserId?: string
   isAgent?: boolean
 }>) {
   const searchParams = useSearchParams()
@@ -210,7 +211,9 @@ export default function ChatsClient({
   const prevActiveRef   = useRef<string | null>(null)
 
   const activeContact = contacts.find((c) => c.id === activeId) ?? null
-  const isOwner = activeContact?.assignedUserId === currentUserId
+  // Pool aberto: qualquer usuário pode responder qualquer conversa. Antes só o
+  // "dono" (assignedUserId === currentUserId) podia; agora todos podem.
+  const isOwner = activeContact != null
 
   const filteredContacts = (
     agentFilter === "all"

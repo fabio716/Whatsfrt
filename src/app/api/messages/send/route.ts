@@ -54,9 +54,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Contact not found" }, { status: 404 })
   }
 
-  if (session.role === "AGENT" && contact.assignedUserId !== session.id) {
-    return NextResponse.json({ error: "Sem permissão para este contato" }, { status: 403 })
-  }
+  // Pool aberto: qualquer usuário pode falar com qualquer contato — sem trava
+  // de carteira. (Antes o AGENT só enviava para contatos atribuídos a ele.)
 
   if (contact.whatsappId.includes("@lid")) {
     return NextResponse.json({

@@ -92,8 +92,8 @@ export default function MeusClientesPage() {
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white px-8 py-5">
         <div className="mx-auto max-w-5xl">
-          <h1 className="text-[15px] font-semibold tracking-tight text-zinc-900">Meus clientes</h1>
-          <p className="text-xs text-zinc-400">Os contatos da sua carteira. Busque e inicie uma conversa.</p>
+          <h1 className="text-[15px] font-semibold tracking-tight text-zinc-900">Clientes</h1>
+          <p className="text-xs text-zinc-400">Todos os clientes cadastrados. Busque e inicie uma conversa.</p>
         </div>
       </header>
 
@@ -146,7 +146,7 @@ export default function MeusClientesPage() {
                 </>
               ) : (
                 <>
-                  <p className="text-[13px] font-semibold text-zinc-700">Sua carteira está vazia</p>
+                  <p className="text-[13px] font-semibold text-zinc-700">Nenhum cliente cadastrado</p>
                   <p className="text-[12px] text-zinc-400">Use &quot;Adicionar contato&quot; no menu para cadastrar clientes.</p>
                 </>
               )}
@@ -205,7 +205,7 @@ export default function MeusClientesPage() {
 
         {/* Footer / paginação */}
         <div className="flex items-center justify-between">
-          <p className="text-xs text-zinc-400">{total} cliente(s) na carteira</p>
+          <p className="text-xs text-zinc-400">{total} cliente(s)</p>
           <div className="flex items-center gap-2">
             <button
               type="button"
