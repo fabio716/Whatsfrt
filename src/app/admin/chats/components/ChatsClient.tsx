@@ -51,12 +51,51 @@ function StatusBadge({ status }: Readonly<{ status: ContactData["chatStatus"] }>
 }
 
 function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string; mediaType: string; body: string }>) {
+  const [expanded, setExpanded] = useState(false)
   if (mediaType.startsWith("image/")) {
     return (
-      <div className="space-y-1">
-        <img src={mediaUrl} alt={body || "imagem"} className="max-h-48 max-w-xs rounded-xl object-cover" loading="lazy" />
-        {body && <p className="text-[13px] leading-relaxed">{body}</p>}
-      </div>
+      <>
+        <div className="space-y-1">
+          <button type="button" onClick={() => setExpanded(true)} className="block cursor-zoom-in">
+            <img src={mediaUrl} alt={body || "imagem"} className="max-h-48 max-w-xs rounded-xl object-cover" loading="lazy" />
+          </button>
+          {body && <p className="text-[13px] leading-relaxed">{body}</p>}
+        </div>
+        {expanded && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4"
+            onClick={() => setExpanded(false)}
+          >
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              aria-label="Fechar"
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <a
+              href={mediaUrl}
+              download
+              onClick={(e) => e.stopPropagation()}
+              className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/20"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12L8 8m4-4l4 4" />
+              </svg>
+              Baixar
+            </a>
+            <img
+              src={mediaUrl}
+              alt={body || "imagem"}
+              className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
+      </>
     )
   }
   if (mediaType.startsWith("video/")) {
