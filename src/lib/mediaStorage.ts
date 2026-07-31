@@ -135,11 +135,11 @@ const ALLOWED_MIME_EXACT = new Set([
 // então mantemos o XSS fora.
 const BLOCKED_MIME = new Set(["image/svg+xml", "text/html", "application/xhtml+xml"])
 
-// 100 MB cobre o limite WhatsApp pra documentos (PDF, Office, ZIP).
-// Imagens/vídeos/áudios efetivos têm limites menores (5/16/16 MB) — se
-// estourar lá, Z-API/Evolution devolve erro e marcamos FAILED. Aqui no
-// upload aceitamos até o teto pra não bloquear documentos legítimos.
-export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+// Teto do upload no backend. Damos folga (120 MB) acima do teto de front
+// (~100 MB pra video/documento) pra absorver o overhead do multipart. O nginx
+// (client_max_body_size=130M) fica acima disso. A Z-API aceita video ate 100 MB;
+// se estourar o limite efetivo do WhatsApp, a Z-API devolve erro e marcamos FAILED.
+export const MAX_UPLOAD_BYTES = 120 * 1024 * 1024
 
 export function isMimeAllowed(mime: string): boolean {
   if (BLOCKED_MIME.has(mime)) return false

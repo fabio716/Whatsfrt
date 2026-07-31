@@ -550,17 +550,16 @@ export default function ChatsClient({
     e.target.value = "" // permite escolher mesmo arquivo de novo
     if (!file || !activeId || isUploading || !isOwner) return
 
-    // Limites por tipo. A Z-API aceita video ate 100 MB (send-video); o nosso
-    // backend e o nginx (client_max_body_size=100M) tambem. Deixamos 90 MB de
-    // teto no video/documento pra dar folga sob o nginx — o corpo multipart do
-    // upload e um pouco maior que o arquivo em si.
+    // Limites por tipo. A Z-API aceita video ate 100 MB (send-video); backend
+    // (MAX_UPLOAD_BYTES=120MB) e nginx (client_max_body_size=130M) ficam acima
+    // pra absorver o overhead do multipart. Teto de video/documento: ~100 MB.
     // Dica: videos em H.264 sao os mais confiaveis; outros codecs passam por
     // conversao interna da Z-API e podem falhar/inflar de tamanho.
     const maxByCategory =
-      file.type.startsWith("image/")    ? 16 * 1024 * 1024   // imagem 16 MB
-    : file.type.startsWith("video/")    ? 90 * 1024 * 1024   // vídeo até ~90 MB
-    : file.type.startsWith("audio/")    ? 16 * 1024 * 1024   // áudio 16 MB
-    : /* documento */                     90 * 1024 * 1024  // documento ~90 MB
+      file.type.startsWith("image/")    ? 16 * 1024 * 1024    // imagem 16 MB
+    : file.type.startsWith("video/")    ? 100 * 1024 * 1024   // vídeo até ~100 MB
+    : file.type.startsWith("audio/")    ? 16 * 1024 * 1024    // áudio 16 MB
+    : /* documento */                     100 * 1024 * 1024   // documento ~100 MB
 
     if (file.size > maxByCategory) {
       const limitMB = Math.round(maxByCategory / 1024 / 1024)
