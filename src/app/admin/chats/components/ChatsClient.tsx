@@ -676,7 +676,7 @@ export default function ChatsClient({
     <div className="flex h-full overflow-hidden bg-zinc-50 font-sans">
 
       {/* ─── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside className="flex w-72 flex-shrink-0 flex-col overflow-hidden border-r border-zinc-100 bg-white">
+      <aside className={`${activeId ? "hidden" : "flex"} w-full flex-shrink-0 flex-col overflow-hidden border-r border-zinc-100 bg-white md:flex md:w-72`}>
         <div className="border-b border-zinc-100 px-4 py-3">
           <h1 className="text-[14px] font-semibold text-zinc-900">{isAgent ? "Meus Chats" : "Chats Globais"}</h1>
           <p className="text-[11px] text-zinc-400">
@@ -765,12 +765,23 @@ export default function ChatsClient({
       </aside>
 
       {/* ─── Chat area ───────────────────────────────────────────────────── */}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className={`${activeId ? "flex" : "hidden"} flex-1 flex-col overflow-hidden md:flex`}>
         {activeContact ? (
           <>
             {/* Header */}
-            <header className="flex items-center justify-between border-b border-zinc-100 bg-white px-6 py-3.5 shadow-sm shadow-zinc-100/60">
-              <div className="flex items-center gap-3">
+            <header className="flex items-center justify-between border-b border-zinc-100 bg-white px-4 py-3.5 shadow-sm shadow-zinc-100/60 md:px-6">
+              <div className="flex items-center gap-2 md:gap-3">
+                {/* Voltar — só no celular */}
+                <button
+                  type="button"
+                  onClick={() => setActiveId(null)}
+                  aria-label="Voltar"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 md:hidden"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-200 text-sm font-semibold text-zinc-600">
                   {activeContact.name.charAt(0).toUpperCase()}
                 </div>

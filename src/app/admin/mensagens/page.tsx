@@ -277,7 +277,7 @@ export default function MensagensPage() {
     <main className="flex h-full overflow-hidden bg-zinc-50 font-sans">
 
       {/* ── Coluna: lista de conversas ── */}
-      <aside className="flex w-72 flex-shrink-0 flex-col border-r border-zinc-200 bg-white">
+      <aside className={`${activeId ? "hidden" : "flex"} w-full flex-shrink-0 flex-col border-r border-zinc-200 bg-white md:flex md:w-72`}>
         <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-4">
           <div>
             <h1 className="text-[15px] font-semibold text-zinc-900">Mensagens</h1>
@@ -325,7 +325,7 @@ export default function MensagensPage() {
       </aside>
 
       {/* ── Coluna: thread ── */}
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className={`${activeId ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
         {!active ? (
           <div className="flex flex-1 flex-col items-center justify-center text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-100">
@@ -339,7 +339,18 @@ export default function MensagensPage() {
         ) : (
           <>
             {/* Header da conversa */}
-            <header className="flex items-center gap-3 border-b border-zinc-200 bg-white px-6 py-3.5">
+            <header className="flex items-center gap-2 border-b border-zinc-200 bg-white px-4 py-3.5 md:gap-3 md:px-6">
+              {/* Voltar — só no celular */}
+              <button
+                type="button"
+                onClick={() => setActiveId(null)}
+                aria-label="Voltar"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 md:hidden"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
               <div className={`flex h-9 w-9 items-center justify-center rounded-full text-[12px] font-semibold ${active.isGroup ? "bg-violet-100 text-violet-600" : "bg-emerald-100 text-emerald-700"}`}>
                 {active.isGroup ? "👥" : initials(active.name)}
               </div>

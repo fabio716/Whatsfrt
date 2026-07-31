@@ -190,7 +190,11 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-export default function AdminNav({ userRole }: Readonly<{ userRole: Role }>) {
+export default function AdminNav({
+  userRole,
+  isOpen = false,
+  onNavigate,
+}: Readonly<{ userRole: Role; isOpen?: boolean; onNavigate?: () => void }>) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -205,7 +209,11 @@ export default function AdminNav({ userRole }: Readonly<{ userRole: Role }>) {
     .filter((g) => g.items.length > 0)
 
   return (
-    <nav className="flex w-56 flex-shrink-0 flex-col border-r border-zinc-100 bg-white">
+    <nav
+      className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-shrink-0 flex-col border-r border-zinc-100 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 ${
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      }`}
+    >
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-zinc-100 px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500">
@@ -230,6 +238,7 @@ export default function AdminNav({ userRole }: Readonly<{ userRole: Role }>) {
                   <a
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
                     className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
                       isActive
                         ? "bg-zinc-900 text-white"
