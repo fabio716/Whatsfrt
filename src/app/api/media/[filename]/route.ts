@@ -64,8 +64,8 @@ export async function GET(
     if (session.role === "ADMIN") {
       authorized = true
     } else {
-      // Localiza a mensagem que aponta para este arquivo (tanto formato novo
-      // /api/media/<f> quanto legado /uploads/<f>) e checa o dono do contato.
+      // Localiza a mensagem (WhatsApp) que aponta para este arquivo (formato novo
+      // /api/media/<f> ou legado /uploads/<f>) e checa o dono do contato.
       const message = await prisma.message.findFirst({
         where: {
           OR: [
@@ -77,10 +77,22 @@ export async function GET(
           contact: { select: { assignedUserId: true } },
         },
       })
-      if (!message) {
-        return NextResponse.json({ error: "Not found" }, { status: 404 })
+      if (message) {
+        authorized = message.contact.assignedUserId === session.id
+      } else {
+        // Mídia do chat interno: autoriza se o usuário é membro da conversa.
+        const internal = await prisma.internalMessage.findFirst({
+          where: { mediaUrl: `/api/media/${filename}` },
+          select: { conversationId: true },
+        })
+        if (internal) {
+          const member = await prisma.internalConversationMember.findFirst({
+            where: { conversationId: internal.conversationId, userId: session.id },
+            select: { id: true },
+          })
+          authorized = Boolean(member)
+        }
       }
-      authorized = message.contact.assignedUserId === session.id
       if (!authorized) {
         return NextResponse.json({ error: "Sem permissão para esta mídia" }, { status: 403 })
       }

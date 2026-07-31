@@ -389,6 +389,55 @@ model ContactTransferLog {
   @@map("contact_transfer_logs")
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Chat interno da equipe (usuário ↔ usuário). Independente do WhatsApp.
+// Suporta conversa 1:1 (isGroup=false, 2 membros) e grupos (isGroup=true).
+// ═══════════════════════════════════════════════════════════════════════════
+
+model InternalConversation {
+  id          String   @id @default(cuid())
+  isGroup     Boolean  @default(false)
+  name        String?  // nome do grupo (null em conversa 1:1)
+  createdById String?
+  createdAt   DateTime @default(now())
+  // Atualizado a cada nova mensagem — usado pra ordenar a lista de conversas.
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  members  InternalConversationMember[]
+  messages InternalMessage[]
+
+  @@index([updatedAt])
+  @@map("internal_conversations")
+}
+
+model InternalConversationMember {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   InternalConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  // Marca até quando o usuário leu — base pra contar mensagens não lidas.
+  lastReadAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("internal_conversation_members")
+}
+
+model InternalMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   InternalConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  body           String
+  mediaUrl       String?
+  mediaType      String?
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("internal_messages")
+}
+
 // Territórios de Vendas (Geográfico) - Tab 4
 model Territory {
   id       String   @id @default(cuid())

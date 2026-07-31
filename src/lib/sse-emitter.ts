@@ -40,10 +40,26 @@ export interface SSESystemEventPayload {
   state: "open" | "close" | "connecting" | "qrcode" | "unknown"
 }
 
+// Chat interno da equipe — entregue apenas aos membros da conversa.
+export interface SSEInternalMessagePayload {
+  type: "internal_message"
+  data: {
+    id: string
+    conversationId: string
+    senderId: string
+    senderName: string
+    body: string
+    mediaUrl: string | null
+    mediaType: string | null
+    createdAt: string
+  }
+}
+
 export type SSEPayload =
   | SSENewMessagePayload
   | SSEMessageUpdatePayload
   | SSESystemEventPayload
+  | SSEInternalMessagePayload
 
 // ─── Singleton client registry ────────────────────────────────────────────────
 // O Set é compartilhado entre bundles via globalThis + Symbol.for. Em Next.js
@@ -108,6 +124,23 @@ export function broadcastSystemEvent(payload: SSESystemEventPayload): void {
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
   const clients = getClients()
   for (const c of clients) {
+    try {
+      c.ctrl.enqueue(chunk)
+    } catch {
+      clients.delete(c)
+    }
+  }
+}
+
+// Entrega um evento apenas aos usuários cujo id está em `userIds`. Usado pelo
+// chat interno: só os membros da conversa recebem a mensagem (independente do
+// role — aqui admin NÃO recebe tudo, senão vazaria conversa alheia).
+export function broadcastToUsers(userIds: string[], payload: SSEInternalMessagePayload): void {
+  const targets = new Set(userIds)
+  const chunk = `data: ${JSON.stringify(payload)}\n\n`
+  const clients = getClients()
+  for (const c of clients) {
+    if (!targets.has(c.userId)) continue
     try {
       c.ctrl.enqueue(chunk)
     } catch {

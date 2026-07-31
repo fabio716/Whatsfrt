@@ -44,6 +44,16 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/mensagens",
+        label: "Mensagens",
+        roles: ["ADMIN", "AGENT"],
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12a8 8 0 01-11.7 7.1L4 20l1-4.3A8 8 0 1121 12z" />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/clientes",
         label: "Meus clientes",
         roles: ["AGENT"],
