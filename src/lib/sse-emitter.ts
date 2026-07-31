@@ -161,13 +161,14 @@ export function broadcast(
     owner = payload.data.contact.assignedUserId
   }
 
-  // Pool aberto: todos (admin e agentes) recebem eventos de qualquer contato,
-  // pra que a conversa apareça em tempo real pra quem estiver atendendo.
-  // (`owner` mantido só por compatibilidade de assinatura.)
-  void owner
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
   const clients = getClients()
   for (const c of clients) {
+    // Chat privado: admin recebe tudo; agente só recebe eventos de contatos da
+    // própria carteira. Owner null/undefined nunca entrega para agentes.
+    const allowed =
+      c.role === "ADMIN" || (typeof owner === "string" && owner === c.userId)
+    if (!allowed) continue
     try {
       c.ctrl.enqueue(chunk)
     } catch {

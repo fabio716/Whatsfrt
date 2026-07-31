@@ -54,8 +54,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Contact not found" }, { status: 404 })
   }
 
-  // Pool aberto: qualquer usuário pode falar com qualquer contato — sem trava
-  // de carteira. (Antes o AGENT só enviava para contatos atribuídos a ele.)
+  // Chat privado: AGENT só envia para contato da própria carteira. Para falar
+  // com um cliente de outro, use "Requisitar" (traz o cliente pra sua carteira).
+  if (session.role === "AGENT" && contact.assignedUserId !== session.id) {
+    return NextResponse.json({ error: "Sem permissão para este contato" }, { status: 403 })
+  }
 
   if (contact.whatsappId.includes("@lid")) {
     return NextResponse.json({

@@ -60,7 +60,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
 
-  // Pool aberto: qualquer usuário pode enviar mídia para qualquer contato.
+  // Chat privado: AGENT só envia mídia para contato da própria carteira.
+  if (session.role === "AGENT" && contact.assignedUserId !== session.id) {
+    return NextResponse.json({ error: "Sem permissão para este contato" }, { status: 403 })
+  }
 
   if (contact.whatsappId.includes("@lid")) {
     return NextResponse.json({

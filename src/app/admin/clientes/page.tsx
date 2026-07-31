@@ -84,7 +84,23 @@ export default function MeusClientesPage() {
     return () => clearTimeout(t)
   }, [load])
 
-  const openChat = (id: string) => router.push(`/admin/chats?contact=${id}`)
+  // Contatos são compartilhados, mas o CHAT é privado. Ao clicar em Conversar:
+  //  - cliente livre  → traz pra minha carteira e abre o chat
+  //  - já é meu        → abre direto
+  //  - de outro vendedor → precisa de autorização (não abre)
+  const openChat = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/contacts/${id}/request-transfer`, { method: "POST" })
+      if (res.status === 403) {
+        const data = (await res.json()) as { error?: string }
+        alert(data.error ?? "Cliente em atendimento com outro vendedor. É necessária autorização.")
+        return
+      }
+    } catch {
+      // se a requisição falhar por rede, ainda tenta abrir (pode ser meu)
+    }
+    router.push(`/admin/chats?contact=${id}`)
+  }, [router])
 
   return (
     <main className="h-full overflow-y-auto bg-zinc-50 font-sans">
@@ -189,7 +205,7 @@ export default function MeusClientesPage() {
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <button
-                          onClick={() => openChat(c.id)}
+                          onClick={() => void openChat(c.id)}
                           className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-emerald-600 transition-colors"
                         >
                           💬 Conversar

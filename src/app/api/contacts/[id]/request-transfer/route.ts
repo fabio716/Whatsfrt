@@ -38,6 +38,25 @@ export async function POST(
     return NextResponse.json({ error: "Este cliente já está na sua carteira" }, { status: 409 })
   }
 
+  // Cliente JÁ está em atendimento com OUTRO vendedor: não pode ser trazido na
+  // hora — exige autorização (o atendimento é privado). Admin pode assumir
+  // direto (supervisão). Agente recebe bloqueio até o fluxo de aprovação.
+  if (contact.assignedUserId && session.role !== "ADMIN") {
+    const owner = await prisma.user.findUnique({
+      where: { id: contact.assignedUserId },
+      select: { name: true },
+    })
+    return NextResponse.json(
+      {
+        error: `Este cliente está em atendimento com ${owner?.name ?? "outro vendedor"}. É necessária autorização para assumir.`,
+        needsAuthorization: true,
+        currentOwnerName: owner?.name ?? null,
+      },
+      { status: 403 },
+    )
+  }
+
+  // Aqui: cliente sem dono (assumir livre) ou quem chama é ADMIN. Traz na hora.
   // Snapshots dos nomes para o histórico (sobrevivem a rename/desativação).
   const [fromUser, toUser] = await Promise.all([
     contact.assignedUserId
