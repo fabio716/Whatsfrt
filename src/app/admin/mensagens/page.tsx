@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import Avatar from "@/app/admin/components/Avatar"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,8 @@ function previewOf(c: ConversationRow): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MensagensPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [conversations, setConversations] = useState<ConversationRow[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Msg[]>([])
@@ -234,6 +237,15 @@ export default function MensagensPage() {
     const res = await fetch("/api/internal/users")
     if (res.ok) setUsers((await res.json()) as UserOpt[])
   }
+
+  // "Falar com Equipe" (atalho do admin): abre direto o seletor de pessoa.
+  useEffect(() => {
+    if (searchParams.get("novo") === "1") {
+      void openNew()
+      router.replace("/admin/mensagens")
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const startDM = async (userId: string) => {
     const res = await fetch("/api/internal/conversations", {
