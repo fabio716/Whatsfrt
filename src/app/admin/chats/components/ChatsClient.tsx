@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import type { SSEPayload } from "@/lib/sse-emitter"
 import type { ContactData, MessageData } from "@/app/admin/dashboard/types"
+import Avatar from "@/app/admin/components/Avatar"
 
 type Agent = { id: string; name: string }
 
@@ -746,9 +747,7 @@ export default function ChatsClient({
                 onClick={() => setActiveId(c.id)}
                 className={`flex w-full items-start gap-3 border-b border-zinc-50 px-4 py-3 text-left transition-colors hover:bg-zinc-50 ${activeId === c.id ? "bg-zinc-50" : ""}`}
               >
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[13px] font-semibold text-zinc-600">
-                  {c.name.charAt(0).toUpperCase()}
-                </div>
+                <Avatar name={c.name} photoUrl={c.profilePhotoUrl} size="h-9 w-9" fallback="bg-zinc-200 text-zinc-600 text-[13px] font-semibold" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[13px] font-medium text-zinc-800 truncate">{c.name}</span>
@@ -782,9 +781,7 @@ export default function ChatsClient({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-200 text-sm font-semibold text-zinc-600">
-                  {activeContact.name.charAt(0).toUpperCase()}
-                </div>
+                <Avatar name={activeContact.name} photoUrl={activeContact.profilePhotoUrl} size="h-9 w-9" fallback="bg-zinc-200 text-zinc-600 text-sm font-semibold" />
                 <div>
                   <p className="text-[14px] font-semibold text-zinc-900">{activeContact.name}</p>
                   <p className="text-[11px] text-zinc-400">

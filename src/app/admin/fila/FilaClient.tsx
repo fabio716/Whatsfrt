@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Avatar from "@/app/admin/components/Avatar"
 
 interface QueueItem {
   id: string
@@ -117,9 +118,7 @@ export default function FilaClient({ userName }: Readonly<{ userName: string }>)
                 key={q.id}
                 className="flex items-center gap-3 border-b border-zinc-50 px-4 py-3 last:border-0"
               >
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[14px] font-semibold text-emerald-700">
-                  {q.name.charAt(0).toUpperCase()}
-                </div>
+                <Avatar name={q.name} photoUrl={q.profilePhotoUrl} size="h-10 w-10" fallback="bg-emerald-100 text-emerald-700 text-[14px] font-semibold" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-zinc-800">{q.name}</span>

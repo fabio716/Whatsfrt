@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Avatar from "@/app/admin/components/Avatar"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ interface ClienteRow {
   cidade: string | null
   chatStatus: ChatStatus
   assignedUserId: string | null
+  profilePhotoUrl: string | null
   updatedAt: string
 }
 
@@ -177,9 +179,7 @@ export default function MeusClientesPage() {
                     <tr key={c.id} className="transition-colors hover:bg-zinc-50/70">
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-semibold text-zinc-600">
-                            {c.name.charAt(0).toUpperCase()}
-                          </div>
+                          <Avatar name={c.name} photoUrl={c.profilePhotoUrl} size="h-8 w-8" fallback="bg-zinc-100 text-zinc-600 text-[11px] font-semibold" />
                           <span className="font-medium text-zinc-800">{c.name}</span>
                         </div>
                       </td>

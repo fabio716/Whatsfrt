@@ -62,6 +62,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         cidade: true,
         chatStatus: true,
         assignedUserId: true,
+        profilePhotoUrl: true,
         updatedAt: true,
       },
     }),
