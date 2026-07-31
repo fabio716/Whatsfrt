@@ -21,6 +21,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let updated = 0
   let semFoto = 0
+  let erroExemplo: string | null = null
   for (const c of contacts) {
     try {
       const url = await getProfilePicture(c.whatsappId)
@@ -30,8 +31,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       } else {
         semFoto++
       }
-    } catch {
+    } catch (err) {
       semFoto++
+      if (!erroExemplo) erroExemplo = err instanceof Error ? err.message : String(err)
     }
     // Pequeno respiro pra não estourar rate-limit do provedor.
     await new Promise((r) => setTimeout(r, 250))
@@ -41,11 +43,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     where: { profilePhotoUrl: null, deletedAt: null },
   })
 
+  // Se nada foi encontrado, o log do container (docker logs) tem o detalhe
+  // real de cada tentativa (status HTTP + corpo) via [zapi:profile-picture].
   return NextResponse.json({
     success: true,
     processados: contacts.length,
     updated,
     semFoto,
     restantes,
+    ...(erroExemplo ? { erroExemplo } : {}),
   })
 }

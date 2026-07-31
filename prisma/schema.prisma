@@ -207,6 +207,10 @@ model Message {
   // Quantas vezes o pipeline de envio rodou para esta mensagem (retry).
   attempts Int @default(0)
 
+  // Admin respondeu direto num contato que é carteira de outro agente.
+  // Fica invisível pro agente dono (privacidade) — só o admin vê.
+  adminPrivate Boolean @default(false)
+
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id])
 

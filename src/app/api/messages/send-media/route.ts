@@ -80,6 +80,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const saved = await saveMediaBuffer(buffer, mediaType, file.name)
   const mediaUrl = saved.mediaUrl
 
+  // Admin respondendo direto num contato que é carteira de outro agente:
+  // fica privado (só o admin vê) — o dono do contato não recebe nem em
+  // tempo real, nem no histórico. A carteira dele não muda.
+  const isAdminOverride = Boolean(
+    session.role === "ADMIN" && contact.assignedUserId && contact.assignedUserId !== session.id,
+  )
+
   let msg
   try {
     msg = await prisma.message.create({
@@ -93,6 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         attempts: 0,
         mediaUrl,
         mediaType,
+        adminPrivate: isAdminOverride,
       },
     })
   } catch (err) {
@@ -162,7 +170,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         assignedUserId: contact.assignedUserId,
       },
     },
-  })
+  }, isAdminOverride ? null : contact.assignedUserId)
 
   return NextResponse.json({
     id: msg.id, status: finalStatus, mediaUrl,

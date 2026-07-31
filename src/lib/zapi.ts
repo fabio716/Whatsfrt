@@ -77,7 +77,10 @@ export async function getZapiConnectionState(): Promise<EvolutionState> {
 export async function getZapiProfilePicture(whatsappId: string): Promise<string | null> {
   const phone = normalizePhone(whatsappId)
   const url = buildUrl(`profile-picture?phone=${encodeURIComponent(phone)}`)
-  if (!url) return null
+  if (!url) {
+    console.error("[zapi:profile-picture] ZAPI_INSTANCE_ID/ZAPI_TOKEN não configurados")
+    return null
+  }
   const res = await evolutionFetch(url, {
     label: "zapi:profile-picture",
     headers: commonHeaders(),
@@ -85,10 +88,17 @@ export async function getZapiProfilePicture(whatsappId: string): Promise<string 
     timeoutMs: 8_000,
     maxAttempts: 1,
   })
-  if (!res.ok) return null
+  if (!res.ok) {
+    console.error(`[zapi:profile-picture] falha para ${phone}: status=${res.status} body=${res.responseText?.slice(0, 300)}`)
+    return null
+  }
   const data = res.responseJson as { link?: string | null } | null
   const link = data?.link
-  return link && link.startsWith("http") ? link : null
+  if (!link) {
+    console.warn(`[zapi:profile-picture] sem link no retorno para ${phone}: ${res.responseText?.slice(0, 200)}`)
+    return null
+  }
+  return link.startsWith("http") ? link : null
 }
 
 // ─── Envio de texto ──────────────────────────────────────────────────────────

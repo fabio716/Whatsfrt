@@ -96,8 +96,11 @@ export default async function ChatsPage(
     assignedUserId: c.assignedUserId,
     // Chat limpo pós-takeover: só mostra mensagens a partir do historyResetAt.
     // Assim o novo dono não herda o histórico do agente anterior.
+    // adminPrivate: admin respondeu direto num contato de outro agente —
+    // fica invisível pro dono do contato (privacidade), só o admin vê.
     messages: c.messages
       .filter((m) => !c.historyResetAt || m.createdAt >= c.historyResetAt!)
+      .filter((m) => !isAgent || !m.adminPrivate)
       .map((m) => ({
         id: m.id,
         body: m.body,

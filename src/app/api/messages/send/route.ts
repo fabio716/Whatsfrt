@@ -134,6 +134,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // e o status FAILED no proprio Z-API ja avisa se nao chegou.
   // (Mantemos a validacao no /api/contacts pra avisar na hora do cadastro.)
 
+  // Admin respondendo direto num contato que é carteira de outro agente:
+  // fica privado (só o admin vê) — o dono do contato não recebe nem em
+  // tempo real, nem no histórico. A carteira dele não muda.
+  const isAdminOverride = Boolean(
+    session.role === "ADMIN" && contact.assignedUserId && contact.assignedUserId !== session.id,
+  )
+
   // 1 — Cria PENDING com clientKey (se houver).
   let message
   try {
@@ -146,6 +153,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         agentId: session.id,
         clientKey,
         attempts: 0,
+        adminPrivate: isAdminOverride,
       },
     })
   } catch (err) {
@@ -208,6 +216,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // 4 — Notifica clientes via SSE.
+  // Se for override do admin, ninguém além do admin pode receber o evento —
+  // por isso passamos ownerId=null (broadcast só entrega pra role ADMIN).
+  const ssePrivacyOwner = isAdminOverride ? null : contact.assignedUserId
+
   // 4a — new_message: pro UI do agente exibir o balão verde imediato sem F5.
   broadcast({
     type: "new_message",
@@ -230,7 +242,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         assignedUserId: contact.assignedUserId,
       },
     },
-  })
+  }, ssePrivacyOwner)
 
   // 4b — message_update: pro UI atualizar status (✓ → ✓✓ → ✓✓ azul).
   broadcast({
@@ -240,7 +252,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       status: updated.status,
       contactId: updated.contactId,
     },
-  }, contact.assignedUserId)
+  }, ssePrivacyOwner)
 
   return NextResponse.json({
     id: updated.id,
