@@ -389,6 +389,30 @@ model ContactTransferLog {
   @@map("contact_transfer_logs")
 }
 
+// Solicitação de transferência de atendimento. Criada quando um vendedor pede
+// pra assumir um cliente que JÁ está em atendimento com outro. Precisa ser
+// aprovada pelo dono atual OU por um admin antes do cliente mudar de carteira.
+model ContactTransferRequest {
+  id            String    @id @default(cuid())
+  contactId     String
+  contactName   String    // snapshot
+  fromUserId    String    // dono atual (pode aprovar, junto com admin)
+  fromUserName  String
+  requesterId   String    // quem pediu (vira o novo dono se aprovado)
+  requesterName String
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  decidedById   String?
+  decidedByName String?
+  createdAt     DateTime  @default(now())
+  decidedAt     DateTime?
+
+  @@index([status])
+  @@index([fromUserId, status])
+  @@index([requesterId, status])
+  @@index([contactId, status])
+  @@map("contact_transfer_requests")
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Chat interno da equipe (usuário ↔ usuário). Independente do WhatsApp.
 // Suporta conversa 1:1 (isGroup=false, 2 membros) e grupos (isGroup=true).

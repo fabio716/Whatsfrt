@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
+import { broadcastToUsers } from "@/lib/sse-emitter"
 
 // POST /api/contacts/[id]/request-transfer
 //
@@ -38,21 +39,57 @@ export async function POST(
     return NextResponse.json({ error: "Este cliente já está na sua carteira" }, { status: 409 })
   }
 
-  // Cliente JÁ está em atendimento com OUTRO vendedor: não pode ser trazido na
-  // hora — exige autorização (o atendimento é privado). Admin pode assumir
-  // direto (supervisão). Agente recebe bloqueio até o fluxo de aprovação.
+  // Cliente JÁ está em atendimento com OUTRO vendedor: não muda na hora — cria
+  // uma SOLICITAÇÃO que precisa ser aprovada pelo dono atual OU por um admin.
+  // Admin que chama assume direto (supervisão).
   if (contact.assignedUserId && session.role !== "ADMIN") {
-    const owner = await prisma.user.findUnique({
-      where: { id: contact.assignedUserId },
-      select: { name: true },
+    const ownerId = contact.assignedUserId
+    const [owner, requester] = await Promise.all([
+      prisma.user.findUnique({ where: { id: ownerId }, select: { name: true } }),
+      prisma.user.findUnique({ where: { id: session.id }, select: { name: true } }),
+    ])
+
+    // Se já existe uma solicitação minha PENDENTE pra esse cliente, não duplica.
+    const existing = await prisma.contactTransferRequest.findFirst({
+      where: { contactId: contact.id, requesterId: session.id, status: "PENDING" },
+      select: { id: true },
     })
+    if (existing) {
+      return NextResponse.json(
+        { pending: true, alreadyRequested: true, message: "Solicitação já enviada. Aguarde a autorização." },
+        { status: 202 },
+      )
+    }
+
+    const reqRow = await prisma.contactTransferRequest.create({
+      data: {
+        contactId: contact.id,
+        contactName: contact.name,
+        fromUserId: ownerId,
+        fromUserName: owner?.name ?? "",
+        requesterId: session.id,
+        requesterName: requester?.name ?? "",
+      },
+      select: { id: true },
+    })
+
+    // Notifica em tempo real o dono atual + todos os admins (podem aprovar).
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true },
+    })
+    const notify = [...new Set([ownerId, ...admins.map((a) => a.id)])]
+    broadcastToUsers(notify, {
+      type: "transfer_request",
+      data: { id: reqRow.id, contactName: contact.name, requesterName: requester?.name ?? "" },
+    })
+
     return NextResponse.json(
       {
-        error: `Este cliente está em atendimento com ${owner?.name ?? "outro vendedor"}. É necessária autorização para assumir.`,
-        needsAuthorization: true,
-        currentOwnerName: owner?.name ?? null,
+        pending: true,
+        message: `Solicitação enviada. Aguarde a autorização de ${owner?.name ?? "quem atende"} ou de um administrador.`,
       },
-      { status: 403 },
+      { status: 202 },
     )
   }
 

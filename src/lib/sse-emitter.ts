@@ -55,11 +55,23 @@ export interface SSEInternalMessagePayload {
   }
 }
 
+// Solicitação de transferência de atendimento (autorização).
+export interface SSETransferRequestPayload {
+  type: "transfer_request"
+  data: { id: string; contactName: string; requesterName: string }
+}
+export interface SSETransferDecisionPayload {
+  type: "transfer_decision"
+  data: { contactId: string; contactName: string; approved: boolean; deciderName: string }
+}
+
 export type SSEPayload =
   | SSENewMessagePayload
   | SSEMessageUpdatePayload
   | SSESystemEventPayload
   | SSEInternalMessagePayload
+  | SSETransferRequestPayload
+  | SSETransferDecisionPayload
 
 // ─── Singleton client registry ────────────────────────────────────────────────
 // O Set é compartilhado entre bundles via globalThis + Symbol.for. Em Next.js
@@ -135,7 +147,10 @@ export function broadcastSystemEvent(payload: SSESystemEventPayload): void {
 // Entrega um evento apenas aos usuários cujo id está em `userIds`. Usado pelo
 // chat interno: só os membros da conversa recebem a mensagem (independente do
 // role — aqui admin NÃO recebe tudo, senão vazaria conversa alheia).
-export function broadcastToUsers(userIds: string[], payload: SSEInternalMessagePayload): void {
+export function broadcastToUsers(
+  userIds: string[],
+  payload: SSEInternalMessagePayload | SSETransferRequestPayload | SSETransferDecisionPayload,
+): void {
   const targets = new Set(userIds)
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
   const clients = getClients()

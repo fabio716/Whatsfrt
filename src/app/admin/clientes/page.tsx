@@ -91,9 +91,10 @@ export default function MeusClientesPage() {
   const openChat = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/contacts/${id}/request-transfer`, { method: "POST" })
-      if (res.status === 403) {
-        const data = (await res.json()) as { error?: string }
-        alert(data.error ?? "Cliente em atendimento com outro vendedor. É necessária autorização.")
+      // 202 = cliente é de outro vendedor → solicitação de autorização enviada.
+      if (res.status === 202) {
+        const data = (await res.json()) as { message?: string }
+        alert(data.message ?? "Solicitação enviada. Aguarde a autorização para assumir este cliente.")
         return
       }
     } catch {

@@ -133,6 +133,15 @@ export default function ImportarPage() {
         name?: string
         previousOwner?: string | null
         error?: string
+        pending?: boolean
+        message?: string
+      }
+      // 202 = cliente é de outro vendedor → solicitação de autorização enviada.
+      if (res.status === 202 || data.pending) {
+        setRequestable(null)
+        setAvulsoErr(null)
+        alert(data.message ?? "Solicitação enviada. Aguarde a autorização para assumir este cliente.")
+        return
       }
       if (!res.ok || !data.contactId) throw new Error(data.error ?? "Erro ao requisitar cliente")
       setAvulsoSaved({
