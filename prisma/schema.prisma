@@ -81,6 +81,8 @@ model User {
   role         Role        @default(AGENT)
   department   Department?
   isActive     Boolean     @default(true)
+  // Foto de perfil do próprio usuário (interna) — mostrada no chat da equipe.
+  photoUrl     String?
   // Limite diário de mensagens OUTBOUND iniciadas por este usuário.
   // Protege contra anti-spam do WhatsApp. Admin pode ajustar em /admin/users.
   // 0 = ilimitado.

@@ -1,15 +1,17 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import Avatar from "@/app/admin/components/Avatar"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface UserOpt { id: string; name: string; role: string; department: string | null }
+interface UserOpt { id: string; name: string; role: string; department: string | null; photoUrl: string | null }
 
 interface ConversationRow {
   id: string
   isGroup: boolean
   name: string
+  photoUrl: string | null
   memberCount: number
   memberNames: string[]
   updatedAt: string
@@ -21,6 +23,7 @@ interface Msg {
   id: string
   senderId: string
   senderName: string
+  senderPhotoUrl?: string | null
   fromMe: boolean
   body: string
   mediaUrl: string | null
@@ -33,10 +36,6 @@ interface Msg {
 function hhmm(iso: string) {
   const d = new Date(iso)
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-}
-
-function initials(name: string) {
-  return name.trim().charAt(0).toUpperCase() || "?"
 }
 
 function previewOf(c: ConversationRow): string {
@@ -304,9 +303,11 @@ export default function MensagensPage() {
               key={c.id} type="button" onClick={() => openConversation(c.id)}
               className={`flex w-full items-center gap-3 border-b border-zinc-50 px-4 py-3 text-left transition-colors hover:bg-zinc-50 ${activeId === c.id ? "bg-zinc-100" : ""}`}
             >
-              <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${c.isGroup ? "bg-violet-100 text-violet-600" : "bg-emerald-100 text-emerald-700"}`}>
-                {c.isGroup ? "👥" : initials(c.name)}
-              </div>
+              {c.isGroup ? (
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-violet-100 text-[12px] font-semibold text-violet-600">👥</div>
+              ) : (
+                <Avatar name={c.name} photoUrl={c.photoUrl} size="h-9 w-9" fallback="bg-emerald-100 text-emerald-700 text-[12px] font-semibold" />
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-[13px] font-semibold text-zinc-800">{c.name}</span>
@@ -351,9 +352,11 @@ export default function MensagensPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-full text-[12px] font-semibold ${active.isGroup ? "bg-violet-100 text-violet-600" : "bg-emerald-100 text-emerald-700"}`}>
-                {active.isGroup ? "👥" : initials(active.name)}
-              </div>
+              {active.isGroup ? (
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-[12px] font-semibold text-violet-600">👥</div>
+              ) : (
+                <Avatar name={active.name} photoUrl={active.photoUrl} size="h-9 w-9" fallback="bg-emerald-100 text-emerald-700 text-[12px] font-semibold" />
+              )}
               <div className="min-w-0">
                 <p className="truncate text-[14px] font-semibold text-zinc-900">{active.name}</p>
                 <p className="truncate text-[11px] text-zinc-400">
@@ -463,7 +466,7 @@ export default function MensagensPage() {
                   {users.map((u) => (
                     <button key={u.id} type="button" onClick={() => void startDM(u.id)}
                       className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-zinc-50">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700">{initials(u.name)}</span>
+                      <Avatar name={u.name} photoUrl={u.photoUrl} size="h-8 w-8" fallback="bg-emerald-100 text-emerald-700 text-[11px] font-semibold" />
                       <span className="flex-1"><span className="block text-[13px] font-medium text-zinc-800">{u.name}</span>
                         <span className="block text-[11px] text-zinc-400">{u.role === "ADMIN" ? "Admin" : "Vendedor"}{u.department ? ` · ${u.department}` : ""}</span></span>
                     </button>
@@ -474,7 +477,7 @@ export default function MensagensPage() {
                   {users.map((u) => (
                     <label key={u.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-zinc-50">
                       <input type="checkbox" checked={selectedUsers.has(u.id)} onChange={() => toggleUser(u.id)} className="h-4 w-4 rounded border-zinc-300 accent-emerald-500" />
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-semibold text-emerald-700">{initials(u.name)}</span>
+                      <Avatar name={u.name} photoUrl={u.photoUrl} size="h-8 w-8" fallback="bg-emerald-100 text-emerald-700 text-[11px] font-semibold" />
                       <span className="flex-1 text-[13px] font-medium text-zinc-800">{u.name}</span>
                     </label>
                   ))}

@@ -61,7 +61,13 @@ export async function GET(
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
     }
 
-    if (session.role === "ADMIN") {
+    // Foto de perfil de usuário (avatar interno da equipe): qualquer autenticado vê.
+    const isUserPhoto = await prisma.user.findFirst({
+      where: { photoUrl: `/api/media/${filename}` },
+      select: { id: true },
+    })
+
+    if (session.role === "ADMIN" || isUserPhoto) {
       authorized = true
     } else {
       // Localiza a mensagem (WhatsApp) que aponta para este arquivo (formato novo

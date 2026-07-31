@@ -47,9 +47,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   for (const lm of lastMessages) userIds.add(lm.senderId)
   const users = await prisma.user.findMany({
     where: { id: { in: [...userIds] } },
-    select: { id: true, name: true },
+    select: { id: true, name: true, photoUrl: true },
   })
   const nameById = new Map(users.map((u) => [u.id, u.name]))
+  const photoById = new Map(users.map((u) => [u.id, u.photoUrl]))
 
   const membersByConv = new Map<string, string[]>()
   for (const m of allMembers) {
@@ -82,11 +83,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const displayName = c.isGroup
       ? (c.name ?? "Grupo")
       : (nameById.get(otherIds[0] ?? "") ?? "Conversa")
+    // Foto: em 1:1, a foto do outro participante; em grupo, sem foto (ícone).
+    const photoUrl = c.isGroup ? null : (photoById.get(otherIds[0] ?? "") ?? null)
     const lm = lastByConv.get(c.id)
     return {
       id: c.id,
       isGroup: c.isGroup,
       name: displayName,
+      photoUrl,
       memberCount: memberIds.length,
       memberNames: memberIds.map((id) => nameById.get(id) ?? "?"),
       updatedAt: c.updatedAt,

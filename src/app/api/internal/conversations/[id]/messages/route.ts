@@ -44,9 +44,10 @@ export async function GET(
 
   const users = await prisma.user.findMany({
     where: { id: { in: [...new Set(rows.map((r) => r.senderId))] } },
-    select: { id: true, name: true },
+    select: { id: true, name: true, photoUrl: true },
   })
   const nameById = new Map(users.map((u) => [u.id, u.name]))
+  const photoById = new Map(users.map((u) => [u.id, u.photoUrl]))
 
   // Marca como lida (abriu a conversa).
   await prisma.internalConversationMember.updateMany({
@@ -60,6 +61,7 @@ export async function GET(
       id: r.id,
       senderId: r.senderId,
       senderName: nameById.get(r.senderId) ?? "?",
+      senderPhotoUrl: photoById.get(r.senderId) ?? null,
       fromMe: r.senderId === me.id,
       body: r.body,
       mediaUrl: r.mediaUrl,
