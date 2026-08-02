@@ -57,6 +57,12 @@ export interface SSEInternalMessagePayload {
   }
 }
 
+// Edição de mensagem do chat interno — entregue só aos membros da conversa.
+export interface SSEInternalMessageUpdatePayload {
+  type: "internal_message_update"
+  data: { id: string; conversationId: string; body: string }
+}
+
 // Solicitação de transferência de atendimento (autorização).
 export interface SSETransferRequestPayload {
   type: "transfer_request"
@@ -72,6 +78,7 @@ export type SSEPayload =
   | SSEMessageUpdatePayload
   | SSESystemEventPayload
   | SSEInternalMessagePayload
+  | SSEInternalMessageUpdatePayload
   | SSETransferRequestPayload
   | SSETransferDecisionPayload
 
@@ -151,7 +158,11 @@ export function broadcastSystemEvent(payload: SSESystemEventPayload): void {
 // role — aqui admin NÃO recebe tudo, senão vazaria conversa alheia).
 export function broadcastToUsers(
   userIds: string[],
-  payload: SSEInternalMessagePayload | SSETransferRequestPayload | SSETransferDecisionPayload,
+  payload:
+    | SSEInternalMessagePayload
+    | SSEInternalMessageUpdatePayload
+    | SSETransferRequestPayload
+    | SSETransferDecisionPayload,
 ): void {
   const targets = new Set(userIds)
   const chunk = `data: ${JSON.stringify(payload)}\n\n`

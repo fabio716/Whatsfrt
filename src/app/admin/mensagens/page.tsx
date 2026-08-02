@@ -62,6 +62,11 @@ export default function MensagensPage() {
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
 
+  // Edição de mensagem já enviada (só texto, sem anexo).
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState("")
+  const [savingEdit, setSavingEdit] = useState(false)
+
   // Novo chat / grupo
   const [showNew, setShowNew] = useState(false)
   const [users, setUsers] = useState<UserOpt[]>([])
@@ -116,10 +121,20 @@ export default function MensagensPage() {
   useEffect(() => {
     const es = new EventSource("/api/sse")
     es.onmessage = (e) => {
-      let p: { type?: string; data?: Msg & { conversationId: string } }
+      let p: { type?: string; data?: (Msg & { conversationId: string }) | { id: string; conversationId: string; body: string } }
       try { p = JSON.parse(e.data) } catch { return }
-      if (p.type !== "internal_message" || !p.data) return
-      const m = p.data
+      if (!p.data) return
+
+      if (p.type === "internal_message_update") {
+        const upd = p.data as { id: string; conversationId: string; body: string }
+        if (upd.conversationId === activeIdRef.current) {
+          setMessages((prev) => prev.map((x) => (x.id === upd.id ? { ...x, body: upd.body } : x)))
+        }
+        return
+      }
+
+      if (p.type !== "internal_message") return
+      const m = p.data as Msg & { conversationId: string }
       if (m.conversationId === activeIdRef.current) {
         setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, { ...m, fromMe: false }]))
         void fetch(`/api/internal/conversations/${m.conversationId}/read`, { method: "POST" })
@@ -158,6 +173,39 @@ export default function MensagensPage() {
     if (!t || sending) return
     setText("")
     await sendMessage({ body: t })
+  }
+
+  // ── Editar mensagem já enviada ──
+  const startEdit = (m: Msg) => {
+    setEditingMsgId(m.id)
+    setEditingText(m.body)
+  }
+  const cancelEdit = () => {
+    setEditingMsgId(null)
+    setEditingText("")
+  }
+  const saveEdit = async (msgId: string) => {
+    const t = editingText.trim()
+    if (!t || savingEdit) return
+    setSavingEdit(true)
+    try {
+      const res = await fetch(`/api/internal/messages/${msgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: t }),
+      })
+      const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
+      if (!res.ok) {
+        alert(`Não foi possível editar: ${data.error ?? res.status}`)
+        return
+      }
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, body: data.body ?? t } : m)))
+      cancelEdit()
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   // ── Upload de arquivo/áudio → envia como mensagem ──
@@ -383,26 +431,73 @@ export default function MensagensPage() {
                 <p className="py-8 text-center text-[12px] text-zinc-400">Carregando…</p>
               ) : messages.length === 0 ? (
                 <p className="py-8 text-center text-[12px] text-zinc-400">Nenhuma mensagem. Diga olá! 👋</p>
-              ) : messages.map((m) => (
-                <div key={m.id} className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[70%] rounded-2xl px-3.5 py-2 text-[13px] shadow-sm ${m.fromMe ? "bg-emerald-500 text-white" : "bg-white text-zinc-800"}`}>
-                    {active.isGroup && !m.fromMe && (
-                      <p className="mb-0.5 text-[11px] font-semibold text-emerald-600">{m.senderName}</p>
-                    )}
-                    {m.mediaType?.startsWith("audio/") ? (
-                      <audio controls src={m.mediaUrl ?? undefined} className="max-w-[240px]" />
-                    ) : m.mediaType?.startsWith("image/") ? (
-                      <img src={m.mediaUrl ?? undefined} alt="imagem" className="max-h-60 max-w-[240px] rounded-lg object-cover" />
-                    ) : m.mediaType?.startsWith("video/") ? (
-                      <video controls src={m.mediaUrl ?? undefined} className="max-h-60 max-w-[240px] rounded-lg" />
-                    ) : m.mediaType ? (
-                      <a href={m.mediaUrl ?? "#"} target="_blank" rel="noreferrer" className={`underline ${m.fromMe ? "text-white" : "text-emerald-600"}`}>📎 Baixar arquivo</a>
-                    ) : null}
-                    {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                    <p className={`mt-0.5 text-right text-[9px] ${m.fromMe ? "text-emerald-100" : "text-zinc-400"}`}>{hhmm(m.createdAt)}</p>
+              ) : messages.map((m) => {
+                const canEdit = m.fromMe && !m.mediaType
+                const isEditingThis = editingMsgId === m.id
+                return (
+                  <div key={m.id} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[70%] rounded-2xl px-3.5 py-2 text-[13px] shadow-sm ${m.fromMe ? "bg-emerald-500 text-white" : "bg-white text-zinc-800"}`}>
+                      {active.isGroup && !m.fromMe && (
+                        <p className="mb-0.5 text-[11px] font-semibold text-emerald-600">{m.senderName}</p>
+                      )}
+                      {isEditingThis ? (
+                        <div className="min-w-[200px] space-y-1.5">
+                          <textarea
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEdit(m.id) }
+                              if (e.key === "Escape") cancelEdit()
+                            }}
+                            rows={2}
+                            autoFocus
+                            className="w-full resize-none rounded-lg border border-white/40 bg-white/95 px-2 py-1.5 text-[13px] text-zinc-800 outline-none"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={cancelEdit} className="text-[11px] font-medium text-white/80 hover:text-white">Cancelar</button>
+                            <button
+                              type="button"
+                              onClick={() => void saveEdit(m.id)}
+                              disabled={savingEdit || !editingText.trim()}
+                              className="text-[11px] font-semibold text-white hover:text-emerald-100 disabled:opacity-50"
+                            >
+                              {savingEdit ? "Salvando…" : "Salvar"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {m.mediaType?.startsWith("audio/") ? (
+                            <audio controls src={m.mediaUrl ?? undefined} className="max-w-[240px]" />
+                          ) : m.mediaType?.startsWith("image/") ? (
+                            <img src={m.mediaUrl ?? undefined} alt="imagem" className="max-h-60 max-w-[240px] rounded-lg object-cover" />
+                          ) : m.mediaType?.startsWith("video/") ? (
+                            <video controls src={m.mediaUrl ?? undefined} className="max-h-60 max-w-[240px] rounded-lg" />
+                          ) : m.mediaType ? (
+                            <a href={m.mediaUrl ?? "#"} target="_blank" rel="noreferrer" className={`underline ${m.fromMe ? "text-white" : "text-emerald-600"}`}>📎 Baixar arquivo</a>
+                          ) : null}
+                          {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+                          <div className="mt-0.5 flex items-center justify-end gap-1">
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => startEdit(m)}
+                                title="Editar mensagem"
+                                className="text-white/70 opacity-60 transition-opacity hover:text-white hover:opacity-100"
+                              >
+                                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                            <p className={`text-right text-[9px] ${m.fromMe ? "text-emerald-100" : "text-zinc-400"}`}>{hhmm(m.createdAt)}</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               <div ref={bottomRef} />
             </div>
 
