@@ -1068,9 +1068,10 @@ export default function ChatsClient({
                                   type="button"
                                   onClick={() => startEdit(msg)}
                                   title="Editar mensagem"
-                                  className="mr-1 text-zinc-500 opacity-60 transition-opacity hover:text-zinc-700 hover:opacity-100"
+                                  aria-label="Editar mensagem"
+                                  className="-m-1.5 mr-0.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-zinc-700 hover:opacity-100"
                                 >
-                                  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                   </svg>
                                 </button>
