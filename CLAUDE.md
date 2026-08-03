@@ -26,3 +26,11 @@
 - Após qualquer deploy, validar com:
   `curl -sk https://localhost/ -o /dev/null -w "%{http_code}"` (esperado:
   200/301) e `docker logs --tail 30 whatsfrt_app` (sem erro de Prisma).
+- Se o site mostrar a página padrão "Welcome to nginx!" (em vez do
+  WhatsFRT): o container `whatsfrt_nginx` está de pé mas rodando uma
+  config ANTIGA carregada na memória — editar `docker/nginx.ssl.conf` (ou
+  o `default.conf` dentro do container) não recarrega sozinho. Corrigir com
+  `docker exec whatsfrt_nginx nginx -t` (valida a config atual em disco) e,
+  se OK, `docker exec whatsfrt_nginx nginx -s reload`. Evite
+  `docker restart whatsfrt_nginx` a menos que o reload não resolva — reload
+  é mais rápido e não derruba conexões em andamento.
