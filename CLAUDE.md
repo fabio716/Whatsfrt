@@ -1,5 +1,15 @@
 @AGENTS.md
 
+## Sempre incluir o comando SSH
+
+Sempre que passar instruções de deploy ou qualquer comando pra rodar no
+servidor, incluir também o comando de conexão SSH no topo do bloco (o
+usuário esquece e pergunta toda vez):
+
+```bash
+ssh root@62.171.178.160
+```
+
 ## Mapa da infraestrutura — frtwhats.com
 
 | Camada | Provedor / Recurso | Detalhes |
