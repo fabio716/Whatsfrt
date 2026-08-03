@@ -27,7 +27,11 @@ export function isSafeFilename(name: string): boolean {
 function buildSafeName(originalName: string | undefined, mimetype: string): string {
   const ext = (mimetype.split("/")[1] ?? "bin").split(";")[0].replace(/[^a-zA-Z0-9]/g, "") || "bin"
   if (originalName) {
-    const clean = originalName.replace(/[^a-zA-Z0-9._-]/g, "_")
+    // Nome original pode ter ".." (dois pontos seguidos, digitação comum em
+    // arquivos tipo "Nome..pdf") — isSafeFilename rejeita QUALQUER ".." como
+    // proteção contra path traversal, então o arquivo salvo nunca pode ter
+    // essa sequência ou o link de download quebra pro cliente pra sempre.
+    const clean = originalName.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.{2,}/g, ".")
     return `${Date.now()}-${clean}`.slice(0, 200)
   }
   return `${Date.now()}.${ext}`
