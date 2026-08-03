@@ -67,6 +67,9 @@ export default function MensagensPage() {
   const [editingText, setEditingText] = useState("")
   const [savingEdit, setSavingEdit] = useState(false)
 
+  // Imagem em tela cheia (zoom + baixar).
+  const [expandedImg, setExpandedImg] = useState<string | null>(null)
+
   // Novo chat / grupo
   const [showNew, setShowNew] = useState(false)
   const [users, setUsers] = useState<UserOpt[]>([])
@@ -470,7 +473,9 @@ export default function MensagensPage() {
                           {m.mediaType?.startsWith("audio/") ? (
                             <audio controls src={m.mediaUrl ?? undefined} className="max-w-[240px]" />
                           ) : m.mediaType?.startsWith("image/") ? (
-                            <img src={m.mediaUrl ?? undefined} alt="imagem" className="max-h-60 max-w-[240px] rounded-lg object-cover" />
+                            <button type="button" onClick={() => setExpandedImg(m.mediaUrl ?? null)} className="block cursor-zoom-in">
+                              <img src={m.mediaUrl ?? undefined} alt="imagem" className="max-h-60 max-w-[240px] rounded-lg object-cover" />
+                            </button>
                           ) : m.mediaType?.startsWith("video/") ? (
                             <video controls src={m.mediaUrl ?? undefined} className="max-h-60 max-w-[240px] rounded-lg" />
                           ) : m.mediaType ? (
@@ -601,6 +606,42 @@ export default function MensagensPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Imagem em tela cheia (zoom + baixar) ── */}
+      {expandedImg && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setExpandedImg(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setExpandedImg(null)}
+            aria-label="Fechar"
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <a
+            href={expandedImg}
+            download
+            onClick={(e) => e.stopPropagation()}
+            className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/20"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12L8 8m4-4l4 4" />
+            </svg>
+            Baixar
+          </a>
+          <img
+            src={expandedImg}
+            alt="imagem"
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </main>
