@@ -38,6 +38,7 @@ ssh root@62.171.178.160
 | Sintoma | Causa provável | Ação |
 |---|---|---|
 | Erro 522 (Cloudflare) | VPS suspenso ou travado | Verificar faturas na Contabo; conferir status da instância; Restart pelo painel. |
+| Erro 502 (Cloudflare, logo depois de rodar `deploy.sh`) | Normal — janela curta (10-20s) entre o container antigo sair e o novo ficar pronto durante `docker compose up -d app`. Não indica bug. | Esperar ~30s e recarregar. Só investigar se persistir: `docker ps -a` (container deve estar `Up`) e `curl -s http://localhost:3000/api/health` (deve responder 200). |
 | "Welcome to nginx" | nginx do host roubou as portas, OU container nginx com config antiga na memória | No servidor: `systemctl status nginx` (deve estar inactive/disabled — se não, `systemctl stop nginx && systemctl disable nginx`). Se já tiver desligado, é config antiga: `docker exec whatsfrt_nginx nginx -t` e `docker exec whatsfrt_nginx nginx -s reload`. |
 | Loop de redirecionamento 301 | SSL do Cloudflare em Flexible | Cloudflare → SSL/TLS → Overview → mudar pra **Full (strict)**. |
 | Erro 526 (SSL inválido) | Certificado Let's Encrypt vencido | No servidor: `certbot renew`; se urgente, Cloudflare em Full (sem strict) temporariamente. |
