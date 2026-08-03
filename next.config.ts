@@ -8,7 +8,11 @@ const SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "geolocation=(), microphone=(), camera=()" },
+  // microphone=(self): a gravação de áudio (Chats e Mensagens) usa
+  // getUserMedia direto na própria página — "()" bloqueava até o próprio
+  // site, quebrando o botão de gravar pra todo mundo ("não foi possível
+  // acessar o microfone").
+  { key: "Permissions-Policy", value: "geolocation=(), microphone=(self), camera=()" },
   {
     key: "Content-Security-Policy",
     value: [
