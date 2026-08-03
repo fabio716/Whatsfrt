@@ -162,6 +162,36 @@ export async function editZapiText(
   return { ok: true, messageId: data?.messageId ?? data?.id ?? editMessageId, attempts: res.attempts, errorMsg: null }
 }
 
+// Apaga (pra todos) uma mensagem já enviada. Mesma janela de tempo do WhatsApp
+// que a edição — passado esse prazo a Z-API recusa e repassamos o erro.
+export interface ZapiDeleteResult {
+  ok: boolean
+  errorMsg: string | null
+}
+
+export async function deleteZapiMessage(
+  whatsappId: string,
+  messageId: string,
+): Promise<ZapiDeleteResult> {
+  const cfg = envOk()
+  if (!cfg) return { ok: false, errorMsg: "ZAPI_INSTANCE_ID/ZAPI_TOKEN ausente" }
+  const phone = normalizePhone(whatsappId)
+  const url = buildUrl(
+    `messages?messageId=${encodeURIComponent(messageId)}&phone=${encodeURIComponent(phone)}&owner=true`,
+  )
+  if (!url) return { ok: false, errorMsg: "ZAPI_INSTANCE_ID/ZAPI_TOKEN ausente" }
+
+  const res = await evolutionFetch(url, {
+    label: "zapi:delete-message",
+    method: "DELETE",
+    headers: commonHeaders(),
+  })
+  if (!res.ok) {
+    return { ok: false, errorMsg: res.lastError ?? `status ${res.status}` }
+  }
+  return { ok: true, errorMsg: null }
+}
+
 // ─── Envio de mídia ──────────────────────────────────────────────────────────
 // Z-API tem endpoints separados por tipo de mídia. Aceitam URL pública OU
 // base64 no campo. Preferimos URL (mais robusto).

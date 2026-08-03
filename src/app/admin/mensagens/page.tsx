@@ -70,6 +70,9 @@ export default function MensagensPage() {
   // Imagem em tela cheia (zoom + baixar).
   const [expandedImg, setExpandedImg] = useState<string | null>(null)
 
+  // Apagar mensagem já enviada.
+  const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null)
+
   // Novo chat / grupo
   const [showNew, setShowNew] = useState(false)
   const [users, setUsers] = useState<UserOpt[]>([])
@@ -124,14 +127,21 @@ export default function MensagensPage() {
   useEffect(() => {
     const es = new EventSource("/api/sse")
     es.onmessage = (e) => {
-      let p: { type?: string; data?: (Msg & { conversationId: string }) | { id: string; conversationId: string; body: string } }
+      let p: { type?: string; data?: (Msg & { conversationId: string }) | { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null } }
       try { p = JSON.parse(e.data) } catch { return }
       if (!p.data) return
 
       if (p.type === "internal_message_update") {
-        const upd = p.data as { id: string; conversationId: string; body: string }
+        const upd = p.data as { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null }
         if (upd.conversationId === activeIdRef.current) {
-          setMessages((prev) => prev.map((x) => (x.id === upd.id ? { ...x, body: upd.body } : x)))
+          setMessages((prev) => prev.map((x) => (x.id === upd.id
+            ? {
+                ...x,
+                body: upd.body,
+                ...(upd.mediaUrl !== undefined ? { mediaUrl: upd.mediaUrl } : {}),
+                ...(upd.mediaType !== undefined ? { mediaType: upd.mediaType } : {}),
+              }
+            : x)))
         }
         return
       }
@@ -208,6 +218,28 @@ export default function MensagensPage() {
       alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  // ── Apagar mensagem já enviada ──
+  const deleteMsg = async (msgId: string) => {
+    if (deletingMsgId) return
+    if (!confirm("Apagar esta mensagem? Essa ação não pode ser desfeita.")) return
+    setDeletingMsgId(msgId)
+    try {
+      const res = await fetch(`/api/internal/messages/${msgId}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
+      if (!res.ok) {
+        alert(`Não foi possível apagar: ${data.error ?? res.status}`)
+        return
+      }
+      setMessages((prev) => prev.map((m) =>
+        m.id === msgId ? { ...m, body: data.body ?? m.body, mediaUrl: null, mediaType: null } : m
+      ))
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setDeletingMsgId(null)
     }
   }
 
@@ -436,6 +468,7 @@ export default function MensagensPage() {
                 <p className="py-8 text-center text-[12px] text-zinc-400">Nenhuma mensagem. Diga olá! 👋</p>
               ) : messages.map((m) => {
                 const canEdit = m.fromMe && !m.mediaType
+                const canDelete = m.fromMe && m.body !== "🚫 Mensagem apagada"
                 const isEditingThis = editingMsgId === m.id
                 return (
                   <div key={m.id} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"} mb-1`}>
@@ -493,6 +526,20 @@ export default function MensagensPage() {
                               >
                                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                onClick={() => void deleteMsg(m.id)}
+                                disabled={deletingMsgId === m.id}
+                                title="Apagar mensagem"
+                                aria-label="Apagar mensagem"
+                                className="-m-1.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-red-600 hover:opacity-100 disabled:opacity-40"
+                              >
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a2 2 0 01-2 2H8a2 2 0 01-2-2V7h12z" />
                                 </svg>
                               </button>
                             )}

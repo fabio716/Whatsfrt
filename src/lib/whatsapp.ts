@@ -16,6 +16,7 @@ import {
 import { evolutionFetch } from "@/lib/reliability/evolutionFetch"
 import type { EvolutionState } from "@/lib/reliability/events"
 import {
+  deleteZapiMessage,
   disconnectZapi,
   editZapiText,
   getZapiConnectionState,
@@ -65,6 +66,17 @@ export async function editText(
     return r
   }
   return { ok: false, messageId: null, attempts: 0, errorMsg: "Edição de mensagem não é suportada no provedor Evolution" }
+}
+
+// Apaga (pra todos) uma mensagem já enviada. Só suportado no provider Z-API.
+export async function deleteMessage(
+  whatsappId: string,
+  providerMessageId: string,
+): Promise<{ ok: boolean; errorMsg: string | null }> {
+  if (activeProvider() === "zapi") {
+    return deleteZapiMessage(whatsappId, providerMessageId)
+  }
+  return { ok: false, errorMsg: "Apagar mensagem não é suportado no provedor Evolution" }
 }
 
 // Mais simples — quando só precisa saber se foi ou não.

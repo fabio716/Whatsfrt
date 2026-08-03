@@ -246,6 +246,8 @@ export default function ChatsClient({
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState("")
   const [savingEdit, setSavingEdit] = useState(false)
+  // Apagar mensagem já enviada (texto ou mídia).
+  const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
   const mediaRecRef     = useRef<MediaRecorder | null>(null)
@@ -376,7 +378,13 @@ export default function ChatsClient({
                   ...c,
                   messages: c.messages.map((m) =>
                     m.id === p.data.id
-                      ? { ...m, status: p.data.status, ...(p.data.body !== undefined ? { body: p.data.body } : {}) }
+                      ? {
+                          ...m,
+                          status: p.data.status,
+                          ...(p.data.body !== undefined ? { body: p.data.body } : {}),
+                          ...(p.data.mediaUrl !== undefined ? { mediaUrl: p.data.mediaUrl } : {}),
+                          ...(p.data.mediaType !== undefined ? { mediaType: p.data.mediaType } : {}),
+                        }
                       : m
                   ),
                 }
@@ -756,6 +764,30 @@ export default function ChatsClient({
     }
   }
 
+  const deleteMsg = async (msgId: string) => {
+    if (deletingMsgId) return
+    if (!confirm("Apagar esta mensagem para todos? Essa ação não pode ser desfeita.")) return
+    setDeletingMsgId(msgId)
+    try {
+      const res = await fetch(`/api/messages/${msgId}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
+      if (!res.ok) {
+        alert(`Não foi possível apagar: ${data.error ?? res.status}`)
+        return
+      }
+      setContacts((prev) => prev.map((c) => ({
+        ...c,
+        messages: c.messages.map((m) =>
+          m.id === msgId ? { ...m, body: data.body ?? m.body, mediaUrl: null, mediaType: null } : m
+        ),
+      })))
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setDeletingMsgId(null)
+    }
+  }
+
   const messageGroups = activeContact ? groupByDate(activeContact.messages) : []
 
   return (
@@ -1027,6 +1059,8 @@ export default function ChatsClient({
                     // mesmo mandou mesmo em contato que não é "dele".
                     const canEdit = isOut && !msg.mediaUrl
                       && (!isAgent || msg.agentId === currentUserId)
+                    const canDelete = isOut && msg.body !== "🚫 Mensagem apagada"
+                      && (!isAgent || msg.agentId === currentUserId)
                     const isEditingThis = editingMsgId === msg.id
                     return (
                       <div key={msg.id} className={`group flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
@@ -1073,6 +1107,20 @@ export default function ChatsClient({
                                 >
                                   <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteMsg(msg.id)}
+                                  disabled={deletingMsgId === msg.id}
+                                  title="Apagar mensagem"
+                                  aria-label="Apagar mensagem"
+                                  className="-m-1.5 mr-0.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-red-600 hover:opacity-100 disabled:opacity-40"
+                                >
+                                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a2 2 0 01-2 2H8a2 2 0 01-2-2V7h12z" />
                                   </svg>
                                 </button>
                               )}

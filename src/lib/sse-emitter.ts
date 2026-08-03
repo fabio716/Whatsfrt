@@ -30,9 +30,17 @@ export interface SSENewMessagePayload {
 
 export interface SSEMessageUpdatePayload {
   type: "message_update"
-  // body preenchido só quando o evento é de uma EDIÇÃO de mensagem (não de
-  // mudança de status ✓/✓✓) — o client aplica a troca de texto em tempo real.
-  data: { id: string; status: SSEMessageData["status"]; contactId: string; body?: string }
+  // body/mediaUrl/mediaType preenchidos só quando o evento é de uma EDIÇÃO ou
+  // uma EXCLUSÃO de mensagem (não de mudança de status ✓/✓✓) — o client
+  // aplica a troca em tempo real. Na exclusão, mediaUrl/mediaType vêm null.
+  data: {
+    id: string
+    status: SSEMessageData["status"]
+    contactId: string
+    body?: string
+    mediaUrl?: string | null
+    mediaType?: string | null
+  }
 }
 
 // Eventos de sistema vão para TODOS os clientes (admin e agente). O UI decide
@@ -57,10 +65,11 @@ export interface SSEInternalMessagePayload {
   }
 }
 
-// Edição de mensagem do chat interno — entregue só aos membros da conversa.
+// Edição/exclusão de mensagem do chat interno — entregue só aos membros da
+// conversa. Na exclusão, mediaUrl/mediaType vêm null.
 export interface SSEInternalMessageUpdatePayload {
   type: "internal_message_update"
-  data: { id: string; conversationId: string; body: string }
+  data: { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null }
 }
 
 // Solicitação de transferência de atendimento (autorização).
