@@ -429,7 +429,7 @@ export default function MensagensPage() {
             </header>
 
             {/* Mensagens */}
-            <div className="flex-1 space-y-2 overflow-y-auto bg-zinc-50 px-6 py-4">
+            <div className="flex-1 space-y-1 overflow-y-auto bg-zinc-50 px-6 py-4">
               {loadingMsgs ? (
                 <p className="py-8 text-center text-[12px] text-zinc-400">Carregando…</p>
               ) : messages.length === 0 ? (
@@ -438,8 +438,8 @@ export default function MensagensPage() {
                 const canEdit = m.fromMe && !m.mediaType
                 const isEditingThis = editingMsgId === m.id
                 return (
-                  <div key={m.id} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[70%] rounded-2xl px-3.5 py-2 text-[13px] shadow-sm ${m.fromMe ? "bg-emerald-500 text-white" : "bg-white text-zinc-800"}`}>
+                  <div key={m.id} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"} mb-1`}>
+                    <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm ${m.fromMe ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
                       {active.isGroup && !m.fromMe && (
                         <p className="mb-0.5 text-[11px] font-semibold text-emerald-600">{m.senderName}</p>
                       )}
@@ -454,15 +454,15 @@ export default function MensagensPage() {
                             }}
                             rows={2}
                             autoFocus
-                            className="w-full resize-none rounded-lg border border-white/40 bg-white/95 px-2 py-1.5 text-[13px] text-zinc-800 outline-none"
+                            className="w-full resize-none rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-[13px] text-zinc-800 outline-none"
                           />
                           <div className="flex justify-end gap-2">
-                            <button type="button" onClick={cancelEdit} className="text-[11px] font-medium text-white/80 hover:text-white">Cancelar</button>
+                            <button type="button" onClick={cancelEdit} className="text-[11px] font-medium text-zinc-500 hover:text-zinc-700">Cancelar</button>
                             <button
                               type="button"
                               onClick={() => void saveEdit(m.id)}
                               disabled={savingEdit || !editingText.trim()}
-                              className="text-[11px] font-semibold text-white hover:text-emerald-100 disabled:opacity-50"
+                              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
                             >
                               {savingEdit ? "Salvando…" : "Salvar"}
                             </button>
@@ -479,24 +479,24 @@ export default function MensagensPage() {
                           ) : m.mediaType?.startsWith("video/") ? (
                             <video controls src={m.mediaUrl ?? undefined} className="max-h-60 max-w-[240px] rounded-lg" />
                           ) : m.mediaType ? (
-                            <a href={m.mediaUrl ?? "#"} target="_blank" rel="noreferrer" className={`underline ${m.fromMe ? "text-white" : "text-emerald-600"}`}>📎 Baixar arquivo</a>
+                            <a href={m.mediaUrl ?? "#"} target="_blank" rel="noreferrer" className="underline text-emerald-600">📎 Baixar arquivo</a>
                           ) : null}
-                          {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                          <div className="mt-0.5 flex items-center justify-end gap-1">
+                          {m.body && <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{m.body}</p>}
+                          <div className="mt-1 flex items-center justify-end gap-1 px-1">
                             {canEdit && (
                               <button
                                 type="button"
                                 onClick={() => startEdit(m)}
                                 title="Editar mensagem"
                                 aria-label="Editar mensagem"
-                                className="-m-1.5 flex items-center gap-0.5 rounded-md p-1.5 text-white/80 opacity-80 transition-opacity hover:bg-white/10 hover:text-white hover:opacity-100"
+                                className="-m-1.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-zinc-700 hover:opacity-100"
                               >
                                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                               </button>
                             )}
-                            <p className={`text-right text-[9px] ${m.fromMe ? "text-emerald-100" : "text-zinc-400"}`}>{hhmm(m.createdAt)}</p>
+                            <span className="text-[10px] text-zinc-400">{hhmm(m.createdAt)}</span>
                           </div>
                         </>
                       )}
