@@ -43,6 +43,7 @@ ssh root@62.171.178.160
 | Loop de redirecionamento 301 | SSL do Cloudflare em Flexible | Cloudflare → SSL/TLS → Overview → mudar pra **Full (strict)**. |
 | Erro 526 (SSL inválido) | Certificado Let's Encrypt vencido | No servidor: `certbot renew`; se urgente, Cloudflare em Full (sem strict) temporariamente. |
 | WhatsApp desconectado | Sessão expirada na Z-API/Evolution | Entrar no sistema e reconectar a instância (reescanear QR se for Evolution). |
+| "Corpo inválido" ao enviar vídeo/arquivo grande | O `proxy.ts` (middleware) intercepta todas as rotas autenticadas e por padrão só bufferiza 10MB do corpo da requisição — arquivo maior vem truncado até a rota, quebrando `formData()`. Configurado em `next.config.ts` → `experimental.proxyClientMaxBodySize` (hoje 120MB, alinhado com `MAX_UPLOAD_BYTES`). | Se voltar a acontecer, checar se esse valor não foi reduzido/removido num merge. Logs mostram `Request body exceeded XMB for <rota>` quando é isso. |
 | Sem acesso SSH | Firewall/senha incorreta | Usar VNC: habilitar no painel Contabo + reboot; conectar via TightVNC em `5.189.154.85:63180`. |
 
 ### Pendências para evitar reincidência (do incidente de 02/08/2026)
