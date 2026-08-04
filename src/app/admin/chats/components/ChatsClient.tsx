@@ -615,11 +615,10 @@ export default function ChatsClient({
     }
   }, [recordedBlob, activeId, isUploading])
 
-  // Upload e envio de mídia (foto/vídeo/documento)
-  const handleFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = "" // permite escolher mesmo arquivo de novo
-    if (!file || !activeId || isUploading || !isOwner) return
+  // Upload e envio de mídia (foto/vídeo/documento) — usado tanto pelo input de
+  // arquivo quanto por colar (Ctrl+V) uma imagem copiada.
+  const sendFile = useCallback(async (file: File) => {
+    if (!activeId || isUploading || !isOwner) return
 
     // Limites por tipo. A Z-API aceita video ate 100 MB (send-video); backend
     // (MAX_UPLOAD_BYTES=120MB) e nginx (client_max_body_size=130M) ficam acima
@@ -1218,7 +1217,11 @@ export default function ChatsClient({
                     type="file"
                     className="hidden"
                     accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
-                    onChange={(e) => void handleFileSelected(e)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = "" // permite escolher mesmo arquivo de novo
+                      if (file) void sendFile(file)
+                    }}
                   />
                   <button
                     type="button"
@@ -1259,6 +1262,14 @@ export default function ChatsClient({
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) void handleSend() }}
+                    onPaste={(e) => {
+                      const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"))
+                      const file = item?.getAsFile()
+                      if (file) {
+                        e.preventDefault()
+                        void sendFile(file)
+                      }
+                    }}
                     placeholder={isUploading ? "Enviando arquivo..." : "Digite uma mensagem..."}
                     disabled={isUploading}
                     className="flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 outline-none focus:border-zinc-300 focus:bg-white disabled:opacity-60"

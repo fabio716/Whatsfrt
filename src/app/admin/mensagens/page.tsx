@@ -601,6 +601,14 @@ export default function MensagensPage() {
                   <textarea
                     value={text} onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSendText() } }}
+                    onPaste={(e) => {
+                      const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"))
+                      const file = item?.getAsFile()
+                      if (file) {
+                        e.preventDefault()
+                        void uploadAndSend(file, file.name || `imagem-${Date.now()}.png`)
+                      }
+                    }}
                     rows={1} placeholder={uploading ? "Enviando arquivo…" : "Escreva uma mensagem…"}
                     className="max-h-28 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white"
                   />
