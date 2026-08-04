@@ -3,6 +3,7 @@
 import { useState } from "react"
 import AdminNav from "./AdminNav"
 import EvolutionStatusBanner from "./EvolutionStatusBanner"
+import NotificationsPrompt from "./NotificationsPrompt"
 
 type Role = "ADMIN" | "AGENT"
 
@@ -52,6 +53,7 @@ export default function AdminShell({
         </div>
 
         <EvolutionStatusBanner />
+        <NotificationsPrompt />
         <div className="flex-1 overflow-y-auto">{children}</div>
       </main>
     </div>

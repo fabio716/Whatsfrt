@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import type { SSEPayload } from "@/lib/sse-emitter"
 import type { ContactData, MessageData } from "@/app/admin/dashboard/types"
 import Avatar from "@/app/admin/components/Avatar"
+import { notifyDesktop } from "@/lib/notify"
 
 type Agent = { id: string; name: string }
 
@@ -366,6 +367,15 @@ export default function ChatsClient({
             const target = updated.find((c) => c.id === contact.id)
             return target ? [target, ...updated.filter((c) => c.id !== contact.id)] : updated
           })
+          // Notifica só mensagem do CLIENTE (inbound) — a própria mensagem
+          // enviada não precisa avisar quem acabou de mandar ela.
+          if (msg.direction === "INBOUND") {
+            const preview = msg.mediaType ? "📎 Anexo" : msg.body
+            notifyDesktop(contact.name || "Novo cliente", preview, {
+              tag: `chat-${contact.id}`,
+              onClick: () => setActiveId(contact.id),
+            })
+          }
           return
         }
 

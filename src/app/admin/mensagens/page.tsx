@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Avatar from "@/app/admin/components/Avatar"
+import { notifyDesktop } from "@/lib/notify"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,18 @@ export default function MensagensPage() {
 
   // Apagar mensagem já enviada.
   const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null)
+
+  // Meu próprio id — usado só pra não notificar de mensagem que eu mesmo mandei.
+  const [myUserId, setMyUserId] = useState<string | null>(null)
+  useEffect(() => {
+    void fetch("/api/me").then(async (res) => {
+      if (!res.ok) return
+      const me = (await res.json()) as { id: string }
+      setMyUserId(me.id)
+    })
+  }, [])
+  const myUserIdRef = useRef<string | null>(null)
+  useEffect(() => { myUserIdRef.current = myUserId }, [myUserId])
 
   // Novo chat / grupo
   const [showNew, setShowNew] = useState(false)
@@ -151,6 +164,13 @@ export default function MensagensPage() {
       if (m.conversationId === activeIdRef.current) {
         setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, { ...m, fromMe: false }]))
         void fetch(`/api/internal/conversations/${m.conversationId}/read`, { method: "POST" })
+      }
+      if (m.senderId !== myUserIdRef.current) {
+        const preview = m.mediaType ? "📎 Anexo" : m.body
+        notifyDesktop(m.senderName || "Mensagem interna", preview, {
+          tag: `mensagens-${m.conversationId}`,
+          onClick: () => openConversation(m.conversationId),
+        })
       }
       void loadConversations()
     }
