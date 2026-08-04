@@ -20,8 +20,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let formData: FormData
   try {
     formData = await request.formData()
-  } catch {
-    return NextResponse.json({ error: "Corpo inválido" }, { status: 400 })
+  } catch (err) {
+    // Log detalhado — "Corpo inválido" sozinho não diz se foi upload
+    // interrompido (timeout/conexão caiu no meio) ou multipart malformado.
+    console.error(
+      `[send-media] falha ao ler formData: content-length=${request.headers.get("content-length")} ` +
+      `content-type=${request.headers.get("content-type")} erro=${err instanceof Error ? err.message : String(err)}`,
+    )
+    return NextResponse.json({ error: "Corpo inválido — upload pode ter sido interrompido (conexão lenta/instável). Tente de novo." }, { status: 400 })
   }
 
   const file      = formData.get("file") as File | null
