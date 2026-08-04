@@ -39,6 +39,12 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "100mb",
     },
+    // O proxy (src/proxy.ts) intercepta /api/messages/*, /api/internal/*
+    // etc. pra checar sessão — por padrão o Next.js limita o corpo que ele
+    // consegue bufferizar em 10MB, truncando uploads maiores (vídeo, docs)
+    // ANTES de chegar na rota, quebrando o formData() com "Corpo inválido".
+    // Alinhado com MAX_UPLOAD_BYTES (120MB) em lib/mediaStorage.ts.
+    proxyClientMaxBodySize: "120mb",
   },
   async headers() {
     return [
