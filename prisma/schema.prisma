@@ -94,8 +94,25 @@ model User {
   assignedContacts Contact[] @relation("AssignedContacts")
   cooperatives     Cooperative[] @relation("CooperativeAssignments")
   serviceSessions  ServiceSession[] @relation("AgentSessions")
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
+}
+
+// Inscrição de push notification real (Service Worker + Web Push), uma por
+// dispositivo/navegador em que o usuário autorizou notificações. Um mesmo
+// usuário pode ter várias (celular + desktop, por exemplo).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // Contato externo identificado pelo número WhatsApp.

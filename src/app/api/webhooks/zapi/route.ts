@@ -24,6 +24,7 @@ import { enqueueInbound } from "@/lib/reliability/queue"
 import { applyRating, parseRating } from "@/lib/serviceTracking"
 import { sendTextOk } from "@/lib/whatsapp"
 import { findOrCreateContact } from "@/lib/contactLookup"
+import { sendPushToUsers } from "@/lib/push"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -221,6 +222,20 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
       },
     },
   })
+
+  // 4b — Push real (funciona com o navegador fechado). Vai pro agente dono
+  // do contato; sem dono ainda (fila), vai pra todos os admins.
+  void (async () => {
+    const targetIds = contact.assignedUserId
+      ? [contact.assignedUserId]
+      : (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((u) => u.id)
+    await sendPushToUsers(targetIds, {
+      title: contact.name || "Novo cliente",
+      body: media ? "📎 Anexo" : messageText,
+      tag: `chat-${contact.id}`,
+      url: "/admin/chats",
+    })
+  })()
 
   // 5a — Captura nota se contato está aguardando avaliação
   if (contact.chatStatus === ChatStatus.AWAITING_RATING) {

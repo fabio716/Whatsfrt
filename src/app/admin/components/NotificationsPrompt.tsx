@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { notificationPermission, requestNotificationPermission } from "@/lib/notify"
+import { notificationPermission, requestNotificationPermission, subscribeToPush } from "@/lib/notify"
 
 const DISMISS_KEY = "whatsfrt:notifications-dismissed"
 
@@ -14,12 +14,16 @@ export default function NotificationsPrompt() {
     const perm = notificationPermission()
     const dismissed = localStorage.getItem(DISMISS_KEY) === "1"
     setVisible(perm === "default" && !dismissed)
+    // Permissão já concedida antes (outra sessão/dispositivo) — garante que
+    // a subscription de push real existe pra este navegador também.
+    if (perm === "granted") void subscribeToPush()
   }, [])
 
   if (!visible) return null
 
   const handleEnable = async () => {
-    await requestNotificationPermission()
+    const perm = await requestNotificationPermission()
+    if (perm === "granted") await subscribeToPush()
     setVisible(false)
   }
   const handleDismiss = () => {

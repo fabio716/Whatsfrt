@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { broadcastToUsers } from "@/lib/sse-emitter"
+import { sendPushToUsers } from "@/lib/push"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -133,6 +134,15 @@ export async function POST(
 
   // Tempo real: entrega só aos membros da conversa.
   broadcastToUsers(memberIds, { type: "internal_message", data: payload })
+
+  // Push real (navegador fechado) pros outros membros — não pra quem enviou.
+  const pushTargets = memberIds.filter((uid) => uid !== me.id)
+  void sendPushToUsers(pushTargets, {
+    title: payload.senderName || "Mensagem interna",
+    body: hasMedia ? "📎 Anexo" : payload.body,
+    tag: `mensagens-${id}`,
+    url: "/admin/mensagens",
+  })
 
   return NextResponse.json({ ...payload, fromMe: true }, { status: 201 })
 }

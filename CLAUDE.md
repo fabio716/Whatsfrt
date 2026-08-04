@@ -88,3 +88,9 @@ ssh root@62.171.178.160
   se OK, `docker exec whatsfrt_nginx nginx -s reload`. Evite
   `docker restart whatsfrt_nginx` a menos que o reload não resolva — reload
   é mais rápido e não derruba conexões em andamento.
+- Push notification real (Service Worker + Web Push): as chaves VAPID
+  (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`)
+  precisam estar no `.env` do servidor ANTES do `docker build` — a variável
+  `NEXT_PUBLIC_*` é embutida no bundle em tempo de build, trocar depois só
+  reiniciando o container não tem efeito, precisa rebuildar. Gerar novo par
+  com `npx web-push generate-vapid-keys`.
