@@ -6,6 +6,7 @@ import type { SSEPayload } from "@/lib/sse-emitter"
 import type { ContactData, MessageData } from "@/app/admin/dashboard/types"
 import Avatar from "@/app/admin/components/Avatar"
 import { notifyDesktop } from "@/lib/notify"
+import { handleSessionExpired } from "@/lib/sessionGuard"
 
 type Agent = { id: string; name: string }
 
@@ -656,7 +657,7 @@ export default function ChatsClient({
       })
       if (res.ok) {
         setInputValue("") // limpa legenda se enviou
-      } else {
+      } else if (!handleSessionExpired(res.status)) {
         const data = await res.json().catch(() => ({})) as { error?: string }
         alert(`Falha ao enviar arquivo: ${data.error ?? res.status}`)
       }
@@ -685,6 +686,8 @@ export default function ChatsClient({
       setInputValue("") // limpa só se enviou
       return
     }
+
+    if (handleSessionExpired(res.status)) return
 
     if (res.status === 429) {
       const data = await res.json().catch(() => ({})) as { error?: string; code?: string; similarCount?: number; sentToday?: number; limit?: number; consecutiveOutbound?: number }
@@ -756,6 +759,7 @@ export default function ChatsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       })
+      if (!res.ok && handleSessionExpired(res.status)) return
       const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
       if (!res.ok) {
         alert(`Não foi possível editar: ${data.error ?? res.status}`)
@@ -779,6 +783,7 @@ export default function ChatsClient({
     setDeletingMsgId(msgId)
     try {
       const res = await fetch(`/api/messages/${msgId}`, { method: "DELETE" })
+      if (!res.ok && handleSessionExpired(res.status)) return
       const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
       if (!res.ok) {
         alert(`Não foi possível apagar: ${data.error ?? res.status}`)

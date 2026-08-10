@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Avatar from "@/app/admin/components/Avatar"
 import { notifyDesktop } from "@/lib/notify"
+import { handleSessionExpired } from "@/lib/sessionGuard"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,6 +196,9 @@ export default function MensagensPage() {
         const m = (await res.json()) as Msg
         setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
         void loadConversations()
+      } else if (!handleSessionExpired(res.status)) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        alert(`Não foi possível enviar: ${data.error ?? res.status}`)
       }
     } finally {
       setSending(false)
@@ -227,6 +231,7 @@ export default function MensagensPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: t }),
       })
+      if (!res.ok && handleSessionExpired(res.status)) return
       const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
       if (!res.ok) {
         alert(`Não foi possível editar: ${data.error ?? res.status}`)
@@ -248,6 +253,7 @@ export default function MensagensPage() {
     setDeletingMsgId(msgId)
     try {
       const res = await fetch(`/api/internal/messages/${msgId}`, { method: "DELETE" })
+      if (!res.ok && handleSessionExpired(res.status)) return
       const data = await res.json().catch(() => ({})) as { body?: string; error?: string }
       if (!res.ok) {
         alert(`Não foi possível apagar: ${data.error ?? res.status}`)
