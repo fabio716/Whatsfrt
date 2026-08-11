@@ -60,15 +60,50 @@ export async function DELETE(
   const user = await prisma.user.findUnique({ where: { id }, select: { id: true } })
   if (!user) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
 
-  const msgCount = await prisma.message.count({ where: { agentId: id } })
+  // Checa TODOS os vínculos que travam o delete no banco (foreign key), não
+  // só mensagens — carteira de contatos, atendimentos e cooperativas também
+  // impedem. Sem checar aqui, prisma.user.delete falha com erro de
+  // constraint não tratado (vira 500 sem JSON, e o front mostra "Erro de
+  // conexão" — confuso, não diz o que realmente travou).
+  const [msgCount, contactCount, sessionCount, cooperativeCount] = await Promise.all([
+    prisma.message.count({ where: { agentId: id } }),
+    prisma.contact.count({ where: { assignedUserId: id } }),
+    prisma.serviceSession.count({ where: { agentId: id } }),
+    prisma.cooperative.count({ where: { assignedUserId: id } }),
+  ])
   if (msgCount > 0) {
     return NextResponse.json(
       { error: `Usuário possui ${msgCount} mensagem(s) vinculada(s). Use "Desativar" para ocultar sem perder histórico.` },
       { status: 409 }
     )
   }
+  if (contactCount > 0) {
+    return NextResponse.json(
+      { error: `Usuário tem ${contactCount} contato(s) na carteira. Transfira ou libere os contatos antes, ou use "Desativar".` },
+      { status: 409 }
+    )
+  }
+  if (sessionCount > 0) {
+    return NextResponse.json(
+      { error: `Usuário tem ${sessionCount} atendimento(s) no histórico. Use "Desativar" para ocultar sem perder histórico.` },
+      { status: 409 }
+    )
+  }
+  if (cooperativeCount > 0) {
+    return NextResponse.json(
+      { error: `Usuário está responsável por ${cooperativeCount} cooperativa(s). Reatribua antes, ou use "Desativar".` },
+      { status: 409 }
+    )
+  }
 
-  await prisma.user.delete({ where: { id } })
+  try {
+    await prisma.user.delete({ where: { id } })
+  } catch {
+    return NextResponse.json(
+      { error: "Não foi possível excluir: usuário ainda tem vínculos no sistema. Use \"Desativar\" para ocultar sem perder histórico." },
+      { status: 409 },
+    )
+  }
   return new NextResponse(null, { status: 204 })
 }
 
