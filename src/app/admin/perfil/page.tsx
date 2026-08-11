@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import Avatar from "@/app/admin/components/Avatar"
+import { notificationPermission, requestNotificationPermission, subscribeToPush } from "@/lib/notify"
 
 interface Me {
   id: string
@@ -17,12 +18,23 @@ export default function PerfilPage() {
   const [uploading, setUploading] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission | "unsupported">("default")
 
   const load = useCallback(async () => {
     const res = await fetch("/api/me")
     if (res.ok) setMe((await res.json()) as Me)
   }, [])
   useEffect(() => { void load() }, [load])
+  useEffect(() => { setNotifPerm(notificationPermission()) }, [])
+
+  const handleEnableNotifications = async () => {
+    const perm = await requestNotificationPermission()
+    setNotifPerm(perm)
+    if (perm === "granted") {
+      await subscribeToPush()
+      localStorage.removeItem("whatsfrt:notifications-dismissed")
+    }
+  }
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -90,6 +102,38 @@ export default function PerfilPage() {
             </div>
           </div>
         )}
+
+        <div className="mt-6 rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
+          <h2 className="text-[13px] font-semibold text-zinc-900">Notificações</h2>
+          <p className="mt-1 text-[12px] text-zinc-400">
+            Avisa na hora quando chegar mensagem nova de cliente ou da equipe — funciona até com o navegador fechado.
+          </p>
+
+          {notifPerm === "granted" && (
+            <p className="mt-4 text-[12px] font-medium text-emerald-600">✓ Notificações ativadas</p>
+          )}
+
+          {notifPerm === "default" && (
+            <button
+              type="button"
+              onClick={() => void handleEnableNotifications()}
+              className="mt-4 rounded-xl bg-emerald-600 px-5 py-2.5 text-[13px] font-semibold text-white transition-all hover:bg-emerald-700"
+            >
+              Ativar notificações
+            </button>
+          )}
+
+          {notifPerm === "denied" && (
+            <p className="mt-4 text-[12px] text-zinc-500">
+              Notificações estão <strong>bloqueadas</strong> no navegador. Pra ativar, clique no ícone de cadeado 🔒
+              ao lado do endereço do site e permita &quot;Notificações&quot;, depois recarregue a página.
+            </p>
+          )}
+
+          {notifPerm === "unsupported" && (
+            <p className="mt-4 text-[12px] text-zinc-500">Seu navegador não suporta notificações.</p>
+          )}
+        </div>
       </div>
     </main>
   )
