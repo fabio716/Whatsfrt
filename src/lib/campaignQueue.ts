@@ -98,8 +98,21 @@ async function checkRateLimits(campaignId: string): Promise<boolean> {
   return true
 }
 
+// Estados que o loop deve INTERROMPER se encontrar (setados por fora, via
+// pausar/cancelar manual). Diferente do PENDING+pausedAt automático (rate
+// limit), que quem retoma é o campaignResumer.
+async function wasStoppedExternally(campaignId: string): Promise<boolean> {
+  const c = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { status: true } })
+  return c?.status === "PAUSED" || c?.status === "CANCELLED"
+}
+
 export async function processCampaign(campaignId: string): Promise<void> {
   try {
+    const current = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { status: true } })
+    // Não reativa campanha que a vendedora pausou/cancelou de propósito —
+    // só PENDING (nova ou auto-pausada por rate-limit) pode iniciar/retomar.
+    if (current?.status === "PAUSED" || current?.status === "CANCELLED") return
+
     await prisma.campaign.update({
       where: { id: campaignId },
       data: { status: "PROCESSING", pausedAt: null },
@@ -120,6 +133,13 @@ export async function processCampaign(campaignId: string): Promise<void> {
     console.log(`[Campaign ${campaignId}] Processando ${logs.length} mensagens`)
 
     for (const log of logs) {
+      // Pausa/cancelamento manual (botão na tela) — para o loop sem
+      // sobrescrever o status que a pessoa já escolheu.
+      if (await wasStoppedExternally(campaignId)) {
+        console.log(`[Campaign ${campaignId}] Interrompida manualmente`)
+        return
+      }
+
       // Verifica limites de rate
       const canSend = await checkRateLimits(campaignId)
       if (!canSend) {

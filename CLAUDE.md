@@ -102,3 +102,9 @@ ssh root@62.171.178.160
   tela — usar isso pra ajustar o payload se o formato deles for diferente do
   esperado. Reações no chat interno (Mensagens) não dependem da Z-API, são
   100% nossas — essas não têm esse risco.
+- Transmissão (broadcast): campanha que bate no limite por hora (30/hora,
+  200/dia — `Campaign.maxPerHour/maxPerDay`) fica em status PENDING com
+  `pausedAt` setado; quem retoma é o worker `campaignResumer.ts` (tick a
+  cada 5 min), NÃO acontece sozinho na hora. Já pausa manual (status
+  PAUSED) é diferente — essa só retoma se a pessoa clicar "Retomar" na
+  tela, o resumer ignora ela de propósito.

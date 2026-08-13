@@ -5,14 +5,21 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface Cooperative { id: string; name: string }
-interface AudienceContact { id: string; name: string; whatsappId: string; cooperativeId: string | null }
+interface AudienceContact {
+  id: string
+  name: string
+  whatsappId: string
+  cooperativeId: string | null
+  chatStatus: string
+  lastMessageAt: string | null
+}
 interface Broadcast {
   id: string
   name: string
   messageText: string
   mediaUrl: string | null
   mediaType: string | null
-  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED"
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "PAUSED" | "CANCELLED"
   createdAt: string
   total: number
   sent: number
@@ -28,6 +35,26 @@ const STATUS_CFG: Record<Broadcast["status"], { label: string; cls: string }> = 
   PROCESSING: { label: "Enviando",    cls: "bg-blue-50 text-blue-700 ring-blue-200" },
   COMPLETED:  { label: "Concluída",   cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
   FAILED:     { label: "Falhou",      cls: "bg-red-50 text-red-700 ring-red-200" },
+  PAUSED:     { label: "Pausada",     cls: "bg-zinc-100 text-zinc-600 ring-zinc-200" },
+  CANCELLED:  { label: "Cancelada",   cls: "bg-zinc-100 text-zinc-500 ring-zinc-200" },
+}
+
+// Limites de segurança anti-bloqueio (mesmos defaults do backend — ver
+// prisma/schema.prisma Campaign). Só pra exibir na confirmação; quem manda
+// de verdade é o campaignQueue.
+const SAFETY = { maxPerHour: 30, maxPerDay: 200, delayMinSec: 3, delayMaxSec: 8 }
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+function relativeActivity(iso: string | null, chatStatus: string): string {
+  if (chatStatus === "IN_SERVICE") return "Conversando agora"
+  if (!iso) return "Nunca conversou"
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000))
+  if (days <= 0) return "Hoje"
+  if (days === 1) return "Ontem"
+  if (days < 30) return `Há ${days} dias`
+  const months = Math.floor(days / 30)
+  return `Há ${months} ${months === 1 ? "mês" : "meses"}`
 }
 
 // ─── Page ───────────────────────────────────────────────────────────────────
@@ -49,6 +76,8 @@ export default function BroadcastPage() {
   const [sending, setSending] = useState(false)
   const [error, setError]     = useState<string | null>(null)
   const [okMsg, setOkMsg]     = useState<string | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [actioningId, setActioningId] = useState<string | null>(null)
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const loadAudience = useCallback(async () => {
@@ -78,9 +107,24 @@ export default function BroadcastPage() {
   // ── Derived ───────────────────────────────────────────────────────────────
   const manualFiltered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return contacts
-    return contacts.filter((c) => c.name.toLowerCase().includes(q) || c.whatsappId.includes(q))
+    const base = q ? contacts.filter((c) => c.name.toLowerCase().includes(q) || c.whatsappId.includes(q)) : contacts
+    // Quem já está conversando aparece primeiro — mais fácil de achar quem
+    // faz sentido chamar de novo, em vez de rolar a lista toda em ordem A-Z.
+    return [...base].sort((a, b) => {
+      const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
+      const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
+      return tb - ta
+    })
   }, [contacts, search])
+
+  // Sugestão: contatos com conversa nos últimos 7 dias — mais seguro de
+  // mandar (relação ativa) do que gente que nunca respondeu ou sumiu há meses.
+  const suggestedIds = useMemo(() => {
+    const cutoff = Date.now() - SEVEN_DAYS_MS
+    return contacts.filter((c) => c.lastMessageAt && new Date(c.lastMessageAt).getTime() >= cutoff).map((c) => c.id)
+  }, [contacts])
+
+  const selectSuggested = () => setSelected(new Set(suggestedIds))
 
   const recipientCount = useMemo(() => {
     if (mode === "all") return contacts.length
@@ -125,8 +169,22 @@ export default function BroadcastPage() {
   const canSend = Boolean(name.trim() && (messageText.trim() || media) && recipientCount > 0 && !sending && !uploading &&
     (mode !== "cooperative" || coopId))
 
-  const handleSend = async () => {
+  // Estimativa de duração: delay médio entre mensagens vezes quantidade,
+  // mais o tempo parado esperando o limite por hora liberar (se aplicável).
+  const estimateMinutes = (count: number): number => {
+    const avgDelaySec = (SAFETY.delayMinSec + SAFETY.delayMaxSec) / 2
+    const sendingMin = (count * avgDelaySec) / 60
+    const extraHoursWaiting = Math.max(0, Math.ceil(count / SAFETY.maxPerHour) - 1) * 60
+    return Math.ceil(sendingMin + extraHoursWaiting)
+  }
+
+  const handleSend = () => {
     if (!canSend) return
+    setShowConfirm(true)
+  }
+
+  const confirmSend = async () => {
+    setShowConfirm(false)
     setSending(true); setError(null); setOkMsg(null)
     try {
       let filter: Record<string, unknown>
@@ -148,13 +206,36 @@ export default function BroadcastPage() {
       })
       const data = await res.json() as { total?: number; error?: string }
       if (!res.ok) throw new Error(data.error ?? "Erro ao criar transmissão")
-      setOkMsg(`Transmissão criada para ${data.total} contato(s). O envio começou.`)
+      setOkMsg(`Transmissão criada para ${data.total} contato(s). O envio começou — você pode pausar ou cancelar a qualquer momento no histórico abaixo.`)
       setName(""); setMessageText(""); setMedia(null); setSelected(new Set()); setCoopId(""); setMode("all")
       void loadBroadcasts()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
     } finally {
       setSending(false)
+    }
+  }
+
+  // ── Pausar / retomar / cancelar transmissão em andamento ──────────────────
+  const handleCampaignAction = async (id: string, action: "pause" | "resume" | "cancel") => {
+    if (actioningId) return
+    setActioningId(id)
+    try {
+      const res = await fetch(`/api/broadcast/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok) {
+        alert(data.error ?? "Não foi possível executar a ação")
+        return
+      }
+      void loadBroadcasts()
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setActioningId(null)
     }
   }
 
@@ -235,12 +316,21 @@ export default function BroadcastPage() {
 
           {mode === "manual" && (
             <div className="rounded-xl border border-zinc-100">
-              <div className="flex items-center gap-2 border-b border-zinc-100 p-2">
+              <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 p-2">
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar contato…"
-                  className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[13px] text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
+                  className="min-w-[140px] flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[13px] text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
+                <button type="button" onClick={selectSuggested} disabled={suggestedIds.length === 0}
+                  title="Seleciona quem trocou mensagem com você nos últimos 7 dias"
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-50 disabled:opacity-40">
+                  ✨ Sugeridos ({suggestedIds.length})
+                </button>
                 <button type="button" onClick={selectAllVisible} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50">Selecionar visíveis</button>
                 <button type="button" onClick={clearSelection} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50">Limpar</button>
               </div>
+              <p className="border-b border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-400">
+                Lista ordenada por quem falou com você mais recentemente. <strong className="text-emerald-700">✨ Sugeridos</strong> = já
+                conversaram nos últimos 7 dias — menor risco de a mensagem incomodar ou não ser entregue.
+              </p>
               <div className="max-h-64 overflow-y-auto p-1">
                 {manualFiltered.length === 0
                   ? <p className="py-6 text-center text-[12px] text-zinc-400">Nenhum contato encontrado.</p>
@@ -249,7 +339,10 @@ export default function BroadcastPage() {
                       <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleContact(c.id)}
                         className="h-4 w-4 rounded border-zinc-300 accent-zinc-900" />
                       <span className="flex-1 truncate text-[13px] text-zinc-800">{c.name}</span>
-                      <span className="text-[11px] text-zinc-400">{c.whatsappId.replace("@s.whatsapp.net", "")}</span>
+                      <span className={`flex-shrink-0 text-[10px] font-medium ${suggestedIds.includes(c.id) ? "text-emerald-600" : "text-zinc-400"}`}>
+                        {relativeActivity(c.lastMessageAt, c.chatStatus)}
+                      </span>
+                      <span className="w-28 flex-shrink-0 truncate text-right text-[11px] text-zinc-400">{c.whatsappId.replace("@s.whatsapp.net", "")}</span>
                     </label>
                   ))}
               </div>
@@ -261,7 +354,7 @@ export default function BroadcastPage() {
             <span className="text-[13px] text-zinc-500">
               <strong className="text-zinc-900">{recipientCount}</strong> destinatário(s)
             </span>
-            <button type="button" onClick={() => void handleSend()} disabled={!canSend}
+            <button type="button" onClick={handleSend} disabled={!canSend}
               className="rounded-xl bg-zinc-900 px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-40">
               {sending ? "Enviando…" : "Enviar transmissão"}
             </button>
@@ -298,12 +391,38 @@ export default function BroadcastPage() {
                         </div>
                         <span className="text-[11px] tabular-nums text-zinc-500">{b.sent}/{b.total}</span>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] tabular-nums">
-                        <span className="text-zinc-500">Enviados: <strong className="text-zinc-800">{b.sent}</strong></span>
-                        <span className="text-zinc-500">Entregues <span className="text-sky-500">✓✓</span>: <strong className="text-zinc-800">{b.delivered}</strong></span>
-                        <span className="text-zinc-500">Lidos: <strong className="text-sky-600">{b.read}</strong></span>
-                        <span className="text-zinc-500">Falhas: <strong className={b.failed > 0 ? "text-red-600" : "text-zinc-800"}>{b.failed}</strong></span>
-                        <span className="text-zinc-400">Não recebidos: <strong className="text-zinc-700">{Math.max(b.sent - b.delivered, 0)}</strong></span>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] tabular-nums">
+                          <span className="text-zinc-500">Enviados: <strong className="text-zinc-800">{b.sent}</strong></span>
+                          <span className="text-zinc-500">Entregues <span className="text-sky-500">✓✓</span>: <strong className="text-zinc-800">{b.delivered}</strong></span>
+                          <span className="text-zinc-500">Lidos: <strong className="text-sky-600">{b.read}</strong></span>
+                          <span className="text-zinc-500">Falhas: <strong className={b.failed > 0 ? "text-red-600" : "text-zinc-800"}>{b.failed}</strong></span>
+                          <span className="text-zinc-400">Não recebidos: <strong className="text-zinc-700">{Math.max(b.sent - b.delivered, 0)}</strong></span>
+                        </div>
+                        {(b.status === "PROCESSING" || b.status === "PENDING") && (
+                          <div className="flex gap-1.5">
+                            <button type="button" onClick={() => void handleCampaignAction(b.id, "pause")} disabled={actioningId === b.id}
+                              className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 disabled:opacity-40">
+                              Pausar
+                            </button>
+                            <button type="button" onClick={() => { if (confirm("Cancelar esta transmissão? Quem ainda não recebeu não vai receber.")) void handleCampaignAction(b.id, "cancel") }} disabled={actioningId === b.id}
+                              className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-red-600 ring-1 ring-inset ring-red-200 hover:bg-red-50 disabled:opacity-40">
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
+                        {b.status === "PAUSED" && (
+                          <div className="flex gap-1.5">
+                            <button type="button" onClick={() => void handleCampaignAction(b.id, "resume")} disabled={actioningId === b.id}
+                              className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-50 disabled:opacity-40">
+                              Retomar
+                            </button>
+                            <button type="button" onClick={() => { if (confirm("Cancelar esta transmissão? Quem ainda não recebeu não vai receber.")) void handleCampaignAction(b.id, "cancel") }} disabled={actioningId === b.id}
+                              className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-red-600 ring-1 ring-inset ring-red-200 hover:bg-red-50 disabled:opacity-40">
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -313,6 +432,38 @@ export default function BroadcastPage() {
         </div>
 
       </div>
+
+      {/* ── Modal de confirmação ── */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-[15px] font-semibold text-zinc-900">Confirmar transmissão</h2>
+            <p className="mt-1 text-[12px] text-zinc-500">Confira antes de enviar — depois de iniciada, dá pra pausar ou cancelar a qualquer momento.</p>
+
+            <div className="mt-4 space-y-2 rounded-xl bg-zinc-50 p-4 text-[13px]">
+              <div className="flex justify-between"><span className="text-zinc-500">Destinatários</span><strong className="text-zinc-900">{recipientCount}</strong></div>
+              <div className="flex justify-between"><span className="text-zinc-500">Tempo estimado</span><strong className="text-zinc-900">~{estimateMinutes(recipientCount)} min</strong></div>
+              <div className="flex justify-between"><span className="text-zinc-500">Ritmo de envio</span><strong className="text-zinc-900">{SAFETY.delayMinSec}–{SAFETY.delayMaxSec}s entre mensagens</strong></div>
+              <div className="flex justify-between"><span className="text-zinc-500">Limite de segurança</span><strong className="text-zinc-900">{SAFETY.maxPerHour}/hora, {SAFETY.maxPerDay}/dia</strong></div>
+            </div>
+            <p className="mt-3 text-[11px] text-zinc-400">
+              O envio roda em segundo plano — pode fechar essa tela ou sair do sistema que continua. Se a taxa de erro ficar
+              alta, o sistema pausa sozinho por segurança.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowConfirm(false)}
+                className="rounded-xl px-4 py-2.5 text-[13px] font-semibold text-zinc-600 hover:bg-zinc-100">
+                Voltar
+              </button>
+              <button type="button" onClick={() => void confirmSend()}
+                className="rounded-xl bg-zinc-900 px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-zinc-700">
+                Confirmar e enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

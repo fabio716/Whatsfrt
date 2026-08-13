@@ -60,6 +60,13 @@ enum CampaignStatus {
   PROCESSING
   COMPLETED
   FAILED
+  // Pausada manualmente pela vendedora/admin — NÃO retoma sozinha (diferente
+  // de PENDING+pausedAt, que é pausa automática por rate-limit e volta
+  // sozinha no próximo tick do campaignResumer).
+  PAUSED
+  // Cancelada manualmente — para de vez, mensagens ainda PENDING nos logs
+  // ficam registradas como não enviadas (não apaga histórico).
+  CANCELLED
 }
 
 enum CampaignLogStatus {
