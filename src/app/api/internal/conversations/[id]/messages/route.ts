@@ -40,11 +40,19 @@ export async function GET(
     },
     orderBy: { createdAt: "desc" },
     take: 50,
-    select: { id: true, senderId: true, body: true, mediaUrl: true, mediaType: true, createdAt: true },
+    select: {
+      id: true, senderId: true, body: true, mediaUrl: true, mediaType: true, createdAt: true,
+      reactions: { select: { userId: true, emoji: true } },
+    },
   })
 
+  const userIds = new Set<string>()
+  for (const r of rows) {
+    userIds.add(r.senderId)
+    for (const rx of r.reactions) userIds.add(rx.userId)
+  }
   const users = await prisma.user.findMany({
-    where: { id: { in: [...new Set(rows.map((r) => r.senderId))] } },
+    where: { id: { in: [...userIds] } },
     select: { id: true, name: true, photoUrl: true },
   })
   const nameById = new Map(users.map((u) => [u.id, u.name]))
@@ -68,6 +76,7 @@ export async function GET(
       mediaUrl: r.mediaUrl,
       mediaType: r.mediaType,
       createdAt: r.createdAt,
+      reactions: r.reactions.map((rx) => ({ userId: rx.userId, userName: nameById.get(rx.userId) ?? "?", emoji: rx.emoji })),
     }))
 
   return NextResponse.json({ messages, hasMore: rows.length === 50 })

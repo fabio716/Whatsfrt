@@ -250,6 +250,9 @@ export default function ChatsClient({
   const [savingEdit, setSavingEdit] = useState(false)
   // Apagar mensagem já enviada (texto ou mídia).
   const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null)
+  // Reação estilo WhatsApp numa mensagem (qualquer uma, nossa ou do cliente).
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null)
+  const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
   const mediaRecRef     = useRef<MediaRecorder | null>(null)
@@ -395,6 +398,8 @@ export default function ChatsClient({
                           ...(p.data.body !== undefined ? { body: p.data.body } : {}),
                           ...(p.data.mediaUrl !== undefined ? { mediaUrl: p.data.mediaUrl } : {}),
                           ...(p.data.mediaType !== undefined ? { mediaType: p.data.mediaType } : {}),
+                          ...(p.data.myReaction !== undefined ? { myReaction: p.data.myReaction } : {}),
+                          ...(p.data.theirReaction !== undefined ? { theirReaction: p.data.theirReaction } : {}),
                         }
                       : m
                   ),
@@ -802,6 +807,39 @@ export default function ChatsClient({
     }
   }
 
+  const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+
+  // Reage (ou remove, clicando de novo no mesmo emoji) numa mensagem — nossa
+  // ou do cliente, tanto faz, igual reagir no WhatsApp de verdade.
+  const reactMsg = async (msgId: string, emoji: string) => {
+    if (reactingMsgId) return
+    const msg = activeContact?.messages.find((m) => m.id === msgId)
+    const next = msg?.myReaction === emoji ? null : emoji
+    setReactionPickerMsgId(null)
+    setReactingMsgId(msgId)
+    try {
+      const res = await fetch(`/api/messages/${msgId}/react`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji: next }),
+      })
+      if (!res.ok && handleSessionExpired(res.status)) return
+      const data = await res.json().catch(() => ({})) as { myReaction?: string | null; error?: string }
+      if (!res.ok) {
+        alert(`Não foi possível reagir: ${data.error ?? res.status}`)
+        return
+      }
+      setContacts((prev) => prev.map((c) => ({
+        ...c,
+        messages: c.messages.map((m) => (m.id === msgId ? { ...m, myReaction: data.myReaction ?? null } : m)),
+      })))
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setReactingMsgId(null)
+    }
+  }
+
   const messageGroups = activeContact ? groupByDate(activeContact.messages) : []
 
   return (
@@ -1076,9 +1114,38 @@ export default function ChatsClient({
                     const canDelete = isOut && msg.body !== "🚫 Mensagem apagada"
                       && (!isAgent || msg.agentId === currentUserId)
                     const isEditingThis = editingMsgId === msg.id
+                    const hasReaction = msg.myReaction || msg.theirReaction
                     return (
-                      <div key={msg.id} className={`group flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+                      <div key={msg.id} className={`group flex ${isOut ? "justify-end" : "justify-start"} ${hasReaction ? "mb-4" : "mb-1"}`}>
                         <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm ${isOut ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
+                          {hasReaction && (
+                            <div className={`absolute -bottom-3.5 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm ${isOut ? "right-2" : "left-2"}`}>
+                              {msg.theirReaction && <span title="Reação do cliente">{msg.theirReaction}</span>}
+                              {msg.myReaction && <span title="Sua reação">{msg.myReaction}</span>}
+                            </div>
+                          )}
+                          {reactionPickerMsgId === msg.id && (
+                            <>
+                              <button
+                                type="button"
+                                aria-label="Fechar seletor de reação"
+                                className="fixed inset-0 z-40 cursor-default"
+                                onClick={() => setReactionPickerMsgId(null)}
+                              />
+                              <div className={`absolute -top-11 z-50 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-1 shadow-lg ${isOut ? "right-0" : "left-0"}`}>
+                                {QUICK_EMOJIS.map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => void reactMsg(msg.id, emoji)}
+                                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[16px] transition-transform hover:scale-125 ${msg.myReaction === emoji ? "bg-emerald-100" : ""}`}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
                           {isEditingThis ? (
                             <div className="min-w-[220px] space-y-1.5">
                               <textarea
@@ -1111,6 +1178,21 @@ export default function ChatsClient({
                           )}
                           {!isEditingThis && (
                             <div className={`mt-1 flex items-center gap-1 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
+                              {isOwner && msg.whatsappKeyId && (
+                                <button
+                                  type="button"
+                                  onClick={() => setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id)}
+                                  disabled={reactingMsgId === msg.id}
+                                  title="Reagir"
+                                  aria-label="Reagir"
+                                  className="-m-1.5 mr-0.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-zinc-700 hover:opacity-100 disabled:opacity-40"
+                                >
+                                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path strokeLinecap="round" d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+                                  </svg>
+                                </button>
+                              )}
                               {canEdit && (
                                 <button
                                   type="button"

@@ -48,6 +48,13 @@ interface ZapiTextPayload {
   video?: { videoUrl?: string; mimeType?: string; caption?: string }
   audio?: { audioUrl?: string; mimeType?: string }
   document?: { documentUrl?: string; mimeType?: string; fileName?: string; caption?: string }
+  // Presente quando o callback é uma REAÇÃO (não uma mensagem normal) — o
+  // cliente reagiu com emoji numa mensagem nossa ou dele mesmo. value="" =
+  // removeu a reação.
+  reaction?: {
+    value?: string
+    referencedMessage?: { messageId?: string }
+  }
 }
 
 interface ZapiStatusPayload {
@@ -162,6 +169,25 @@ async function downloadMediaToBuffer(url: string): Promise<Buffer | null> {
 async function handleReceived(p: ZapiTextPayload): Promise<void> {
   // Ignora outbound nosso voltando em loop. Mesmo com dedupe, evita trabalho.
   if (p.fromMe === true) return
+
+  // Reação do cliente (👍❤️😂😮😢🙏) numa mensagem — não é uma mensagem nova,
+  // só atualiza theirReaction na mensagem referenciada e notifica a UI.
+  const referencedId = p.reaction?.referencedMessage?.messageId
+  if (referencedId) {
+    const target = await prisma.message.findFirst({
+      where: { whatsappKeyId: referencedId },
+      select: { id: true, status: true, contactId: true, contact: { select: { assignedUserId: true } } },
+    })
+    if (target) {
+      const theirReaction = p.reaction?.value?.trim() || null
+      await prisma.message.update({ where: { id: target.id }, data: { theirReaction } })
+      broadcast({
+        type: "message_update",
+        data: { id: target.id, status: target.status, contactId: target.contactId, theirReaction },
+      }, target.contact.assignedUserId)
+    }
+    return
+  }
 
   const whatsappId = toWhatsappId(p.phone, !!p.isGroup)
   const messageText = extractText(p)

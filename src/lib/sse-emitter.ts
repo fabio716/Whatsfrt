@@ -33,6 +33,8 @@ export interface SSEMessageUpdatePayload {
   // body/mediaUrl/mediaType preenchidos só quando o evento é de uma EDIÇÃO ou
   // uma EXCLUSÃO de mensagem (não de mudança de status ✓/✓✓) — o client
   // aplica a troca em tempo real. Na exclusão, mediaUrl/mediaType vêm null.
+  // myReaction/theirReaction preenchidos só em evento de reação (undefined =
+  // não mudou, não confundir com null = reação removida).
   data: {
     id: string
     status: SSEMessageData["status"]
@@ -40,6 +42,8 @@ export interface SSEMessageUpdatePayload {
     body?: string
     mediaUrl?: string | null
     mediaType?: string | null
+    myReaction?: string | null
+    theirReaction?: string | null
   }
 }
 
@@ -72,6 +76,17 @@ export interface SSEInternalMessageUpdatePayload {
   data: { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null }
 }
 
+// Reações do chat interno — lista completa (já agregada) de quem reagiu com
+// o quê na mensagem, entregue só aos membros da conversa.
+export interface SSEInternalReactionPayload {
+  type: "internal_reaction"
+  data: {
+    messageId: string
+    conversationId: string
+    reactions: { userId: string; userName: string; emoji: string }[]
+  }
+}
+
 // Solicitação de transferência de atendimento (autorização).
 export interface SSETransferRequestPayload {
   type: "transfer_request"
@@ -88,6 +103,7 @@ export type SSEPayload =
   | SSESystemEventPayload
   | SSEInternalMessagePayload
   | SSEInternalMessageUpdatePayload
+  | SSEInternalReactionPayload
   | SSETransferRequestPayload
   | SSETransferDecisionPayload
 
@@ -170,6 +186,7 @@ export function broadcastToUsers(
   payload:
     | SSEInternalMessagePayload
     | SSEInternalMessageUpdatePayload
+    | SSEInternalReactionPayload
     | SSETransferRequestPayload
     | SSETransferDecisionPayload,
 ): void {

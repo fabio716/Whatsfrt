@@ -94,3 +94,11 @@ ssh root@62.171.178.160
   `NEXT_PUBLIC_*` é embutida no bundle em tempo de build, trocar depois só
   reiniciando o container não tem efeito, precisa rebuildar. Gerar novo par
   com `npx web-push generate-vapid-keys`.
+- Reações de mensagem (👍❤️😂😮😢🙏) no chat com cliente usam o endpoint
+  `/send-reaction` da Z-API (`src/lib/zapi.ts` → `sendZapiReaction`) — esse
+  endpoint específico nunca foi testado ao vivo (implementado por analogia
+  com o resto da API deles). Se der erro ao reagir num chat com cliente logo
+  após o deploy, o `errorMsg` retornado pela Z-API aparece no alert() da
+  tela — usar isso pra ajustar o payload se o formato deles for diferente do
+  esperado. Reações no chat interno (Mensagens) não dependem da Z-API, são
+  100% nossas — essas não têm esse risco.

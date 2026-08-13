@@ -192,6 +192,37 @@ export async function deleteZapiMessage(
   return { ok: true, errorMsg: null }
 }
 
+// Reage (ou remove reação, mandando reaction="") numa mensagem já enviada —
+// mesmo emoji de balãozinho do WhatsApp (👍❤️😂😮😢🙏).
+export interface ZapiReactionResult {
+  ok: boolean
+  errorMsg: string | null
+}
+
+export async function sendZapiReaction(
+  whatsappId: string,
+  messageId: string,
+  reaction: string,
+): Promise<ZapiReactionResult> {
+  const url = buildUrl("send-reaction")
+  if (!url) return { ok: false, errorMsg: "ZAPI_INSTANCE_ID/ZAPI_TOKEN ausente" }
+
+  const res = await evolutionFetch(url, {
+    label: "zapi:send-reaction",
+    method: "POST",
+    headers: commonHeaders(),
+    body: JSON.stringify({
+      phone: normalizePhone(whatsappId),
+      messageId,
+      reaction,
+    }),
+  })
+  if (!res.ok) {
+    return { ok: false, errorMsg: res.lastError ?? `status ${res.status}` }
+  }
+  return { ok: true, errorMsg: null }
+}
+
 // ─── Envio de mídia ──────────────────────────────────────────────────────────
 // Z-API tem endpoints separados por tipo de mídia. Aceitam URL pública OU
 // base64 no campo. Preferimos URL (mais robusto).

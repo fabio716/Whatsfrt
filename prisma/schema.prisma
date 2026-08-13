@@ -228,6 +228,13 @@ model Message {
   // Fica invisível pro agente dono (privacidade) — só o admin vê.
   adminPrivate Boolean @default(false)
 
+  // Reações estilo WhatsApp (👍❤️😂😮😢🙏). Só existem 2 lados possíveis num
+  // chat 1:1: o cliente (theirReaction, vem do webhook) e nós — o número da
+  // empresa, compartilhado entre agentes (myReaction, setado por quem reage
+  // na tela). null = sem reação.
+  myReaction    String?
+  theirReaction String?
+
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id])
 
@@ -486,8 +493,26 @@ model InternalMessage {
   mediaType      String?
   createdAt      DateTime @default(now())
 
+  reactions InternalMessageReaction[]
+
   @@index([conversationId, createdAt])
   @@map("internal_messages")
+}
+
+// Reação estilo WhatsApp numa mensagem do chat interno. Um usuário só pode
+// ter UMA reação ativa por mensagem (igual WhatsApp) — reagir de novo troca
+// o emoji, remover apaga a linha.
+model InternalMessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  message   InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@map("internal_message_reactions")
 }
 
 // Territórios de Vendas (Geográfico) - Tab 4

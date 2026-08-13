@@ -7,6 +7,9 @@ export interface MessageData {
   agentId: string | null
   mediaUrl?: string | null
   mediaType?: string | null
+  myReaction?: string | null
+  theirReaction?: string | null
+  whatsappKeyId?: string | null
 }
 
 export type ChatStatus = "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "AWAITING_RATING"

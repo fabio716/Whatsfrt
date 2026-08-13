@@ -24,6 +24,7 @@ import {
   getZapiQrCode,
   isZapiEnvOk,
   sendZapiMedia,
+  sendZapiReaction,
   sendZapiText,
   zapiPhoneExists,
   type ZapiSendResult,
@@ -77,6 +78,20 @@ export async function deleteMessage(
     return deleteZapiMessage(whatsappId, providerMessageId)
   }
   return { ok: false, errorMsg: "Apagar mensagem não é suportado no provedor Evolution" }
+}
+
+// Reage (ou remove, com reaction="") numa mensagem já enviada. Só suportado
+// no provider Z-API — no Evolution simplesmente não faz nada (reação é só
+// cosmética, não vale travar o fluxo se o provedor não suportar).
+export async function sendReaction(
+  whatsappId: string,
+  providerMessageId: string,
+  reaction: string,
+): Promise<{ ok: boolean; errorMsg: string | null }> {
+  if (activeProvider() === "zapi") {
+    return sendZapiReaction(whatsappId, providerMessageId, reaction)
+  }
+  return { ok: false, errorMsg: "Reação não é suportada no provedor Evolution" }
 }
 
 // Mais simples — quando só precisa saber se foi ou não.

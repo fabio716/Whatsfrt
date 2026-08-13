@@ -32,6 +32,7 @@ interface Msg {
   mediaUrl: string | null
   mediaType: string | null
   createdAt: string
+  reactions?: { userId: string; userName: string; emoji: string }[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,6 +75,11 @@ export default function MensagensPage() {
 
   // Apagar mensagem já enviada.
   const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null)
+
+  // Reação estilo WhatsApp (qualquer membro pode reagir a qualquer mensagem).
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null)
+  const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
+  const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
   // Meu próprio id — usado só pra não notificar de mensagem que eu mesmo mandei.
   const [myUserId, setMyUserId] = useState<string | null>(null)
@@ -141,9 +147,23 @@ export default function MensagensPage() {
   useEffect(() => {
     const es = new EventSource("/api/sse")
     es.onmessage = (e) => {
-      let p: { type?: string; data?: (Msg & { conversationId: string }) | { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null } }
+      let p: {
+        type?: string
+        data?:
+          | (Msg & { conversationId: string })
+          | { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null }
+          | { messageId: string; conversationId: string; reactions: { userId: string; userName: string; emoji: string }[] }
+      }
       try { p = JSON.parse(e.data) } catch { return }
       if (!p.data) return
+
+      if (p.type === "internal_reaction") {
+        const rx = p.data as { messageId: string; conversationId: string; reactions: { userId: string; userName: string; emoji: string }[] }
+        if (rx.conversationId === activeIdRef.current) {
+          setMessages((prev) => prev.map((x) => (x.id === rx.messageId ? { ...x, reactions: rx.reactions } : x)))
+        }
+        return
+      }
 
       if (p.type === "internal_message_update") {
         const upd = p.data as { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null }
@@ -266,6 +286,34 @@ export default function MensagensPage() {
       alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
     } finally {
       setDeletingMsgId(null)
+    }
+  }
+
+  // ── Reagir (ou remover, clicando de novo no mesmo emoji) ──
+  const reactMsg = async (msgId: string, emoji: string) => {
+    if (reactingMsgId) return
+    const msg = messages.find((m) => m.id === msgId)
+    const mine = msg?.reactions?.find((r) => r.userId === myUserId)?.emoji
+    const next = mine === emoji ? null : emoji
+    setReactionPickerMsgId(null)
+    setReactingMsgId(msgId)
+    try {
+      const res = await fetch(`/api/internal/messages/${msgId}/react`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji: next }),
+      })
+      if (!res.ok && handleSessionExpired(res.status)) return
+      const data = await res.json().catch(() => ({})) as { reactions?: { userId: string; userName: string; emoji: string }[]; error?: string }
+      if (!res.ok) {
+        alert(`Não foi possível reagir: ${data.error ?? res.status}`)
+        return
+      }
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, reactions: data.reactions ?? [] } : m)))
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setReactingMsgId(null)
     }
   }
 
@@ -496,9 +544,54 @@ export default function MensagensPage() {
                 const canEdit = m.fromMe && !m.mediaType
                 const canDelete = m.fromMe && m.body !== "🚫 Mensagem apagada"
                 const isEditingThis = editingMsgId === m.id
+                const groupedReactions = Object.values(
+                  (m.reactions ?? []).reduce<Record<string, { emoji: string; count: number; mine: boolean; names: string[] }>>((acc, r) => {
+                    const g = acc[r.emoji] ?? { emoji: r.emoji, count: 0, mine: false, names: [] }
+                    g.count += 1
+                    g.names.push(r.userName)
+                    if (r.userId === myUserId) g.mine = true
+                    acc[r.emoji] = g
+                    return acc
+                  }, {}),
+                )
                 return (
-                  <div key={m.id} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"} mb-1`}>
+                  <div key={m.id} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"} ${groupedReactions.length ? "mb-4" : "mb-1"}`}>
                     <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm ${m.fromMe ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
+                      {groupedReactions.length > 0 && (
+                        <div className={`absolute -bottom-3.5 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm ${m.fromMe ? "right-2" : "left-2"}`}>
+                          {groupedReactions.map((g) => (
+                            <span
+                              key={g.emoji}
+                              title={g.names.join(", ")}
+                              className={`flex items-center gap-0.5 ${g.mine ? "font-semibold text-emerald-700" : ""}`}
+                            >
+                              {g.emoji}{g.count > 1 && <span className="text-[9px]">{g.count}</span>}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {reactionPickerMsgId === m.id && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Fechar seletor de reação"
+                            className="fixed inset-0 z-40 cursor-default"
+                            onClick={() => setReactionPickerMsgId(null)}
+                          />
+                          <div className={`absolute -top-11 z-50 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-1 shadow-lg ${m.fromMe ? "right-0" : "left-0"}`}>
+                            {QUICK_EMOJIS.map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => void reactMsg(m.id, emoji)}
+                                className={`flex h-7 w-7 items-center justify-center rounded-full text-[16px] transition-transform hover:scale-125 ${m.reactions?.some((r) => r.userId === myUserId && r.emoji === emoji) ? "bg-emerald-100" : ""}`}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                       {active.isGroup && !m.fromMe && (
                         <p className="mb-0.5 text-[11px] font-semibold text-emerald-600">{m.senderName}</p>
                       )}
@@ -542,6 +635,19 @@ export default function MensagensPage() {
                           ) : null}
                           {m.body && <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{m.body}</p>}
                           <div className="mt-1 flex items-center justify-end gap-1 px-1">
+                            <button
+                              type="button"
+                              onClick={() => setReactionPickerMsgId(reactionPickerMsgId === m.id ? null : m.id)}
+                              disabled={reactingMsgId === m.id}
+                              title="Reagir"
+                              aria-label="Reagir"
+                              className="-m-1.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-zinc-700 hover:opacity-100 disabled:opacity-40"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <circle cx="12" cy="12" r="10" />
+                                <path strokeLinecap="round" d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+                              </svg>
+                            </button>
                             {canEdit && (
                               <button
                                 type="button"
