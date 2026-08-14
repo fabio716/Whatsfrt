@@ -201,6 +201,60 @@ export default function ContatosPage() {
     if (fileRef.current) fileRef.current.value = ""
   }
 
+  // ── editar nome/telefone/empresa/cidade ──
+  const [editingContact, setEditingContact] = useState<ContactRow | null>(null)
+  const [editName, setEditName]     = useState("")
+  const [editPhone, setEditPhone]   = useState("")
+  const [editEmpresa, setEditEmpresa] = useState("")
+  const [editCidade, setEditCidade] = useState("")
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError]   = useState<string | null>(null)
+
+  const openEdit = (c: ContactRow) => {
+    setEditingContact(c)
+    setEditName(c.name)
+    setEditPhone(phone(c.whatsappId))
+    setEditEmpresa(c.empresa ?? "")
+    setEditCidade(c.cidade ?? "")
+    setEditError(null)
+  }
+  const closeEdit = () => setEditingContact(null)
+
+  const saveEdit = async () => {
+    if (!editingContact || savingEdit) return
+    if (!editName.trim() || !editPhone.trim()) {
+      setEditError("Nome e telefone são obrigatórios")
+      return
+    }
+    setSavingEdit(true)
+    setEditError(null)
+    try {
+      const res = await fetch(`/api/admin/contacts/${editingContact.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          phone: editPhone.trim(),
+          empresa: editEmpresa.trim() || null,
+          cidade: editCidade.trim() || null,
+        }),
+      })
+      const data = await res.json().catch(() => ({})) as { whatsappId?: string; error?: string }
+      if (!res.ok) {
+        setEditError(data.error ?? "Não foi possível salvar")
+        return
+      }
+      setContacts((prev) => prev.map((c) => (c.id === editingContact.id
+        ? { ...c, name: editName.trim(), whatsappId: data.whatsappId ?? c.whatsappId, empresa: editEmpresa.trim() || null, cidade: editCidade.trim() || null }
+        : c)))
+      closeEdit()
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Erro de rede")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   // ─── Stats ────────────────────────────────────────────────────────────────
   const total     = contacts.length
   const assigned  = contacts.filter((c) => c.assignedUser).length
@@ -394,12 +448,21 @@ export default function ContatosPage() {
                           : <span className="text-zinc-300">—</span>}
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={() => router.push(`/admin/chats?contact=${c.id}`)}
-                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-emerald-600 transition-colors"
-                        >
-                          💬 Conversar
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => openEdit(c)}
+                            title="Editar nome/telefone"
+                            className="rounded-lg border border-zinc-200 px-3 py-1.5 text-[12px] font-semibold text-zinc-600 hover:bg-zinc-50 transition-colors"
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            onClick={() => router.push(`/admin/chats?contact=${c.id}`)}
+                            className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-emerald-600 transition-colors"
+                          >
+                            💬 Conversar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -512,6 +575,52 @@ export default function ContatosPage() {
                 className="rounded-xl bg-zinc-900 px-5 py-2 text-xs font-semibold text-white transition-all hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-60"
               >
                 {importing ? "Importando..." : "Importar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Editar contato ── */}
+      {editingContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
+          <button type="button" aria-label="Fechar" className="absolute inset-0 cursor-default" onClick={closeEdit} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-[15px] font-semibold text-zinc-900">Editar contato</h2>
+            <p className="mt-0.5 text-[12px] text-zinc-400">Corrige nome e telefone sem perder o histórico de conversa.</p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label htmlFor="e-name" className="mb-1 block text-[11px] font-semibold text-zinc-600">Nome</label>
+                <input id="e-name" value={editName} onChange={(e) => setEditName(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
+              </div>
+              <div>
+                <label htmlFor="e-phone" className="mb-1 block text-[11px] font-semibold text-zinc-600">Telefone (DDD + número)</label>
+                <input id="e-phone" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Ex: 11 99999-9999"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
+              </div>
+              <div>
+                <label htmlFor="e-empresa" className="mb-1 block text-[11px] font-semibold text-zinc-600">Empresa (opcional)</label>
+                <input id="e-empresa" value={editEmpresa} onChange={(e) => setEditEmpresa(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
+              </div>
+              <div>
+                <label htmlFor="e-cidade" className="mb-1 block text-[11px] font-semibold text-zinc-600">Cidade (opcional)</label>
+                <input id="e-cidade" value={editCidade} onChange={(e) => setEditCidade(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
+              </div>
+            </div>
+
+            {editError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12px] font-medium text-red-600">{editError}</p>}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={closeEdit} className="rounded-xl px-4 py-2 text-[13px] font-semibold text-zinc-600 hover:bg-zinc-100">
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void saveEdit()} disabled={savingEdit}
+                className="rounded-xl bg-zinc-900 px-5 py-2 text-[13px] font-semibold text-white hover:bg-zinc-700 disabled:opacity-50">
+                {savingEdit ? "Salvando…" : "Salvar"}
               </button>
             </div>
           </div>

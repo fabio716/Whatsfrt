@@ -36,10 +36,13 @@ const ADMIN_ONLY_PREFIXES = [
 const AGENT_ALLOWED_ADMIN_APIS = [
   /^\/api\/admin\/contacts\/[^/]+\/assign$/,
   /^\/api\/admin\/contacts\/[^/]+\/transfer$/,
-  // Tela de Contatos aberta pro agente — leitura, sincronizar fotos, importar.
+  // Tela de Contatos aberta pro agente — leitura, sincronizar fotos, importar,
+  // e editar nome/telefone (PATCH). DELETE na mesma rota [id] continua
+  // admin-only (o proprio route.ts checa role dentro do handler).
   // Exportar (/export) e liberar ([id]/release) NAO estao aqui, continuam
   // admin-only (o proprio route.ts deles usa requireAdmin).
   /^\/api\/admin\/contacts$/,
+  /^\/api\/admin\/contacts\/[^/]+$/,
   /^\/api\/admin\/contacts\/sync-photos$/,
   /^\/api\/admin\/contacts\/import$/,
   /^\/api\/admin\/ura\/cooperatives$/,
