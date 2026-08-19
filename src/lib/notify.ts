@@ -25,12 +25,16 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 export function notifyDesktop(
   title: string,
   body: string,
-  opts?: { tag?: string; onClick?: () => void },
+  opts?: { tag?: string; onClick?: () => void; force?: boolean },
 ): void {
   if (!notificationsSupported()) return
   if (Notification.permission !== "granted") return
-  // Aba em foco = usuário já está olhando a conversa, não precisa notificar.
-  if (typeof document !== "undefined" && document.hasFocus()) return
+  // Aba em foco = usuário já está olhando a conversa, não precisa notificar
+  // — EXCETO quando o chamador manda force:true porque a mensagem é de uma
+  // conversa diferente da que está aberta (aba em foco não significa "vendo
+  // esta conversa específica" — sem o force, mensagem de outro cliente
+  // chegava muda enquanto o agente estava atendendo alguém mais).
+  if (!opts?.force && typeof document !== "undefined" && document.hasFocus()) return
 
   const n = new Notification(title, {
     body,

@@ -219,6 +219,20 @@ export default function ChatsClient({
 
   const [contacts, setContacts] = useState<ContactData[]>(initial)
   const [activeId, setActiveId] = useState<string | null>(requestedContactId ?? initial[0]?.id ?? null)
+  const activeIdRef = useRef<string | null>(activeId)
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
+  // Contatos com mensagem nova ainda não vista — quem está noutra conversa
+  // (mesmo com a aba em foco) não recebia nenhum aviso antes disso existir.
+  const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (!activeId) return
+    setUnreadIds((prev) => {
+      if (!prev.has(activeId)) return prev
+      const next = new Set(prev)
+      next.delete(activeId)
+      return next
+    })
+  }, [activeId])
   const [agentFilter, setAgentFilter] = useState<string>("all")
   const [taking, setTaking] = useState(false)
   const [ending, setEnding] = useState(false)
@@ -374,10 +388,18 @@ export default function ChatsClient({
           // Notifica só mensagem do CLIENTE (inbound) — a própria mensagem
           // enviada não precisa avisar quem acabou de mandar ela.
           if (msg.direction === "INBOUND") {
+            const isOtherConversation = contact.id !== activeIdRef.current
+            if (isOtherConversation) {
+              setUnreadIds((prev) => (prev.has(contact.id) ? prev : new Set(prev).add(contact.id)))
+            }
             const preview = msg.mediaType ? "📎 Anexo" : msg.body
             notifyDesktop(contact.name || "Novo cliente", preview, {
               tag: `chat-${contact.id}`,
               onClick: () => setActiveId(contact.id),
+              // Aba em foco não quer dizer que ESTA conversa está aberta —
+              // sem isso, mensagem de outro cliente chegava muda enquanto o
+              // agente atendia alguém mais (relatado pela Francieli).
+              force: isOtherConversation,
             })
           }
           return
@@ -910,6 +932,7 @@ export default function ChatsClient({
           )}
           {filteredContacts.map((c) => {
             const last = c.messages.at(-1)
+            const isUnread = unreadIds.has(c.id)
             return (
               <button
                 key={c.id}
@@ -919,13 +942,16 @@ export default function ChatsClient({
                 <Avatar name={c.name} photoUrl={c.profilePhotoUrl} size="h-9 w-9" fallback="bg-zinc-200 text-zinc-600 text-[13px] font-semibold" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[13px] font-medium text-zinc-800 truncate">{c.name}</span>
+                    <span className={`truncate text-[13px] ${isUnread ? "font-bold text-zinc-900" : "font-medium text-zinc-800"}`}>{c.name}</span>
                     <StatusBadge status={c.chatStatus} />
                   </div>
-                  <p className="mt-0.5 truncate text-[11px] text-zinc-400">
+                  <p className={`mt-0.5 truncate text-[11px] ${isUnread ? "font-semibold text-zinc-700" : "text-zinc-400"}`}>
                     {last ? (last.mediaType && !last.body ? "📎 Mídia" : last.body.slice(0, 40)) : "Sem mensagens"}
                   </p>
                 </div>
+                {isUnread && (
+                  <span className="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-emerald-500" title="Mensagem não lida" />
+                )}
               </button>
             )
           })}

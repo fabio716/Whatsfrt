@@ -191,6 +191,10 @@ export default function MensagensPage() {
         notifyDesktop(m.senderName || "Mensagem interna", preview, {
           tag: `mensagens-${m.conversationId}`,
           onClick: () => openConversation(m.conversationId),
+          // Aba em foco não significa que ESTA conversa está aberta — sem
+          // isso, mensagem de outro grupo/pessoa chegava muda enquanto o
+          // usuário estava numa conversa diferente.
+          force: m.conversationId !== activeIdRef.current,
         })
       }
       void loadConversations()
