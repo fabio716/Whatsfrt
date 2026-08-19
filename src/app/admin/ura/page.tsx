@@ -288,8 +288,8 @@ export default function URAPage() {
             <div className="divide-y divide-zinc-50">
               {hours.map((h, i) => (
                 <div key={h.dayOfWeek} className={`px-5 py-4 transition-colors ${h.isClosed ? "bg-zinc-50/60" : ""}`}>
-                  <div className="flex items-center gap-4">
-                    <span className={`w-32 text-[13px] font-medium ${h.isClosed ? "text-zinc-400" : "text-zinc-800"}`}>
+                  <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                    <span className={`w-24 flex-shrink-0 text-[13px] font-medium sm:w-32 ${h.isClosed ? "text-zinc-400" : "text-zinc-800"}`}>
                       {DAY_NAMES[h.dayOfWeek]}
                     </span>
                     <div className="flex items-center gap-2">
@@ -299,7 +299,7 @@ export default function URAPage() {
                       </span>
                     </div>
                     {!h.isClosed && (
-                      <div className="ml-auto flex items-center gap-2">
+                      <div className="flex items-center gap-2 sm:ml-auto">
                         <input type="time" value={h.openTime} onChange={(e) => patchHour(i, { openTime: e.target.value })}
                           className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-zinc-400" />
                         <span className="text-zinc-300">—</span>
@@ -309,13 +309,13 @@ export default function URAPage() {
                     )}
                   </div>
                   {!h.isClosed && (
-                    <div className="mt-3 flex items-center gap-4 pl-36">
+                    <div className="mt-3 flex flex-wrap items-center gap-3 pl-0 sm:gap-4 sm:pl-36">
                       <div className="flex items-center gap-2">
                         <Toggle checked={h.hasLunchBreak} onChange={() => patchHour(i, { hasLunchBreak: !h.hasLunchBreak })} />
                         <span className="text-[12px] text-zinc-500">Pausa almoço</span>
                       </div>
                       {h.hasLunchBreak && (
-                        <div className="ml-auto flex items-center gap-2">
+                        <div className="flex items-center gap-2 sm:ml-auto">
                           <input type="time" value={h.lunchStart} onChange={(e) => patchHour(i, { lunchStart: e.target.value })}
                             className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-zinc-400" />
                           <span className="text-zinc-300">—</span>

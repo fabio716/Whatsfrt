@@ -264,8 +264,8 @@ export default function ContatosPage() {
     <main className="h-full overflow-y-auto bg-zinc-50 font-sans">
 
       {/* Header */}
-      <header className="border-b border-zinc-200 bg-white px-8 py-5">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <header className="border-b border-zinc-200 bg-white px-4 py-5 md:px-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-[15px] font-semibold tracking-tight text-zinc-900">Contatos</h1>
             <p className="text-xs text-zinc-400">{syncMsg ?? "Gerencie e importe sua base de contatos"}</p>
@@ -323,7 +323,7 @@ export default function ContatosPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl space-y-5 px-8 py-6">
+      <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 md:px-8">
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
@@ -340,8 +340,8 @@ export default function ContatosPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full flex-1 sm:max-w-xs">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
             </svg>

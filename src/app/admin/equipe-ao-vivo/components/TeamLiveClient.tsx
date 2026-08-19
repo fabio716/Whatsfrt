@@ -123,7 +123,7 @@ export default function TeamLiveClient() {
         <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-zinc-600">
           🟢 Em atendimento agora ({inAttendance.length})
         </h2>
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
           {inAttendance.length === 0 && (
             <p className="px-4 py-3 text-[13px] text-zinc-400">Ninguém em atendimento.</p>
           )}
@@ -190,7 +190,7 @@ export default function TeamLiveClient() {
         <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-zinc-600">
           🟠 Fila — aguardando agente ({data.queue.length})
         </h2>
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
           {data.queue.length === 0 && (
             <p className="px-4 py-3 text-[13px] text-zinc-400">Ninguém esperando. 👌</p>
           )}
@@ -259,7 +259,7 @@ export default function TeamLiveClient() {
         <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-zinc-600">
           📜 Histórico — últimas 24h ({data.history.length})
         </h2>
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
           {data.history.length === 0 && (
             <p className="px-4 py-3 text-[13px] text-zinc-400">Nenhum atendimento encerrado nas últimas 24h.</p>
           )}

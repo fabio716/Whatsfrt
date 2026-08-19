@@ -26,21 +26,21 @@ export default function UraMotorPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <h1 className="text-3xl font-light text-gray-900">Motor da URA</h1>
+        <div className="max-w-7xl mx-auto px-4 py-6 md:px-6">
+          <h1 className="text-2xl font-light text-gray-900 md:text-3xl">Motor da URA</h1>
           <p className="text-sm text-gray-500 mt-1">Atendimento Automático e Triagem Inteligente</p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="max-w-7xl mx-auto px-6 mt-8">
-        <div className="flex space-x-1 bg-white rounded-2xl p-1 shadow-sm">
+      {/* Tabs — rolagem horizontal no celular em vez de espremer os 4 rótulos */}
+      <div className="max-w-7xl mx-auto px-4 mt-8 md:px-6">
+        <div className="flex gap-1 overflow-x-auto bg-white rounded-2xl p-1 shadow-sm md:overflow-visible">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                flex-1 px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200
+                flex-shrink-0 whitespace-nowrap px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 md:flex-1 md:px-6
                 ${activeTab === tab.id
                   ? "bg-gray-900 text-white shadow-md"
                   : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"

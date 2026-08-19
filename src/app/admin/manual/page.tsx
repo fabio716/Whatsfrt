@@ -58,7 +58,7 @@ const SECTIONS: Section[] = [
         title: "Telas principais",
         content: (
           <div className="space-y-3 text-zinc-600">
-            <div className="rounded-lg border border-zinc-200 overflow-hidden">
+            <div className="overflow-x-auto rounded-lg border border-zinc-200">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50">
                   <tr>
@@ -159,7 +159,7 @@ const SECTIONS: Section[] = [
         content: (
           <div className="space-y-3 text-zinc-600">
             <p>Toda mensagem que VOCÊ envia mostra um indicador ao lado do horário (igual WhatsApp):</p>
-            <div className="rounded-lg border border-zinc-200 overflow-hidden">
+            <div className="overflow-x-auto rounded-lg border border-zinc-200">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50">
                   <tr>
@@ -219,7 +219,7 @@ const SECTIONS: Section[] = [
               <li>Quando terminar, a mídia aparece no chat</li>
             </ol>
             <p className="font-semibold pt-2">Tipos aceitos e limite máximo:</p>
-            <div className="rounded-lg border border-zinc-200 overflow-hidden">
+            <div className="overflow-x-auto rounded-lg border border-zinc-200">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50">
                   <tr>
@@ -512,7 +512,7 @@ const SECTIONS: Section[] = [
         content: (
           <div className="space-y-3 text-zinc-600">
             <p>Seu CSV precisa ter pelo menos <strong>duas colunas obrigatórias</strong> e aceita até <strong>duas opcionais</strong>:</p>
-            <div className="rounded-lg border border-zinc-200 overflow-hidden">
+            <div className="overflow-x-auto rounded-lg border border-zinc-200">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50">
                   <tr>
@@ -530,7 +530,7 @@ const SECTIONS: Section[] = [
               </table>
             </div>
             <p className="text-sm">Exemplo com empresa e cidade (ideal pra buscar depois):</p>
-            <div className="rounded-lg border border-zinc-200 overflow-hidden">
+            <div className="overflow-x-auto rounded-lg border border-zinc-200">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50">
                   <tr>

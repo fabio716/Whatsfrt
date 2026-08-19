@@ -105,7 +105,7 @@ export default function RatingsClient() {
       </header>
 
       {/* Cards superiores */}
-      <section className="mb-6 grid grid-cols-4 gap-4">
+      <section className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-lg border border-zinc-200 bg-white p-4">
           <p className="text-[11px] uppercase tracking-wide text-zinc-500">CSAT médio</p>
           <p className={`mt-1 text-3xl font-bold tabular-nums ${csatColor}`}>
@@ -152,7 +152,7 @@ export default function RatingsClient() {
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-zinc-600">
           Ranking por agente
         </h2>
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
           {data.ranking.length === 0 ? (
             <p className="px-4 py-3 text-[13px] text-zinc-400">Sem avaliações no período.</p>
           ) : (
@@ -191,7 +191,7 @@ export default function RatingsClient() {
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-zinc-600">
           Notas baixas (1-2) recentes — precisam de revisão
         </h2>
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
           {data.recentLow.length === 0 ? (
             <p className="px-4 py-3 text-[13px] text-zinc-400">Nenhuma nota baixa no período. 🎉</p>
           ) : (

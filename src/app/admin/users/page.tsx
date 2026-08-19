@@ -281,7 +281,7 @@ export default function UsersPage() {
     <main className="min-h-screen bg-[#f4f5f7] font-sans">
 
       {/* ── Page header ── */}
-      <header className="border-b border-zinc-200 bg-white px-8 py-5">
+      <header className="border-b border-zinc-200 bg-white px-4 py-5 md:px-8">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-4">
             <button
@@ -309,7 +309,7 @@ export default function UsersPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl space-y-5 px-8 py-6">
+      <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 md:px-8">
 
         {/* ── Stats row ── */}
         <div className="grid grid-cols-3 gap-4">
@@ -478,7 +478,7 @@ export default function UsersPage() {
 
       {/* ── Delete Confirmation Modal ── */}
       {deleteUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button type="button" aria-label="Fechar" className="absolute inset-0 cursor-default bg-black/30 backdrop-blur-sm" onClick={() => setDeleteUser(null)} />
           <div className="relative w-full max-w-sm rounded-2xl border border-zinc-100 bg-white p-6 shadow-2xl">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-500 mb-4">
