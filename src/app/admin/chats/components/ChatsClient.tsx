@@ -238,6 +238,12 @@ export default function ChatsClient({
   const [ending, setEnding] = useState(false)
   const [inputValue, setInputValue] = useState("")
   const [isSending, setIsSending] = useState(false)
+  // Trava síncrona (ref, não state) contra clique duplo/Enter repetindo
+  // rápido demais: setIsSending(true) não é imediato (batching do React), então
+  // 2-3 chamadas de handleSend em sequência rápida liam isSending ainda como
+  // false e mandavam a MESMA mensagem repetida (relatado pela Francielli —
+  // "Bom dia" saiu 3x). Ref muda na hora, sem esperar re-render.
+  const sendingRef = useRef(false)
   const [isUploading, setIsUploading] = useState(false)
   const [showEmojis, setShowEmojis] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
@@ -756,14 +762,16 @@ export default function ChatsClient({
   }, [activeId])
 
   const handleSend = async () => {
-    if (!inputValue.trim() || !activeId || isSending || !isOwner) return
-    const text = inputValue.trim()
+    if (!inputValue.trim() || !activeId || sendingRef.current || !isOwner) return
+    sendingRef.current = true
     setIsSending(true)
+    const text = inputValue.trim()
     try {
       await doSend(text)
     } catch (err) {
       alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
     } finally {
+      sendingRef.current = false
       setIsSending(false)
     }
   }

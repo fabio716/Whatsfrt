@@ -63,6 +63,10 @@ export default function MensagensPage() {
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
+  // Trava síncrona contra clique duplo/Enter repetindo rápido — setSending(true)
+  // não é imediato (batching do React), mesmo bug de duplicar envio corrigido
+  // no Chats (ver ChatsClient.tsx sendingRef).
+  const sendingRef = useRef(false)
   const [uploading, setUploading] = useState(false)
 
   // Edição de mensagem já enviada (só texto, sem anexo).
@@ -208,7 +212,8 @@ export default function MensagensPage() {
   // ── Enviar mensagem (texto ou mídia) ──
   const sendMessage = useCallback(async (payload: { body?: string; mediaUrl?: string; mediaType?: string }) => {
     const convId = activeIdRef.current
-    if (!convId) return
+    if (!convId || sendingRef.current) return
+    sendingRef.current = true
     setSending(true)
     try {
       const res = await fetch(`/api/internal/conversations/${convId}/messages`, {
@@ -225,6 +230,7 @@ export default function MensagensPage() {
         alert(`Não foi possível enviar: ${data.error ?? res.status}`)
       }
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }, [loadConversations])
