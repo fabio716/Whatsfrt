@@ -108,3 +108,10 @@ ssh root@62.171.178.160
   cada 5 min), NÃO acontece sozinho na hora. Já pausa manual (status
   PAUSED) é diferente — essa só retoma se a pessoa clicar "Retomar" na
   tela, o resumer ignora ela de propósito.
+- Respostas Rápidas (`/admin/respostas-rapidas` + botão ⚡ no composer do
+  Chats): templates de texto+mídia+áudio disparados com 1 clique via
+  `/api/quick-replies/send` (`src/lib/whatsapp.ts` sendText/sendMedia — MESMO
+  pipeline do envio manual e do gravador de áudio, não é gambiarra de
+  injetar no WhatsApp Web). Áudio já sai como nota de voz porque reusa o
+  endpoint `send-audio` da Z-API, que o gravador do Chats já usava. Admin
+  gerencia os templates; agente só usa (lê via GET, não pode criar/editar).

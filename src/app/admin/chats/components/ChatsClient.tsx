@@ -201,6 +201,78 @@ function EmojiPicker({ onPick, onClose }: Readonly<{ onPick: (emoji: string) => 
   )
 }
 
+interface QuickReplyTemplateData {
+  id: string
+  name: string
+  category: string
+  text: string
+  mediaUrl: string | null
+  mediaType: string | null
+  audioUrl: string | null
+  audioType: string | null
+}
+
+// Painel de Respostas Rápidas — templates agrupados por categoria, 1 clique
+// dispara texto + mídia + áudio em sequência (ver /api/quick-replies/send).
+function QuickReplyPanel({
+  templates, onSend, onClose, sendingId,
+}: Readonly<{
+  templates: QuickReplyTemplateData[]
+  onSend: (id: string) => void
+  onClose: () => void
+  sendingId: string | null
+}>) {
+  const grouped = templates.reduce<Record<string, QuickReplyTemplateData[]>>((acc, t) => {
+    (acc[t.category] ??= []).push(t)
+    return acc
+  }, {})
+
+  return (
+    <div className="absolute bottom-14 left-2 z-50 max-h-80 w-80 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-2xl">
+      <div className="mb-1 flex items-center justify-between px-1">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Respostas rápidas</span>
+        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700" title="Fechar">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      {templates.length === 0 ? (
+        <p className="px-2 py-4 text-center text-[12px] text-zinc-400">Nenhum template cadastrado ainda.</p>
+      ) : (
+        Object.entries(grouped).map(([category, items]) => (
+          <div key={category} className="mb-2">
+            <p className="mb-0.5 px-1 text-[10px] font-medium text-zinc-400">{category}</p>
+            <div className="space-y-0.5">
+              {items.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={sendingId !== null}
+                  onClick={() => onSend(t.id)}
+                  title={t.text || "Sem texto"}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  {sendingId === t.id ? (
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0 animate-spin" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <span className="flex-shrink-0">
+                      {t.mediaUrl ? "📎" : t.audioUrl ? "🎤" : "💬"}
+                    </span>
+                  )}
+                  <span className="truncate flex-1">{t.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ChatsClient({
@@ -246,6 +318,16 @@ export default function ChatsClient({
   const sendingRef = useRef(false)
   const [isUploading, setIsUploading] = useState(false)
   const [showEmojis, setShowEmojis] = useState(false)
+  // Respostas rápidas (texto+mídia+áudio com 1 clique).
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [templates, setTemplates] = useState<QuickReplyTemplateData[]>([])
+  const [sendingTemplateId, setSendingTemplateId] = useState<string | null>(null)
+  useEffect(() => {
+    fetch("/api/admin/quick-replies")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: QuickReplyTemplateData[]) => setTemplates(data))
+      .catch(() => {})
+  }, [])
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferring, setTransferring] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -773,6 +855,29 @@ export default function ChatsClient({
     } finally {
       sendingRef.current = false
       setIsSending(false)
+    }
+  }
+
+  // Dispara um template de resposta rápida (texto+mídia+áudio) no contato ativo.
+  const sendTemplate = async (templateId: string) => {
+    if (!activeId || sendingTemplateId) return
+    setShowTemplates(false)
+    setSendingTemplateId(templateId)
+    try {
+      const res = await fetch("/api/quick-replies/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: activeId, templateId }),
+      })
+      if (!res.ok && handleSessionExpired(res.status)) return
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        alert(`Não foi possível enviar o template: ${data.error ?? res.status}`)
+      }
+    } catch (err) {
+      alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
+    } finally {
+      setSendingTemplateId(null)
     }
   }
 
@@ -1376,6 +1481,31 @@ export default function ChatsClient({
                     <EmojiPicker
                       onPick={(e) => setInputValue((v) => v + e)}
                       onClose={() => setShowEmojis(false)}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplates((v) => !v)}
+                    disabled={sendingTemplateId !== null}
+                    title="Respostas rápidas"
+                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {sendingTemplateId ? (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    )}
+                  </button>
+                  {showTemplates && (
+                    <QuickReplyPanel
+                      templates={templates}
+                      onSend={(id) => void sendTemplate(id)}
+                      onClose={() => setShowTemplates(false)}
+                      sendingId={sendingTemplateId}
                     />
                   )}
                   <input

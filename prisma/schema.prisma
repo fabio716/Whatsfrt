@@ -317,6 +317,34 @@ model BusinessHour {
   @@map("business_hours")
 }
 
+// Resposta rápida (template) — texto + imagem/vídeo + áudio, disparados em
+// sequência com 1 clique na tela de Chats. Gerenciado pelo admin, usado por
+// todos os agentes (biblioteca compartilhada, igual Cooperativa/Contatos).
+model QuickReplyTemplate {
+  id       String  @id @default(cuid())
+  name     String
+  category String  @default("Geral")
+  order    Int     @default(0)
+
+  // Texto com suporte a {nome} (mesma convenção do Campaign.messageText).
+  text String @default("")
+
+  mediaUrl  String?
+  mediaType String?
+
+  // Áudio enviado como nota de voz (mesmo pipeline do gravador do Chats —
+  // Z-API já renderiza send-audio como PTT/"gravado na hora").
+  audioUrl  String?
+  audioType String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, order])
+  @@map("quick_reply_templates")
+}
+
 // Campanha de disparo em massa.
 model Campaign {
   id          String         @id @default(cuid())

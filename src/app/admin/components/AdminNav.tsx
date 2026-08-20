@@ -167,6 +167,16 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/respostas-rapidas",
+        label: "Respostas Rápidas",
+        roles: ["ADMIN"],
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/connect",
         label: "Conexão WhatsApp",
         roles: ["ADMIN"],
