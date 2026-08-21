@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 
 interface DistributionEntry { rating: number; count: number }
 interface RankingEntry {
@@ -61,19 +61,39 @@ export default function RatingsClient() {
   const [starFilter, setStarFilter] = useState<number | null>(null)
   const [onlyWithComment, setOnlyWithComment] = useState(false)
   const [search, setSearch] = useState("")
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/admin/ratings?days=${days}`, { cache: "no-store" })
+    if (res.ok) setData(await res.json() as ApiResponse)
+  }, [days])
 
   useEffect(() => {
     let alive = true
     setLoading(true)
-    fetch(`/api/admin/ratings?days=${days}`, { cache: "no-store" })
-      .then((r) => r.json() as Promise<ApiResponse>)
-      .then((j) => { if (alive) { setData(j); setLoading(false) } })
-      .catch(() => { if (alive) setLoading(false) })
+    void load().finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [days])
 
   if (loading || !data) {
     return <div className="p-6 text-sm text-zinc-500">Carregando…</div>
+  }
+
+  const handleDeleteRating = async (sessionId: string) => {
+    if (deletingId) return
+    if (!confirm("Apagar esta nota/comentário? O atendimento continua no histórico, só a avaliação some.")) return
+    setDeletingId(sessionId)
+    try {
+      const res = await fetch(`/api/admin/ratings/${sessionId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        alert(d.error ?? "Não foi possível apagar")
+        return
+      }
+      await load()
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const maxDistribution = Math.max(1, ...data.distribution.map((d) => d.count))
@@ -247,6 +267,7 @@ export default function RatingsClient() {
                   <th className="px-4 py-2">Agente</th>
                   <th className="px-4 py-2">Cliente</th>
                   <th className="px-4 py-2">Comentário</th>
+                  <th className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -264,6 +285,16 @@ export default function RatingsClient() {
                     <td className="px-4 py-2 text-zinc-700">{r.contactName}</td>
                     <td className="px-4 py-2 text-[12px] text-zinc-600">
                       {r.comment ?? <span className="text-zinc-400">— sem comentário</span>}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <button
+                        onClick={() => void handleDeleteRating(r.sessionId)}
+                        disabled={deletingId === r.sessionId}
+                        title="Apagar esta avaliação (achei injusta)"
+                        className="rounded-lg px-2 py-1 text-[11px] font-medium text-red-500 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        {deletingId === r.sessionId ? "…" : "Apagar"}
+                      </button>
                     </td>
                   </tr>
                 ))}
