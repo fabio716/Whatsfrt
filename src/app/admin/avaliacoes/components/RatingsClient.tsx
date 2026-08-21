@@ -9,7 +9,7 @@ interface RankingEntry {
   avgRating: number
   ratedCount: number
 }
-interface LowRatingEntry {
+interface RatingEntry {
   sessionId: string
   rating: number | null
   comment: string | null
@@ -29,7 +29,7 @@ interface ApiResponse {
   promoters: number
   detractors: number
   ranking: RankingEntry[]
-  recentLow: LowRatingEntry[]
+  recentRatings: RatingEntry[]
 }
 
 function fmtPct(n: number | null): string {
@@ -57,6 +57,10 @@ export default function RatingsClient() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [days, setDays] = useState(30)
   const [loading, setLoading] = useState(true)
+  // Filtros da lista de notas/comentários — por padrão mostra tudo.
+  const [starFilter, setStarFilter] = useState<number | null>(null)
+  const [onlyWithComment, setOnlyWithComment] = useState(false)
+  const [search, setSearch] = useState("")
 
   useEffect(() => {
     let alive = true
@@ -73,6 +77,15 @@ export default function RatingsClient() {
   }
 
   const maxDistribution = Math.max(1, ...data.distribution.map((d) => d.count))
+
+  const q = search.trim().toLowerCase()
+  const filteredRatings = data.recentRatings.filter((r) => {
+    if (starFilter !== null && r.rating !== starFilter) return false
+    if (onlyWithComment && !r.comment?.trim()) return false
+    if (q && !r.contactName.toLowerCase().includes(q) && !r.agentName.toLowerCase().includes(q)) return false
+    return true
+  })
+
   const csat = data.csat
   const csatColor = csat === null
     ? "text-zinc-400"
@@ -186,14 +199,45 @@ export default function RatingsClient() {
         </div>
       </section>
 
-      {/* Notas baixas recentes */}
+      {/* Notas e comentários dos clientes */}
       <section>
-        <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-zinc-600">
-          Notas baixas (1-2) recentes — precisam de revisão
-        </h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-zinc-600">
+            Notas e comentários dos clientes
+          </h2>
+          <span className="text-[11px] text-zinc-400">{filteredRatings.length} de {data.recentRatings.length}</span>
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar cliente ou agente…"
+            className="min-w-[160px] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[12px] text-zinc-900 outline-none focus:border-zinc-400"
+          />
+          <div className="flex gap-1">
+            {[null, 5, 4, 3, 2, 1].map((star) => (
+              <button
+                key={star ?? "all"}
+                onClick={() => setStarFilter(star)}
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                  starFilter === star
+                    ? "border-zinc-900 bg-zinc-900 text-white"
+                    : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                {star === null ? "Todas" : `${star}⭐`}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-zinc-600">
+            <input type="checkbox" checked={onlyWithComment} onChange={(e) => setOnlyWithComment(e.target.checked)} />
+            Só com comentário
+          </label>
+        </div>
+
         <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-          {data.recentLow.length === 0 ? (
-            <p className="px-4 py-3 text-[13px] text-zinc-400">Nenhuma nota baixa no período. 🎉</p>
+          {filteredRatings.length === 0 ? (
+            <p className="px-4 py-3 text-[13px] text-zinc-400">Nenhuma avaliação encontrada com esses filtros.</p>
           ) : (
             <table className="w-full text-[13px]">
               <thead className="border-b border-zinc-100 bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
@@ -206,12 +250,14 @@ export default function RatingsClient() {
                 </tr>
               </thead>
               <tbody>
-                {data.recentLow.map((r) => (
+                {filteredRatings.map((r) => (
                   <tr key={r.sessionId} className="border-b border-zinc-50 last:border-0">
                     <td className="px-4 py-2 tabular-nums text-zinc-500">
                       {r.ratedAt ? new Date(r.ratedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—"}
                     </td>
-                    <td className="px-4 py-2 font-semibold text-red-600">
+                    <td className={`px-4 py-2 font-semibold ${
+                      (r.rating ?? 0) >= 4 ? "text-emerald-600" : (r.rating ?? 0) >= 3 ? "text-amber-600" : "text-red-600"
+                    }`}>
                       {r.rating}⭐
                     </td>
                     <td className="px-4 py-2 text-zinc-700">{r.agentName}</td>

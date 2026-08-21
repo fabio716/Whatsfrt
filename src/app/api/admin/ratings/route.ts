@@ -6,7 +6,9 @@ export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
 
 // GET /api/admin/ratings?days=30
-// Estatísticas de CSAT + ranking por agente + últimas notas baixas.
+// Estatísticas de CSAT + ranking por agente + todas as notas/comentários dos
+// clientes no período (não só as baixas — admin precisa ver o feedback
+// completo, elogio incluso, não só reclamação).
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin(request)
   if (isErrorResponse(auth)) return auth
@@ -16,7 +18,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   )))
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
-  const [allRated, byRating, byAgent, recentLow, totalEnded] = await Promise.all([
+  const [allRated, byRating, byAgent, recentRatings, totalEnded] = await Promise.all([
     // Sessions com nota no período
     prisma.serviceSession.aggregate({
       where: { ratedAt: { gte: since, not: null }, rating: { not: null } },
@@ -36,11 +38,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       _avg: { rating: true },
       _count: { id: true },
     }),
-    // Últimas 20 notas baixas (1-2)
+    // Todas as notas/comentários do período (não só as baixas) — teto de 300
+    // pra não pesar a resposta; período longo com muito volume, filtra por
+    // menos dias.
     prisma.serviceSession.findMany({
-      where: { ratedAt: { gte: since, not: null }, rating: { lte: 2, not: null } },
+      where: { ratedAt: { gte: since, not: null }, rating: { not: null } },
       orderBy: { ratedAt: "desc" },
-      take: 20,
+      take: 300,
       select: {
         id: true,
         rating: true,
@@ -94,7 +98,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     promoters,
     detractors,
     ranking,
-    recentLow: recentLow.map((s) => ({
+    recentRatings: recentRatings.map((s) => ({
       sessionId: s.id,
       rating: s.rating,
       comment: s.comment,
