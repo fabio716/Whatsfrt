@@ -32,7 +32,10 @@ export interface SpamCheckResult {
 }
 
 // Conta quantas das últimas N mensagens deste agente têm o MESMO template
-// normalizado. Se 3 ou mais, é spam de template (alta chance de WhatsApp dropar).
+// normalizado. Limite alto de propósito (20) — vendedor manda a MESMA
+// mensagem-padrão pra vários clientes diferentes o dia todo, isso é uso
+// normal de vendas, não spam. O que queremos pegar é disparo em massa de
+// verdade (dezenas seguidas), não o dia a dia comercial.
 export async function checkTemplateSpam(
   agentId: string,
   text: string,
@@ -46,7 +49,7 @@ export async function checkTemplateSpam(
       createdAt: { gte: since },
     },
     select: { body: true },
-    take: 50,
+    take: 100,
     orderBy: { createdAt: "desc" },
   })
 
@@ -55,7 +58,7 @@ export async function checkTemplateSpam(
 
   const similar = recent.filter((m) => normalizeForSpamCheck(m.body) === target).length
   return {
-    isSuspicious: similar >= 3,
+    isSuspicious: similar >= 20,
     similarCount: similar,
     recentTotal: recent.length,
   }
