@@ -48,6 +48,11 @@ interface ZapiTextPayload {
   video?: { videoUrl?: string; mimeType?: string; caption?: string }
   audio?: { audioUrl?: string; mimeType?: string }
   document?: { documentUrl?: string; mimeType?: string; fileName?: string; caption?: string }
+  // Cliente compartilhou um contato do WhatsApp (cartão de visita/vCard) —
+  // sem tratar isso a mensagem chegava sem body e sem media, virando um
+  // balão vazio na tela do agente.
+  contact?: { displayName?: string; vcard?: string }
+  contacts?: { displayName?: string; vcard?: string }[]
   // Presente quando o callback é uma REAÇÃO (não uma mensagem normal) — o
   // cliente reagiu com emoji numa mensagem nossa ou dele mesmo. value="" =
   // removeu a reação.
@@ -151,11 +156,29 @@ function extractMediaUrl(p: ZapiTextPayload): { url: string; mimetype: string; f
   return null
 }
 
+// Extrai nome+telefone de um vCard (campo TEL, formato "waid=5511999999999"
+// ou número puro depois dos dois-pontos). Best-effort — se não achar telefone,
+// mostra só o nome.
+function describeContact(c: { displayName?: string; vcard?: string }): string {
+  const name = c.displayName?.trim() || "Contato sem nome"
+  const waidMatch = c.vcard?.match(/waid=(\d+)/)
+  const telMatch = c.vcard?.match(/TEL[^:]*:([+\d][\d\s()-]*\d)/)
+  const phone = waidMatch?.[1] ?? telMatch?.[1]?.trim()
+  return phone ? `👤 ${name} — ${phone}` : `👤 ${name}`
+}
+
+function extractContactsText(p: ZapiTextPayload): string | null {
+  if (p.contact) return describeContact(p.contact)
+  if (p.contacts?.length) return p.contacts.map(describeContact).join("\n")
+  return null
+}
+
 function extractText(p: ZapiTextPayload): string {
   return p.text?.message
     ?? p.image?.caption
     ?? p.video?.caption
     ?? p.document?.caption
+    ?? extractContactsText(p)
     ?? ""
 }
 
