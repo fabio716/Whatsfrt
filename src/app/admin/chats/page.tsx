@@ -94,12 +94,12 @@ export default async function ChatsPage(
     profilePhotoUrl: c.profilePhotoUrl,
     chatStatus: c.chatStatus,
     assignedUserId: c.assignedUserId,
-    // Chat limpo pós-takeover: só mostra mensagens a partir do historyResetAt.
-    // Assim o novo dono não herda o histórico do agente anterior.
+    // Histórico completo sempre visível, mesmo depois de um takeover — o
+    // corte por historyResetAt foi removido a pedido (ficava confuso o
+    // agente achar que tinha "sumido" conversa que sempre foi do cliente).
     // adminPrivate: admin respondeu direto num contato de outro agente —
     // fica invisível pro dono do contato (privacidade), só o admin vê.
     messages: c.messages
-      .filter((m) => !c.historyResetAt || m.createdAt >= c.historyResetAt!)
       .filter((m) => !isAgent || !m.adminPrivate)
       .map((m) => ({
         id: m.id,
