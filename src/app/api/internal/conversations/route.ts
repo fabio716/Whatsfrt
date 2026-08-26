@@ -93,6 +93,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       photoUrl,
       memberCount: memberIds.length,
       memberNames: memberIds.map((id) => nameById.get(id) ?? "?"),
+      // Usado pro @menção no grupo — precisa do id de cada um, não só o nome.
+      members: memberIds.map((id) => ({ id, name: nameById.get(id) ?? "?" })),
       updatedAt: c.updatedAt,
       unread: unreadByConv.get(c.id) ?? 0,
       lastMessage: lm

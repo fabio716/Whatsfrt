@@ -17,6 +17,7 @@ interface ConversationRow {
   photoUrl: string | null
   memberCount: number
   memberNames: string[]
+  members: { id: string; name: string }[]
   updatedAt: string
   unread: number
   lastMessage: { body: string; mediaType: string | null; createdAt: string; senderName: string; fromMe: boolean } | null
@@ -42,6 +43,31 @@ function hhmm(iso: string) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
+// Renderiza o texto da mensagem destacando "@Nome" de quem é membro do grupo
+// (igual o WhatsApp original) — só tenta casar nomes que realmente existem
+// no grupo, pra não destacar um "@" qualquer que o usuário tenha digitado.
+function renderWithMentions(body: string, members: { id: string; name: string }[]): React.ReactNode {
+  if (members.length === 0 || !body.includes("@")) return body
+  // Nomes mais longos primeiro, pra "@Ana Paula" não ser cortado em "@Ana".
+  const names = [...new Set(members.map((m) => m.name))].sort((a, b) => b.length - a.length)
+  const pattern = new RegExp(`@(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "g")
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let key = 0
+  while ((match = pattern.exec(body)) !== null) {
+    if (match.index > lastIndex) parts.push(body.slice(lastIndex, match.index))
+    parts.push(
+      <span key={key++} className="rounded bg-emerald-100 px-1 font-semibold text-emerald-700">
+        @{match[1]}
+      </span>,
+    )
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < body.length) parts.push(body.slice(lastIndex))
+  return parts
+}
+
 function previewOf(c: ConversationRow): string {
   const lm = c.lastMessage
   if (!lm) return "Nenhuma mensagem ainda"
@@ -62,6 +88,11 @@ export default function MensagensPage() {
   const [messages, setMessages] = useState<Msg[]>([])
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const [text, setText] = useState("")
+  // @menção (só em grupo) — mentionStart é o índice do "@" no texto; null =
+  // não está mencionando agora.
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [mentionQuery, setMentionQuery] = useState("")
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [sending, setSending] = useState(false)
   // Trava síncrona contra clique duplo/Enter repetindo rápido — setSending(true)
   // não é imediato (batching do React), mesmo bug de duplicar envio corrigido
@@ -643,7 +674,11 @@ export default function MensagensPage() {
                           ) : m.mediaType ? (
                             <a href={m.mediaUrl ?? "#"} target="_blank" rel="noreferrer" className="underline text-emerald-600">📎 Baixar arquivo</a>
                           ) : null}
-                          {m.body && <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{m.body}</p>}
+                          {m.body && (
+                            <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">
+                              {active.isGroup ? renderWithMentions(m.body, active.members) : m.body}
+                            </p>
+                          )}
                           <div className="mt-1 flex items-center justify-end gap-1 px-1">
                             <button
                               type="button"
@@ -697,7 +732,39 @@ export default function MensagensPage() {
             </div>
 
             {/* Composer */}
-            <div className="border-t border-zinc-200 bg-white px-4 py-3">
+            <div className="relative border-t border-zinc-200 bg-white px-4 py-3">
+              {mentionStart !== null && active.isGroup && (() => {
+                const q = mentionQuery.toLowerCase()
+                const options = active.members
+                  .filter((m) => m.id !== myUserId)
+                  .filter((m) => m.name.toLowerCase().includes(q))
+                if (options.length === 0) return null
+                return (
+                  <div className="absolute bottom-full left-4 z-20 mb-1 max-h-48 w-64 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
+                    {options.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          const before = text.slice(0, mentionStart)
+                          const after = text.slice(mentionStart + 1 + mentionQuery.length)
+                          const next = `${before}@${m.name} ${after}`
+                          setText(next)
+                          setMentionStart(null)
+                          setMentionQuery("")
+                          requestAnimationFrame(() => textareaRef.current?.focus())
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-zinc-700 hover:bg-zinc-50"
+                      >
+                        <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-semibold text-zinc-600">
+                          {m.name.charAt(0).toUpperCase()}
+                        </span>
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })()}
               {recording ? (
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-2 text-[13px] font-medium text-red-600">
@@ -721,8 +788,30 @@ export default function MensagensPage() {
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" /></svg>
                   </button>
                   <textarea
-                    value={text} onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSendText() } }}
+                    ref={textareaRef}
+                    value={text}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setText(value)
+                      if (!active.isGroup) { setMentionStart(null); return }
+                      const cursor = e.target.selectionStart
+                      const upToCursor = value.slice(0, cursor)
+                      const at = upToCursor.lastIndexOf("@")
+                      // Só considera "digitando @menção" se não tem espaço/quebra
+                      // de linha entre o @ e o cursor — senão qualquer @ antigo
+                      // no texto reabriria o dropdown.
+                      if (at === -1 || /[\s\n]/.test(upToCursor.slice(at + 1))) {
+                        setMentionStart(null)
+                        setMentionQuery("")
+                      } else {
+                        setMentionStart(at)
+                        setMentionQuery(upToCursor.slice(at + 1))
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape" && mentionStart !== null) { setMentionStart(null); return }
+                      if (e.key === "Enter" && !e.shiftKey && mentionStart === null) { e.preventDefault(); void handleSendText() }
+                    }}
                     onPaste={(e) => {
                       const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"))
                       const file = item?.getAsFile()
