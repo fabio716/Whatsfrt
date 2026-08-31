@@ -223,23 +223,56 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     profilePhotoUrl: p.senderPhoto,
   })
 
-  // 2 — Baixa mídia se houver, salva privado, gera mediaUrl interno
+  // 2 — Baixa mídia se houver, salva privado, gera mediaUrl interno.
+  // Retry 1x: a URL da Z-API às vezes falha na primeira tentativa (CDN
+  // ainda propagando). Se falhar de vez, a mensagem entra COM AVISO no
+  // corpo — antes ficava uma bolha vazia/quebrada e ninguém sabia que o
+  // cliente tinha mandado algo.
   let media: { mediaUrl: string; mediaType: string } | null = null
+  let mediaLost = false
   const rawMedia = extractMediaUrl(p)
   if (rawMedia) {
-    const buf = await downloadMediaToBuffer(rawMedia.url)
-    if (buf) {
-      const saved = await saveMediaBuffer(buf, rawMedia.mimetype, rawMedia.fileName)
-      media = { mediaUrl: saved.mediaUrl, mediaType: saved.mediaType }
+    let buf = await downloadMediaToBuffer(rawMedia.url)
+    if (!buf || buf.length === 0) {
+      buf = await downloadMediaToBuffer(rawMedia.url)
+    }
+    if (buf && buf.length > 0) {
+      try {
+        const saved = await saveMediaBuffer(buf, rawMedia.mimetype, rawMedia.fileName)
+        media = { mediaUrl: saved.mediaUrl, mediaType: saved.mediaType }
+      } catch (err) {
+        // Disco cheio (ENOSPC) ou erro de escrita: não derruba o webhook —
+        // perder a mídia é ruim, perder a mensagem inteira é pior.
+        mediaLost = true
+        console.error(
+          `[zapi-webhook] FALHA AO GRAVAR mídia no disco messageId=${p.messageId} ` +
+          `tipo=${rawMedia.mimetype} tamanho=${buf.length} erro=${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    } else {
+      mediaLost = true
+      console.error(
+        `[zapi-webhook] FALHA AO BAIXAR mídia (2 tentativas) messageId=${p.messageId} ` +
+        `tipo=${rawMedia.mimetype} url=${rawMedia.url.slice(0, 120)}`,
+      )
     }
   }
+
+  // Aviso visível no chat quando a mídia se perdeu.
+  const mediaKind = rawMedia?.mimetype.startsWith("image/") ? "uma imagem"
+    : rawMedia?.mimetype.startsWith("video/") ? "um vídeo"
+    : rawMedia?.mimetype.startsWith("audio/") ? "um áudio"
+    : "um arquivo"
+  const finalText = mediaLost && !messageText
+    ? `⚠️ O cliente enviou ${mediaKind}, mas não foi possível baixar. Peça para reenviar.`
+    : messageText
 
   // 3 — Cria Message com dedupe por messageId (whatsappKeyId)
   let saved
   try {
     saved = await prisma.message.create({
       data: {
-        body: messageText,
+        body: finalText,
         direction: MessageDirection.INBOUND,
         status: MessageStatus.DELIVERED,
         contactId: contact.id,
@@ -280,7 +313,7 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
       : (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((u) => u.id)
     await sendPushToUsers(targetIds, {
       title: contact.name || "Novo cliente",
-      body: media ? "📎 Anexo" : messageText,
+      body: media ? "📎 Anexo" : finalText,
       tag: `chat-${contact.id}`,
       url: "/admin/chats",
     })

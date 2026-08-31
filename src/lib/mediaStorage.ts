@@ -47,7 +47,15 @@ export async function saveMediaBuffer(
   const dir = getUploadsDir()
   const filename = buildSafeName(originalName, mimetype)
   await fs.mkdir(dir, { recursive: true })
-  await fs.writeFile(path.join(dir, filename), buffer)
+  const fullPath = path.join(dir, filename)
+  await fs.writeFile(fullPath, buffer)
+  // Confere se gravou inteiro — disco cheio pode deixar arquivo truncado
+  // (imagem quebrada / áudio 0:00 no chat). Melhor falhar alto aqui.
+  const stat = await fs.stat(fullPath)
+  if (stat.size !== buffer.length) {
+    await fs.unlink(fullPath).catch(() => {})
+    throw new Error(`Gravação incompleta (${stat.size}/${buffer.length} bytes) — disco cheio?`)
+  }
   return {
     filename,
     mediaUrl: `/api/media/${filename}`,
