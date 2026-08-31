@@ -43,6 +43,54 @@ function hhmm(iso: string) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
+// ─── Álbum de imagens (igual WhatsApp) ────────────────────────────────────────
+// Imagens seguidas do mesmo remetente, sem legenda, com no máx. 3 min de
+// intervalo entre elas, viram UM bloco só (grade de miniaturas + baixar tudo).
+type RenderItem = { kind: "single"; msg: Msg } | { kind: "album"; msgs: Msg[] }
+
+const ALBUM_MAX_GAP_MS = 3 * 60 * 1000
+
+function isAlbumCandidate(m: Msg): boolean {
+  return Boolean(m.mediaType?.startsWith("image/") && m.mediaUrl && !m.body && !(m.reactions?.length))
+}
+
+function groupIntoAlbums(messages: Msg[]): RenderItem[] {
+  const items: RenderItem[] = []
+  let run: Msg[] = []
+  const flush = () => {
+    if (run.length >= 2) items.push({ kind: "album", msgs: run })
+    else run.forEach((m) => items.push({ kind: "single", msg: m }))
+    run = []
+  }
+  for (const m of messages) {
+    if (!isAlbumCandidate(m)) { flush(); items.push({ kind: "single", msg: m }); continue }
+    const prev = run[run.length - 1]
+    if (prev && (prev.senderId !== m.senderId ||
+        new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() > ALBUM_MAX_GAP_MS)) {
+      flush()
+    }
+    run.push(m)
+  }
+  flush()
+  return items
+}
+
+// Baixa todas as imagens do álbum, uma a uma (o navegador pede permissão de
+// "múltiplos downloads" na primeira vez — é só aceitar).
+async function downloadAlbum(msgs: Msg[]): Promise<void> {
+  for (const m of msgs) {
+    if (!m.mediaUrl) continue
+    const a = document.createElement("a")
+    a.href = m.mediaUrl
+    a.download = m.mediaUrl.split("/").pop() ?? "imagem.jpg"
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    // Pausa entre downloads — disparar tudo junto faz o navegador ignorar parte.
+    await new Promise((r) => setTimeout(r, 400))
+  }
+}
+
 // Renderiza o texto da mensagem destacando "@Nome" de quem é membro do grupo
 // (igual o WhatsApp original) — só tenta casar nomes que realmente existem
 // no grupo, pra não destacar um "@" qualquer que o usuário tenha digitado.
@@ -582,7 +630,51 @@ export default function MensagensPage() {
                 <p className="py-8 text-center text-[12px] text-zinc-400">Carregando…</p>
               ) : messages.length === 0 ? (
                 <p className="py-8 text-center text-[12px] text-zinc-400">Nenhuma mensagem. Diga olá! 👋</p>
-              ) : messages.map((m) => {
+              ) : groupIntoAlbums(messages).map((item) => {
+                // ── Álbum: várias imagens seguidas viram uma grade só ──
+                if (item.kind === "album") {
+                  const first = item.msgs[0]
+                  return (
+                    <div key={first.id} className={`group flex ${first.fromMe ? "justify-end" : "justify-start"} mb-1`}>
+                      <div className={`relative max-w-[68%] rounded-2xl p-1.5 shadow-sm ${first.fromMe ? "rounded-tr-sm bg-[#dcf8c6]" : "rounded-tl-sm border border-zinc-100 bg-white"}`}>
+                        {active.isGroup && !first.fromMe && (
+                          <p className="mb-0.5 px-1 text-[11px] font-semibold text-emerald-600">{first.senderName}</p>
+                        )}
+                        <div className="grid grid-cols-2 gap-1">
+                          {item.msgs.map((im) => (
+                            <button
+                              key={im.id}
+                              type="button"
+                              onClick={() => setExpandedImg(im.mediaUrl ?? null)}
+                              className="block cursor-zoom-in"
+                            >
+                              <img
+                                src={im.mediaUrl ?? undefined}
+                                alt="imagem"
+                                loading="lazy"
+                                className="h-28 w-full rounded-lg object-cover sm:h-36"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-1 flex items-center justify-between gap-2 px-1">
+                          <button
+                            type="button"
+                            onClick={() => void downloadAlbum(item.msgs)}
+                            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-black/5"
+                          >
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
+                            </svg>
+                            Baixar todas ({item.msgs.length})
+                          </button>
+                          <span className="text-[10px] text-zinc-400">{hhmm(item.msgs[item.msgs.length - 1].createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+                const m = item.msg
                 const canEdit = m.fromMe && !m.mediaType
                 const canDelete = m.fromMe && m.body !== "🚫 Mensagem apagada"
                 const isEditingThis = editingMsgId === m.id

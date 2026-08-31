@@ -133,6 +133,110 @@ function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string;
   )
 }
 
+// ─── Álbum de imagens (igual WhatsApp) ───────────────────────────────────────
+// Várias imagens seguidas, do mesmo lado, sem legenda e sem reação, com até
+// 3 min entre elas, viram UMA grade só com botão de baixar tudo.
+type ChatRenderItem = { kind: "single"; msg: MessageData } | { kind: "album"; msgs: MessageData[] }
+
+const ALBUM_MAX_GAP_MS = 3 * 60 * 1000
+
+function isChatAlbumCandidate(m: MessageData): boolean {
+  return Boolean(m.mediaType?.startsWith("image/") && m.mediaUrl && !m.body && !m.myReaction && !m.theirReaction)
+}
+
+function groupChatAlbums(messages: MessageData[]): ChatRenderItem[] {
+  const items: ChatRenderItem[] = []
+  let run: MessageData[] = []
+  const flush = () => {
+    if (run.length >= 2) items.push({ kind: "album", msgs: run })
+    else run.forEach((m) => items.push({ kind: "single", msg: m }))
+    run = []
+  }
+  for (const m of messages) {
+    if (!isChatAlbumCandidate(m)) { flush(); items.push({ kind: "single", msg: m }); continue }
+    const prev = run[run.length - 1]
+    if (prev && (prev.direction !== m.direction ||
+        new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() > ALBUM_MAX_GAP_MS)) {
+      flush()
+    }
+    run.push(m)
+  }
+  flush()
+  return items
+}
+
+// Baixa todas as imagens do álbum em sequência (o navegador pede permissão
+// de múltiplos downloads na primeira vez — é só aceitar).
+async function downloadAlbum(msgs: MessageData[]): Promise<void> {
+  for (const m of msgs) {
+    if (!m.mediaUrl) continue
+    const a = document.createElement("a")
+    a.href = m.mediaUrl
+    a.download = m.mediaUrl.split("/").pop() ?? "imagem.jpg"
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    await new Promise((r) => setTimeout(r, 400))
+  }
+}
+
+function AlbumBubble({ msgs, isOut }: Readonly<{ msgs: MessageData[]; isOut: boolean }>) {
+  const [expandedUrl, setExpandedUrl] = useState<string | null>(null)
+  const last = msgs[msgs.length - 1]
+  return (
+    <div className={`flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+      <div className={`max-w-[68%] rounded-2xl p-1.5 shadow-sm ${isOut ? "rounded-tr-sm bg-[#dcf8c6]" : "rounded-tl-sm border border-zinc-100 bg-white"}`}>
+        <div className="grid grid-cols-2 gap-1">
+          {msgs.map((im) => (
+            <button key={im.id} type="button" onClick={() => setExpandedUrl(im.mediaUrl ?? null)} className="block cursor-zoom-in">
+              <img src={im.mediaUrl ?? undefined} alt="imagem" loading="lazy" className="h-28 w-full rounded-lg object-cover sm:h-36" />
+            </button>
+          ))}
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-2 px-1">
+          <button
+            type="button"
+            onClick={() => void downloadAlbum(msgs)}
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-black/5"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
+            </svg>
+            Baixar todas ({msgs.length})
+          </button>
+          <span className="flex items-center gap-1 text-[10px] text-zinc-400">
+            {new Date(last.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            {isOut && <MessageStatusIcon status={last.status} />}
+          </span>
+        </div>
+        {expandedUrl && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4" onClick={() => setExpandedUrl(null)}>
+            <button
+              type="button"
+              onClick={() => setExpandedUrl(null)}
+              aria-label="Fechar"
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <a
+              href={expandedUrl}
+              download
+              onClick={(e) => e.stopPropagation()}
+              className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/20"
+            >
+              Baixar
+            </a>
+            <img src={expandedUrl} alt="imagem" className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Status icon (WhatsApp-style: relógio / ✓ / ✓✓ / ✓✓ azul / ⚠️) ──────────
 function MessageStatusIcon({ status }: Readonly<{ status: MessageData["status"] }>) {
   if (status === "PENDING") {
@@ -1284,7 +1388,11 @@ export default function ChatsClient({
                     <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-300">{group.dateLabel}</span>
                     <div className="h-px flex-1 bg-zinc-100" />
                   </div>
-                  {group.messages.map((msg) => {
+                  {groupChatAlbums(group.messages).map((item) => {
+                    if (item.kind === "album") {
+                      return <AlbumBubble key={item.msgs[0].id} msgs={item.msgs} isOut={item.msgs[0].direction === "OUTBOUND"} />
+                    }
+                    const msg = item.msg
                     const isOut = msg.direction === "OUTBOUND"
                     // Só dá pra editar texto puro (sem mídia), já enviado, e
                     // só o próprio autor (admin pode editar qualquer uma).
