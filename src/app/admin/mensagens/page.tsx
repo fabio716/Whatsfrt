@@ -377,9 +377,10 @@ export default function MensagensPage() {
   }, [sendMessage])
 
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
+    const files = Array.from(e.target.files ?? [])
     e.target.value = ""
-    if (f) await uploadAndSend(f, f.name)
+    // Envia em sequência — um de cada vez, cada um vira uma mensagem própria.
+    for (const f of files) await uploadAndSend(f, f.name)
   }
 
   // ── Gravação de áudio ──
@@ -601,13 +602,16 @@ export default function MensagensPage() {
                       {groupedReactions.length > 0 && (
                         <div className={`absolute -bottom-3.5 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm ${m.fromMe ? "right-2" : "left-2"}`}>
                           {groupedReactions.map((g) => (
-                            <span
+                            <button
                               key={g.emoji}
+                              type="button"
                               title={g.names.join(", ")}
+                              // No celular não tem hover pra ver o title — toque mostra quem reagiu.
+                              onClick={() => alert(`${g.emoji} ${g.names.join(", ")}`)}
                               className={`flex items-center gap-0.5 ${g.mine ? "font-semibold text-emerald-700" : ""}`}
                             >
                               {g.emoji}{g.count > 1 && <span className="text-[9px]">{g.count}</span>}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -776,7 +780,7 @@ export default function MensagensPage() {
                 </div>
               ) : (
                 <div className="flex items-end gap-2">
-                  <input ref={fileRef} type="file" className="hidden"
+                  <input ref={fileRef} type="file" multiple className="hidden"
                     accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
                     onChange={(e) => void handleFilePick(e)} />
                   <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || sending}

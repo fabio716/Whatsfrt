@@ -731,16 +731,13 @@ export default function ChatsClient({
     }
   }, [recordedBlob, activeId, isUploading])
 
-  // Upload e envio de mídia (foto/vídeo/documento) — usado tanto pelo input de
-  // arquivo quanto por colar (Ctrl+V) uma imagem copiada.
-  const sendFile = useCallback(async (file: File) => {
-    if (!activeId || isUploading || !isOwner) return
-
-    // Limites por tipo. A Z-API aceita video ate 100 MB (send-video); backend
-    // (MAX_UPLOAD_BYTES=120MB) e nginx (client_max_body_size=130M) ficam acima
-    // pra absorver o overhead do multipart. Teto de video/documento: ~100 MB.
-    // Dica: videos em H.264 sao os mais confiaveis; outros codecs passam por
-    // conversao interna da Z-API e podem falhar/inflar de tamanho.
+  // Confere o limite de tamanho por tipo. A Z-API aceita video ate 100 MB
+  // (send-video); backend (MAX_UPLOAD_BYTES=120MB) e nginx
+  // (client_max_body_size=130M) ficam acima pra absorver o overhead do
+  // multipart. Teto de video/documento: ~100 MB. Dica: videos em H.264 sao
+  // os mais confiaveis; outros codecs passam por conversao interna da
+  // Z-API e podem falhar/inflar de tamanho.
+  function checkFileSizeLimit(file: File): string | null {
     const maxByCategory =
       file.type.startsWith("image/")    ? 16 * 1024 * 1024    // imagem 16 MB
     : file.type.startsWith("video/")    ? 100 * 1024 * 1024   // vídeo até ~100 MB
@@ -753,16 +750,20 @@ export default function ChatsClient({
                  : file.type.startsWith("video/") ? "vídeo"
                  : file.type.startsWith("audio/") ? "áudio"
                  : "documento"
-      alert(`Arquivo muito grande. Limite WhatsApp para ${kind}: ${limitMB} MB.`)
-      return
+      return `Arquivo muito grande: ${file.name} (limite WhatsApp para ${kind}: ${limitMB} MB).`
     }
+    return null
+  }
 
-    setIsUploading(true)
+  // Sobe um único arquivo pro contato ativo. Não mexe em isUploading —
+  // quem chama (sendFile ou sendFiles) controla o loading em volta.
+  const uploadOneFile = useCallback(async (file: File, caption: string): Promise<boolean> => {
+    if (!activeId) return false
     const idempotencyKey = `${activeId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     const formData = new FormData()
     formData.append("file", file)
     formData.append("contactId", activeId)
-    formData.append("caption", inputValue.trim())
+    formData.append("caption", caption)
 
     try {
       const res = await fetch("/api/messages/send-media", {
@@ -770,18 +771,59 @@ export default function ChatsClient({
         headers: { "Idempotency-Key": idempotencyKey },
         body: formData,
       })
-      if (res.ok) {
-        setInputValue("") // limpa legenda se enviou
-      } else if (!handleSessionExpired(res.status)) {
+      if (res.ok) return true
+      if (!handleSessionExpired(res.status)) {
         const data = await res.json().catch(() => ({})) as { error?: string }
-        alert(`Falha ao enviar arquivo: ${data.error ?? res.status}`)
+        alert(`Falha ao enviar ${file.name}: ${data.error ?? res.status}`)
       }
+      return false
     } catch (err) {
-      alert(`Erro de rede: ${err instanceof Error ? err.message : String(err)}`)
+      alert(`Erro de rede ao enviar ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+      return false
+    }
+  }, [activeId])
+
+  // Upload e envio de mídia (foto/vídeo/documento) — usado tanto pelo input de
+  // arquivo quanto por colar (Ctrl+V) uma imagem copiada.
+  const sendFile = useCallback(async (file: File) => {
+    if (!activeId || isUploading || !isOwner) return
+
+    const sizeError = checkFileSizeLimit(file)
+    if (sizeError) { alert(sizeError); return }
+
+    setIsUploading(true)
+    try {
+      const ok = await uploadOneFile(file, inputValue.trim())
+      if (ok) setInputValue("") // limpa legenda se enviou
     } finally {
       setIsUploading(false)
     }
-  }, [activeId, inputValue, isOwner, isUploading])
+  }, [activeId, inputValue, isOwner, isUploading, uploadOneFile])
+
+  // Envia vários arquivos em sequência (um de cada vez, pra não sobrecarregar
+  // a Z-API nem estourar o rate-limit anti-spam). Só o primeiro leva a
+  // legenda digitada; os demais vão sem legenda.
+  const sendFiles = useCallback(async (files: File[]) => {
+    if (!activeId || isUploading || !isOwner || files.length === 0) return
+
+    for (const file of files) {
+      const sizeError = checkFileSizeLimit(file)
+      if (sizeError) { alert(sizeError); return }
+    }
+
+    setIsUploading(true)
+    try {
+      const caption = inputValue.trim()
+      let sentAny = false
+      for (let i = 0; i < files.length; i++) {
+        const ok = await uploadOneFile(files[i], i === 0 ? caption : "")
+        if (ok) sentAny = true
+      }
+      if (sentAny) setInputValue("")
+    } finally {
+      setIsUploading(false)
+    }
+  }, [activeId, inputValue, isOwner, isUploading, uploadOneFile])
 
   const doSend = useCallback(async (text: string, confirmTemplate = false, confirmCold = false): Promise<void> => {
     if (!activeId) return
@@ -1441,19 +1483,21 @@ export default function ChatsClient({
                   <input
                     ref={fileInputRef}
                     type="file"
+                    multiple
                     className="hidden"
                     accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
                     onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      e.target.value = "" // permite escolher mesmo arquivo de novo
-                      if (file) void sendFile(file)
+                      const files = Array.from(e.target.files ?? [])
+                      e.target.value = "" // permite escolher os mesmos arquivos de novo
+                      if (files.length === 1) void sendFile(files[0])
+                      else if (files.length > 1) void sendFiles(files)
                     }}
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading || isSending}
-                    title="Anexar arquivo (foto, vídeo, documento)"
+                    title="Anexar arquivos (foto, vídeo, documento) — pode selecionar vários"
                     className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {isUploading ? (
