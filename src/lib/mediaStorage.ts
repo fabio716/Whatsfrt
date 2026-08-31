@@ -125,7 +125,13 @@ export function verifyMediaToken(
 const ALLOWED_MIME_PREFIXES = ["image/", "video/", "audio/"]
 const ALLOWED_MIME_EXACT = new Set([
   "application/pdf",
+  // .zip: cada SO/navegador manda um MIME diferente pro mesmo arquivo
+  // (Windows costuma mandar x-zip-compressed, não "application/zip") —
+  // aceitamos todas as variantes conhecidas pra não barrar zip de verdade.
   "application/zip",
+  "application/x-zip-compressed",
+  "application/x-zip",
+  "multipart/x-zip",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
@@ -134,6 +140,13 @@ const ALLOWED_MIME_EXACT = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "text/plain",
   "text/csv",
+])
+// Extensões aceitas quando o navegador não informa um MIME reconhecível
+// (manda "application/octet-stream" ou vazio — comum em .zip e afins
+// dependendo do SO). Sem isso o upload é barrado mesmo sendo um arquivo válido.
+const ALLOWED_EXTENSIONS_FOR_GENERIC_MIME = new Set([
+  "zip", "rar", "7z",
+  "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv",
 ])
 // SVG é image/* mas pode conter scripts; HTML idem. Tudo servido por nós,
 // então mantemos o XSS fora.
@@ -145,8 +158,14 @@ const BLOCKED_MIME = new Set(["image/svg+xml", "text/html", "application/xhtml+x
 // se estourar o limite efetivo do WhatsApp, a Z-API devolve erro e marcamos FAILED.
 export const MAX_UPLOAD_BYTES = 120 * 1024 * 1024
 
-export function isMimeAllowed(mime: string): boolean {
+export function isMimeAllowed(mime: string, fileName?: string): boolean {
   if (BLOCKED_MIME.has(mime)) return false
   if (ALLOWED_MIME_PREFIXES.some((p) => mime.startsWith(p))) return true
-  return ALLOWED_MIME_EXACT.has(mime)
+  if (ALLOWED_MIME_EXACT.has(mime)) return true
+  // MIME genérico/não reconhecido — confia na extensão do arquivo.
+  if (mime === "application/octet-stream" || mime === "") {
+    const ext = fileName?.split(".").pop()?.toLowerCase()
+    if (ext && ALLOWED_EXTENSIONS_FOR_GENERIC_MIME.has(ext)) return true
+  }
+  return false
 }

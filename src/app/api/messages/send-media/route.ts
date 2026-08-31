@@ -59,7 +59,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const mediaType = file.type || "application/octet-stream"
-  if (!isMimeAllowed(mediaType)) {
+  if (!isMimeAllowed(mediaType, file.name)) {
     return NextResponse.json({ error: `Tipo de arquivo não permitido: ${mediaType}` }, { status: 415 })
   }
 
