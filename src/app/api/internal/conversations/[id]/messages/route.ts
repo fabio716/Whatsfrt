@@ -42,6 +42,7 @@ export async function GET(
     take: 50,
     select: {
       id: true, senderId: true, body: true, mediaUrl: true, mediaType: true, createdAt: true,
+      quotedMsgId: true, quotedBody: true, quotedSender: true,
       reactions: { select: { userId: true, emoji: true } },
     },
   })
@@ -76,6 +77,9 @@ export async function GET(
       mediaUrl: r.mediaUrl,
       mediaType: r.mediaType,
       createdAt: r.createdAt,
+      quotedMsgId: r.quotedMsgId,
+      quotedBody: r.quotedBody,
+      quotedSender: r.quotedSender,
       reactions: r.reactions.map((rx) => ({ userId: rx.userId, userName: nameById.get(rx.userId) ?? "?", emoji: rx.emoji })),
     }))
 
@@ -96,7 +100,7 @@ export async function POST(
   const memberIds = await assertMember(id, me.id)
   if (!memberIds) return NextResponse.json({ error: "Sem acesso a esta conversa" }, { status: 403 })
 
-  let body: { body?: string; mediaUrl?: string; mediaType?: string }
+  let body: { body?: string; mediaUrl?: string; mediaType?: string; quotedMsgId?: string }
   try {
     body = (await request.json()) as typeof body
   } catch {
@@ -111,6 +115,26 @@ export async function POST(
 
   const sender = await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } })
 
+  // Snapshot da mensagem citada (resposta em cima, igual WhatsApp).
+  let quoted: { id: string; body: string; sender: string } | null = null
+  if (body.quotedMsgId) {
+    const q = await prisma.internalMessage.findFirst({
+      where: { id: body.quotedMsgId, conversationId: id },
+      select: { id: true, body: true, mediaType: true, senderId: true },
+    })
+    if (q) {
+      const preview = q.body?.trim()
+        || (q.mediaType?.startsWith("image/") ? "🖼️ Imagem"
+          : q.mediaType?.startsWith("audio/") ? "🎤 Áudio"
+          : q.mediaType?.startsWith("video/") ? "🎬 Vídeo"
+          : q.mediaType ? "📎 Arquivo" : "")
+      const qSenderName = q.senderId === me.id
+        ? "Você"
+        : (await prisma.user.findUnique({ where: { id: q.senderId }, select: { name: true } }))?.name ?? "?"
+      quoted = { id: q.id, body: preview.slice(0, 300), sender: qSenderName }
+    }
+  }
+
   const [msg] = await prisma.$transaction([
     prisma.internalMessage.create({
       data: {
@@ -119,8 +143,9 @@ export async function POST(
         body: text.slice(0, 5000),
         mediaUrl: hasMedia ? body.mediaUrl : null,
         mediaType: hasMedia ? body.mediaType : null,
+        ...(quoted ? { quotedMsgId: quoted.id, quotedBody: quoted.body, quotedSender: quoted.sender } : {}),
       },
-      select: { id: true, body: true, mediaUrl: true, mediaType: true, createdAt: true },
+      select: { id: true, body: true, mediaUrl: true, mediaType: true, createdAt: true, quotedMsgId: true, quotedBody: true, quotedSender: true },
     }),
     // Bump da conversa (ordena a lista) + marca como lida pra quem enviou.
     prisma.internalConversation.update({ where: { id }, data: { updatedAt: new Date() } }),
@@ -139,6 +164,9 @@ export async function POST(
     mediaUrl: msg.mediaUrl,
     mediaType: msg.mediaType,
     createdAt: msg.createdAt.toISOString(),
+    quotedMsgId: msg.quotedMsgId,
+    quotedBody: msg.quotedBody,
+    quotedSender: msg.quotedSender,
   }
 
   // Tempo real: entrega só aos membros da conversa.

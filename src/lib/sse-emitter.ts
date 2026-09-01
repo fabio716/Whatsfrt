@@ -21,6 +21,10 @@ export interface SSEMessageData {
   contactId: string
   mediaUrl?: string | null
   mediaType?: string | null
+  // Resposta em cima de mensagem (quote igual WhatsApp) — snapshot do citado.
+  quotedMsgId?: string | null
+  quotedBody?: string | null
+  quotedSender?: string | null
 }
 
 export interface SSENewMessagePayload {

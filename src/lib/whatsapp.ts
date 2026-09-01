@@ -46,9 +46,15 @@ export interface SendResult {
   errorMsg: string | null
 }
 
-export async function sendText(whatsappId: string, text: string): Promise<SendResult> {
+export async function sendText(
+  whatsappId: string,
+  text: string,
+  // ID (do provedor) da mensagem sendo respondida — vira quote no WhatsApp.
+  // Evolution não suporta; lá a mensagem vai sem a citação (só no nosso chat).
+  replyMessageId?: string,
+): Promise<SendResult> {
   if (activeProvider() === "zapi") {
-    const r: ZapiSendResult = await sendZapiText(whatsappId, text)
+    const r: ZapiSendResult = await sendZapiText(whatsappId, text, replyMessageId)
     return r
   }
   const r: EvolutionSendResult = await sendEvolutionTextDetailed(whatsappId, text)

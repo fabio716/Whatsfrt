@@ -33,6 +33,9 @@ interface Msg {
   mediaUrl: string | null
   mediaType: string | null
   createdAt: string
+  quotedMsgId?: string | null
+  quotedBody?: string | null
+  quotedSender?: string | null
   reactions?: { userId: string; userName: string; emoji: string }[]
 }
 
@@ -51,7 +54,7 @@ type RenderItem = { kind: "single"; msg: Msg } | { kind: "album"; msgs: Msg[] }
 const ALBUM_MAX_GAP_MS = 3 * 60 * 1000
 
 function isAlbumCandidate(m: Msg): boolean {
-  return Boolean(m.mediaType?.startsWith("image/") && m.mediaUrl && !m.body && !(m.reactions?.length))
+  return Boolean(m.mediaType?.startsWith("image/") && m.mediaUrl && !m.body && !(m.reactions?.length) && !m.quotedBody)
 }
 
 function groupIntoAlbums(messages: Msg[]): RenderItem[] {
@@ -161,6 +164,8 @@ export default function MensagensPage() {
 
   // Reação estilo WhatsApp (qualquer membro pode reagir a qualquer mensagem).
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null)
+  // Resposta em cima de mensagem (igual WhatsApp): mensagem sendo citada.
+  const [replyingTo, setReplyingTo] = useState<Msg | null>(null)
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -221,6 +226,7 @@ export default function MensagensPage() {
 
   const openConversation = useCallback((convId: string) => {
     setActiveId(convId)
+    setReplyingTo(null) // resposta pendente não atravessa pra outra conversa
     void loadMessages(convId)
     // zera o contador de não lidas localmente
     setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, unread: 0 } : c)))
@@ -289,7 +295,7 @@ export default function MensagensPage() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
 
   // ── Enviar mensagem (texto ou mídia) ──
-  const sendMessage = useCallback(async (payload: { body?: string; mediaUrl?: string; mediaType?: string }) => {
+  const sendMessage = useCallback(async (payload: { body?: string; mediaUrl?: string; mediaType?: string; quotedMsgId?: string }) => {
     const convId = activeIdRef.current
     if (!convId || sendingRef.current) return
     sendingRef.current = true
@@ -318,7 +324,9 @@ export default function MensagensPage() {
     const t = text.trim()
     if (!t || sending) return
     setText("")
-    await sendMessage({ body: t })
+    const quotedMsgId = replyingTo?.id
+    setReplyingTo(null)
+    await sendMessage({ body: t, ...(quotedMsgId ? { quotedMsgId } : {}) })
   }
 
   // ── Editar mensagem já enviada ──
@@ -759,6 +767,12 @@ export default function MensagensPage() {
                         </div>
                       ) : (
                         <>
+                          {m.quotedBody && (
+                            <div className={`mb-1.5 rounded-lg border-l-4 px-2 py-1.5 ${m.fromMe ? "border-emerald-500 bg-emerald-50/70" : "border-emerald-500 bg-zinc-50"}`}>
+                              <p className="text-[11px] font-semibold text-emerald-700">{m.quotedSender}</p>
+                              <p className="line-clamp-2 whitespace-pre-wrap break-words text-[12px] text-zinc-500">{m.quotedBody}</p>
+                            </div>
+                          )}
                           {m.mediaType?.startsWith("audio/") ? (
                             <audio controls src={m.mediaUrl ?? undefined} className="max-w-[240px]" />
                           ) : m.mediaType?.startsWith("image/") ? (
@@ -776,6 +790,17 @@ export default function MensagensPage() {
                             </p>
                           )}
                           <div className="mt-1 flex items-center justify-end gap-1 px-1">
+                            <button
+                              type="button"
+                              onClick={() => { setReplyingTo(m); requestAnimationFrame(() => textareaRef.current?.focus()) }}
+                              title="Responder"
+                              aria-label="Responder"
+                              className="-m-1.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-zinc-700 hover:opacity-100"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17l-5-5 5-5M4 12h11a5 5 0 015 5v2" />
+                              </svg>
+                            </button>
                             <button
                               type="button"
                               onClick={() => setReactionPickerMsgId(reactionPickerMsgId === m.id ? null : m.id)}
@@ -861,6 +886,32 @@ export default function MensagensPage() {
                   </div>
                 )
               })()}
+              {replyingTo && (
+                <div className="mb-2 flex items-start gap-2 rounded-lg border-l-4 border-emerald-500 bg-zinc-50 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      Respondendo {replyingTo.fromMe ? "você mesmo" : replyingTo.senderName}
+                    </p>
+                    <p className="line-clamp-2 whitespace-pre-wrap break-words text-[12px] text-zinc-500">
+                      {replyingTo.body?.trim()
+                        || (replyingTo.mediaType?.startsWith("image/") ? "🖼️ Imagem"
+                          : replyingTo.mediaType?.startsWith("audio/") ? "🎤 Áudio"
+                          : replyingTo.mediaType?.startsWith("video/") ? "🎬 Vídeo"
+                          : replyingTo.mediaType ? "📎 Arquivo" : "")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    aria-label="Cancelar resposta"
+                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               {recording ? (
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-2 text-[13px] font-medium text-red-600">

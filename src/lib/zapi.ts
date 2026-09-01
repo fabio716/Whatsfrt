@@ -113,6 +113,7 @@ export interface ZapiSendResult {
 export async function sendZapiText(
   whatsappId: string,
   message: string,
+  replyMessageId?: string,
 ): Promise<ZapiSendResult> {
   const url = buildUrl("send-text")
   if (!url) return { ok: false, messageId: null, attempts: 0, errorMsg: "ZAPI_INSTANCE_ID/ZAPI_TOKEN ausente" }
@@ -124,6 +125,9 @@ export async function sendZapiText(
     body: JSON.stringify({
       phone: normalizePhone(whatsappId),
       message,
+      // Resposta em cima de outra mensagem (quote igual WhatsApp): o campo
+      // messageId no send-text faz a Z-API enviar como reply da original.
+      ...(replyMessageId ? { messageId: replyMessageId } : {}),
     }),
   })
   if (!res.ok) {

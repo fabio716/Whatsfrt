@@ -141,7 +141,7 @@ type ChatRenderItem = { kind: "single"; msg: MessageData } | { kind: "album"; ms
 const ALBUM_MAX_GAP_MS = 3 * 60 * 1000
 
 function isChatAlbumCandidate(m: MessageData): boolean {
-  return Boolean(m.mediaType?.startsWith("image/") && m.mediaUrl && !m.body && !m.myReaction && !m.theirReaction)
+  return Boolean(m.mediaType?.startsWith("image/") && m.mediaUrl && !m.body && !m.myReaction && !m.theirReaction && !m.quotedBody)
 }
 
 function groupChatAlbums(messages: MessageData[]): ChatRenderItem[] {
@@ -458,6 +458,10 @@ export default function ChatsClient({
   const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null)
   // Reação estilo WhatsApp numa mensagem (qualquer uma, nossa ou do cliente).
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null)
+  // Resposta em cima de mensagem (igual WhatsApp): mensagem sendo citada.
+  const [replyingTo, setReplyingTo] = useState<MessageData | null>(null)
+  // Resposta pendente não atravessa pra outra conversa.
+  useEffect(() => { setReplyingTo(null) }, [activeId])
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
@@ -564,6 +568,7 @@ export default function ChatsClient({
             id: msg.id, body: msg.body, direction: msg.direction,
             status: msg.status, createdAt: msg.createdAt, agentId: msg.agentId,
             mediaUrl: msg.mediaUrl, mediaType: msg.mediaType,
+            quotedMsgId: msg.quotedMsgId, quotedBody: msg.quotedBody, quotedSender: msg.quotedSender,
           }
           setContacts((prev) => {
             const exists = prev.some((c) => c.id === contact.id)
@@ -940,11 +945,16 @@ export default function ChatsClient({
         ...(confirmTemplate ? { "X-Confirm-Template": "true" } : {}),
         ...(confirmCold ? { "X-Confirm-Cold": "true" } : {}),
       },
-      body: JSON.stringify({ contactId: activeId, text }),
+      body: JSON.stringify({
+        contactId: activeId,
+        text,
+        ...(replyingTo ? { quotedMsgId: replyingTo.id } : {}),
+      }),
     })
 
     if (res.ok) {
       setInputValue("") // limpa só se enviou
+      setReplyingTo(null)
       return
     }
 
@@ -987,7 +997,7 @@ export default function ChatsClient({
 
     const data = await res.json().catch(() => ({})) as { error?: string }
     alert(`Erro: ${data.error ?? res.status}`)
-  }, [activeId])
+  }, [activeId, replyingTo])
 
   const handleSend = async () => {
     if (!inputValue.trim() || !activeId || sendingRef.current || !isOwner) return
@@ -1460,13 +1470,36 @@ export default function ChatsClient({
                                 </button>
                               </div>
                             </div>
-                          ) : msg.mediaUrl && msg.mediaType ? (
-                            <MediaBubble mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />
                           ) : (
-                            <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
+                            <>
+                              {msg.quotedBody && (
+                                <div className={`mb-1.5 rounded-lg border-l-4 border-emerald-500 px-2 py-1.5 ${isOut ? "bg-emerald-50/70" : "bg-zinc-50"}`}>
+                                  <p className="text-[11px] font-semibold text-emerald-700">{msg.quotedSender}</p>
+                                  <p className="line-clamp-2 whitespace-pre-wrap break-words text-[12px] text-zinc-500">{msg.quotedBody}</p>
+                                </div>
+                              )}
+                              {msg.mediaUrl && msg.mediaType ? (
+                                <MediaBubble mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />
+                              ) : (
+                                <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
+                              )}
+                            </>
                           )}
                           {!isEditingThis && (
                             <div className={`mt-1 flex items-center gap-1 px-1 ${isOut ? "justify-end" : "justify-start"}`}>
+                              {isOwner && (
+                                <button
+                                  type="button"
+                                  onClick={() => setReplyingTo(msg)}
+                                  title="Responder"
+                                  aria-label="Responder"
+                                  className="-m-1.5 mr-0.5 flex items-center gap-0.5 rounded-md p-1.5 text-zinc-500 opacity-80 transition-opacity hover:bg-black/5 hover:text-zinc-700 hover:opacity-100"
+                                >
+                                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 17l-5-5 5-5M4 12h11a5 5 0 015 5v2" />
+                                  </svg>
+                                </button>
+                              )}
                               {isOwner && msg.whatsappKeyId && (
                                 <button
                                   type="button"
@@ -1524,6 +1557,32 @@ export default function ChatsClient({
 
             {/* Read-only footer / owned footer */}
             <footer className="relative flex items-center gap-2 border-t border-zinc-100 bg-white px-4 py-3">
+              {isOwner && replyingTo && (
+                <div className="absolute bottom-full left-0 right-0 flex items-start gap-2 border-t border-zinc-100 bg-zinc-50 px-4 py-2">
+                  <div className="min-w-0 flex-1 rounded-lg border-l-4 border-emerald-500 bg-white px-2 py-1.5">
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      Respondendo {replyingTo.direction === "INBOUND" ? "o cliente" : "você"}
+                    </p>
+                    <p className="line-clamp-2 whitespace-pre-wrap break-words text-[12px] text-zinc-500">
+                      {replyingTo.body?.trim()
+                        || (replyingTo.mediaType?.startsWith("image/") ? "🖼️ Imagem"
+                          : replyingTo.mediaType?.startsWith("audio/") ? "🎤 Áudio"
+                          : replyingTo.mediaType?.startsWith("video/") ? "🎬 Vídeo"
+                          : replyingTo.mediaType ? "📎 Arquivo" : "")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    aria-label="Cancelar resposta"
+                    className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               {/* Modo gravação: substitui input + clipe + emoji */}
               {isOwner && isRecording && (
                 <div className="flex w-full items-center gap-3 rounded-full border border-red-200 bg-red-50 px-4 py-2.5">

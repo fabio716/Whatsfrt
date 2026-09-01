@@ -43,7 +43,10 @@ interface ZapiTextPayload {
   senderPhoto?: string | null
   isGroup?: boolean
   participantPhone?: string
-  text?: { message: string }
+  // referenceMessageId: presente quando a mensagem é uma RESPOSTA (quote) a
+  // outra — a Z-API varia onde coloca o campo, então aceitamos os dois lugares.
+  referenceMessageId?: string
+  text?: { message: string; referenceMessageId?: string }
   image?: { imageUrl?: string; mimeType?: string; caption?: string; thumbnailUrl?: string }
   video?: { videoUrl?: string; mimeType?: string; caption?: string }
   audio?: { audioUrl?: string; mimeType?: string }
@@ -258,6 +261,29 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     }
   }
 
+  // Cliente respondeu citando uma mensagem (quote do WhatsApp): localiza a
+  // original pelo id do provedor e guarda o snapshot pra UI mostrar a citação.
+  let quoted: { id: string; body: string; sender: string } | null = null
+  const refId = p.referenceMessageId ?? p.text?.referenceMessageId
+  if (refId) {
+    const original = await prisma.message.findFirst({
+      where: { whatsappKeyId: refId, contactId: contact.id },
+      select: { id: true, body: true, direction: true, mediaType: true },
+    })
+    if (original) {
+      const preview = original.body?.trim()
+        || (original.mediaType?.startsWith("image/") ? "🖼️ Imagem"
+          : original.mediaType?.startsWith("video/") ? "🎬 Vídeo"
+          : original.mediaType?.startsWith("audio/") ? "🎤 Áudio"
+          : original.mediaType ? "📎 Arquivo" : "")
+      quoted = {
+        id: original.id,
+        body: preview.slice(0, 300),
+        sender: original.direction === MessageDirection.INBOUND ? (contact.name || "Cliente") : "Você",
+      }
+    }
+  }
+
   // Aviso visível no chat quando a mídia se perdeu.
   const mediaKind = rawMedia?.mimetype.startsWith("image/") ? "uma imagem"
     : rawMedia?.mimetype.startsWith("video/") ? "um vídeo"
@@ -278,6 +304,7 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
         contactId: contact.id,
         whatsappKeyId: p.messageId,
         ...(media ? { mediaUrl: media.mediaUrl, mediaType: media.mediaType } : {}),
+        ...(quoted ? { quotedMsgId: quoted.id, quotedBody: quoted.body, quotedSender: quoted.sender } : {}),
       },
     })
   } catch (err) {
@@ -296,6 +323,7 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
       status: saved.status, createdAt: saved.createdAt.toISOString(),
       agentId: saved.agentId, contactId: contact.id,
       mediaUrl: saved.mediaUrl, mediaType: saved.mediaType,
+      quotedMsgId: saved.quotedMsgId, quotedBody: saved.quotedBody, quotedSender: saved.quotedSender,
       contact: {
         id: contact.id, whatsappId: contact.whatsappId,
         name: contact.name, profilePhotoUrl: contact.profilePhotoUrl,

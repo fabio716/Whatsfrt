@@ -110,6 +110,12 @@ export default async function ChatsPage(
         agentId: m.agentId,
         mediaUrl: m.mediaUrl,
         mediaType: m.mediaType,
+        myReaction: m.myReaction,
+        theirReaction: m.theirReaction,
+        whatsappKeyId: m.whatsappKeyId,
+        quotedMsgId: m.quotedMsgId,
+        quotedBody: m.quotedBody,
+        quotedSender: m.quotedSender,
       })),
   }))
 

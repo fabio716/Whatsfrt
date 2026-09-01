@@ -10,6 +10,9 @@ export interface MessageData {
   myReaction?: string | null
   theirReaction?: string | null
   whatsappKeyId?: string | null
+  quotedMsgId?: string | null
+  quotedBody?: string | null
+  quotedSender?: string | null
 }
 
 export type ChatStatus = "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "AWAITING_RATING"

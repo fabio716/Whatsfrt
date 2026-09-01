@@ -10,6 +10,8 @@ import { checkRateLimit } from "@/lib/rateLimit"
 interface SendMessageBody {
   contactId: string
   text: string
+  // Resposta em cima de outra mensagem (igual WhatsApp) — id da citada.
+  quotedMsgId?: string
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const { contactId, text } = body
+  const { contactId, text, quotedMsgId } = body
   if (!contactId || !text?.trim()) {
     return NextResponse.json({ error: "contactId and text are required" }, { status: 400 })
   }
@@ -141,6 +143,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     session.role === "ADMIN" && contact.assignedUserId && contact.assignedUserId !== session.id,
   )
 
+  // Snapshot da mensagem citada (se houver). Guardamos texto+autor no
+  // momento da resposta — se a original mudar depois, a citação fica.
+  let quoted: { id: string; body: string; sender: string; whatsappKeyId: string | null } | null = null
+  if (quotedMsgId) {
+    const q = await prisma.message.findFirst({
+      where: { id: quotedMsgId, contactId },
+      select: { id: true, body: true, direction: true, mediaType: true, whatsappKeyId: true },
+    })
+    if (q) {
+      const preview = q.body?.trim()
+        || (q.mediaType?.startsWith("image/") ? "🖼️ Imagem"
+          : q.mediaType?.startsWith("video/") ? "🎬 Vídeo"
+          : q.mediaType?.startsWith("audio/") ? "🎤 Áudio"
+          : q.mediaType ? "📎 Arquivo" : "")
+      quoted = {
+        id: q.id,
+        body: preview.slice(0, 300),
+        sender: q.direction === MessageDirection.INBOUND ? (contact.name || "Cliente") : "Você",
+        whatsappKeyId: q.whatsappKeyId,
+      }
+    }
+  }
+
   // 1 — Cria PENDING com clientKey (se houver).
   let message
   try {
@@ -154,6 +179,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         clientKey,
         attempts: 0,
         adminPrivate: isAdminOverride,
+        ...(quoted ? { quotedMsgId: quoted.id, quotedBody: quoted.body, quotedSender: quoted.sender } : {}),
       },
     })
   } catch (err) {
@@ -169,7 +195,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // 2 — Dispara para o provider ativo (Evolution OU Z-API) com retry+backoff.
-  const result = await sendWhatsAppText(contact.whatsappId, text.trim())
+  const result = await sendWhatsAppText(contact.whatsappId, text.trim(), quoted?.whatsappKeyId ?? undefined)
 
   // Mensagem de erro mais clara quando Z-API recusa por número inválido
   // (ajuda agentes a entenderem por que "não chegou").
@@ -233,6 +259,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       contactId: updated.contactId,
       mediaUrl: null,
       mediaType: null,
+      quotedMsgId: updated.quotedMsgId,
+      quotedBody: updated.quotedBody,
+      quotedSender: updated.quotedSender,
       contact: {
         id: contact.id,
         whatsappId: contact.whatsappId,

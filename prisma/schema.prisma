@@ -242,6 +242,13 @@ model Message {
   myReaction    String?
   theirReaction String?
 
+  // Resposta em cima de outra mensagem (igual WhatsApp). Guardamos snapshot
+  // do texto e do autor citados — se a original for editada/apagada, a
+  // citação continua fazendo sentido (mesmo comportamento do WhatsApp).
+  quotedMsgId  String?
+  quotedBody   String?
+  quotedSender String?
+
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id])
 
@@ -527,6 +534,11 @@ model InternalMessage {
   mediaUrl       String?
   mediaType      String?
   createdAt      DateTime @default(now())
+
+  // Resposta em cima de outra mensagem (igual WhatsApp) — snapshot do citado.
+  quotedMsgId  String?
+  quotedBody   String?
+  quotedSender String?
 
   reactions InternalMessageReaction[]
 
