@@ -41,6 +41,24 @@ interface Msg {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Nome amigável do arquivo a partir da URL (/api/media/1756..-Nome_Doc.pdf):
+// remove o prefixo de timestamp e devolve ícone por tipo de arquivo.
+function fileInfoFromUrl(url: string): { icon: string; name: string } {
+  const raw = decodeURIComponent(url.split("/").pop() ?? "")
+  const cleaned = raw.replace(/^\d{10,}[-.]?/, "")
+  const ext = (raw.split(".").pop() ?? "").toLowerCase()
+  const icon = ext === "pdf" ? "📄"
+    : ["doc", "docx", "txt"].includes(ext) ? "📝"
+    : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
+    : ["ppt", "pptx"].includes(ext) ? "📽️"
+    : ["zip", "rar", "7z"].includes(ext) ? "🗜️"
+    : "📎"
+  const fallback = ext ? `Arquivo ${ext.toUpperCase()}` : "Arquivo"
+  // Sem nome original (só timestamp.ext) → mostra "Arquivo PDF" etc.
+  const name = cleaned && cleaned !== ext && !/^\d+$/.test(cleaned.replace(`.${ext}`, "")) ? cleaned : fallback
+  return { icon, name }
+}
+
 function hhmm(iso: string) {
   const d = new Date(iso)
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
@@ -782,7 +800,19 @@ export default function MensagensPage() {
                           ) : m.mediaType?.startsWith("video/") ? (
                             <video controls src={m.mediaUrl ?? undefined} className="max-h-60 max-w-[240px] rounded-lg" />
                           ) : m.mediaType ? (
-                            <a href={m.mediaUrl ?? "#"} target="_blank" rel="noreferrer" className="underline text-emerald-600">📎 Baixar arquivo</a>
+                            <a
+                              href={m.mediaUrl ?? "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              download
+                              className="flex max-w-[260px] items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 hover:bg-zinc-100"
+                            >
+                              <span className="text-[18px]">{fileInfoFromUrl(m.mediaUrl ?? "").icon}</span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-[12.5px] font-medium text-zinc-800">{fileInfoFromUrl(m.mediaUrl ?? "").name}</span>
+                                <span className="block text-[10.5px] text-emerald-600">Baixar</span>
+                              </span>
+                            </a>
                           ) : null}
                           {m.body && (
                             <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">

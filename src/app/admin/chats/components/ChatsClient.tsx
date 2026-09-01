@@ -52,6 +52,23 @@ function StatusBadge({ status }: Readonly<{ status: ContactData["chatStatus"] }>
   return <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${cls}`}>{label}</span>
 }
 
+// Nome amigável do arquivo a partir da URL (/api/media/1756..-Nome_Doc.pdf):
+// remove o prefixo de timestamp e devolve ícone por tipo de arquivo.
+function fileInfoFromUrl(url: string): { icon: string; name: string } {
+  const raw = decodeURIComponent(url.split("/").pop() ?? "")
+  const cleaned = raw.replace(/^\d{10,}[-.]?/, "")
+  const ext = (raw.split(".").pop() ?? "").toLowerCase()
+  const icon = ext === "pdf" ? "📄"
+    : ["doc", "docx", "txt"].includes(ext) ? "📝"
+    : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
+    : ["ppt", "pptx"].includes(ext) ? "📽️"
+    : ["zip", "rar", "7z"].includes(ext) ? "🗜️"
+    : "📎"
+  const fallback = ext ? `Arquivo ${ext.toUpperCase()}` : "Arquivo"
+  const name = cleaned && cleaned !== ext && !/^\d+$/.test(cleaned.replace(`.${ext}`, "")) ? cleaned : fallback
+  return { icon, name }
+}
+
 function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string; mediaType: string; body: string }>) {
   const [expanded, setExpanded] = useState(false)
   if (mediaType.startsWith("image/")) {
@@ -123,13 +140,18 @@ function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string;
       </div>
     )
   }
+  const info = fileInfoFromUrl(mediaUrl)
   return (
-    <a href={mediaUrl} download className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-100">
-      <svg viewBox="0 0 24 24" className="h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-      {mediaUrl.split("/").pop()}
-    </a>
+    <div className="space-y-1">
+      <a href={mediaUrl} download className="flex max-w-[260px] items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 hover:bg-zinc-100">
+        <span className="text-[18px]">{info.icon}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-[12.5px] font-medium text-zinc-800">{info.name}</span>
+          <span className="block text-[10.5px] text-emerald-600">Baixar</span>
+        </span>
+      </a>
+      {body && <p className="text-[13px] leading-relaxed">{body}</p>}
+    </div>
   )
 }
 
