@@ -21,6 +21,7 @@ interface ConversationRow {
   updatedAt: string
   unread: number
   lastMessage: { body: string; mediaType: string | null; createdAt: string; senderName: string; fromMe: boolean } | null
+  archived?: boolean
 }
 
 interface Msg {
@@ -184,6 +185,8 @@ export default function MensagensPage() {
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null)
   // Resposta em cima de mensagem (igual WhatsApp): mensagem sendo citada.
   const [replyingTo, setReplyingTo] = useState<Msg | null>(null)
+  // Mostrar a lista de conversas arquivadas (igual WhatsApp).
+  const [showArchived, setShowArchived] = useState(false)
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -240,6 +243,20 @@ export default function MensagensPage() {
     } finally {
       setLoadingMsgs(false)
     }
+  }, [])
+
+  // Arquiva/desarquiva a conversa só pra mim (igual WhatsApp). Mensagem nova
+  // faz a conversa voltar pra lista sozinha (lógica no GET /conversations).
+  const toggleArchive = useCallback(async (convId: string, archive: boolean) => {
+    const res = await fetch(`/api/internal/conversations/${convId}/archive`, {
+      method: archive ? "POST" : "DELETE",
+    })
+    if (!res.ok) {
+      if (!handleSessionExpired(res.status)) alert("Não foi possível " + (archive ? "arquivar" : "desarquivar"))
+      return
+    }
+    setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, archived: archive } : c)))
+    if (archive) setActiveId(null) // fecha a conversa arquivada
   }, [])
 
   const openConversation = useCallback((convId: string) => {
@@ -579,11 +596,23 @@ export default function MensagensPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {(() => {
+            const archivedCount = conversations.filter((c) => c.archived).length
+            return (archivedCount > 0 || showArchived) ? (
+              <button
+                type="button"
+                onClick={() => setShowArchived((v) => !v)}
+                className="flex w-full items-center gap-2 border-b border-zinc-100 px-4 py-2.5 text-left text-[12px] font-medium text-zinc-500 hover:bg-zinc-50"
+              >
+                <span>📁</span> {showArchived ? "Voltar às conversas" : `Arquivadas (${archivedCount})`}
+              </button>
+            ) : null
+          })()}
           {conversations.length === 0 ? (
             <p className="px-4 py-8 text-center text-[12px] text-zinc-400">
               Nenhuma conversa ainda.<br />Clique em <b>+</b> para começar.
             </p>
-          ) : conversations.map((c) => (
+          ) : conversations.filter((c) => Boolean(c.archived) === showArchived).map((c) => (
             <button
               key={c.id} type="button" onClick={() => openConversation(c.id)}
               className={`flex w-full items-center gap-3 border-b border-zinc-50 px-4 py-3 text-left transition-colors hover:bg-zinc-50 ${activeId === c.id ? "bg-zinc-100" : ""}`}
@@ -642,12 +671,28 @@ export default function MensagensPage() {
               ) : (
                 <Avatar name={active.name} photoUrl={active.photoUrl} size="h-9 w-9" fallback="bg-emerald-100 text-emerald-700 text-[12px] font-semibold" />
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-[14px] font-semibold text-zinc-900">{active.name}</p>
                 <p className="truncate text-[11px] text-zinc-400">
                   {active.isGroup ? `${active.memberCount} participantes · ${active.memberNames.join(", ")}` : "Conversa direta"}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => void toggleArchive(active.id, !active.archived)}
+                title={active.archived ? "Desarquivar conversa" : "Arquivar conversa"}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100"
+              >
+                {active.archived ? (
+                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 13v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6M4 5h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1zM12 17v-5m0 0l-2 2m2-2l2 2" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 13v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6M4 5h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1zM12 12v5m0 0l-2-2m2 2l2-2" />
+                  </svg>
+                )}
+              </button>
             </header>
 
             {/* Mensagens */}

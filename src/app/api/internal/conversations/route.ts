@@ -15,12 +15,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const myMemberships = await prisma.internalConversationMember.findMany({
     where: { userId: me.id },
-    select: { conversationId: true, lastReadAt: true },
+    select: { conversationId: true, lastReadAt: true, archivedAt: true },
   })
   const convIds = myMemberships.map((m) => m.conversationId)
   if (convIds.length === 0) return NextResponse.json([])
 
   const lastReadByConv = new Map(myMemberships.map((m) => [m.conversationId, m.lastReadAt]))
+  const archivedAtByConv = new Map(myMemberships.map((m) => [m.conversationId, m.archivedAt]))
 
   const [conversations, allMembers, lastMessages] = await Promise.all([
     prisma.internalConversation.findMany({
@@ -86,7 +87,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Foto: em 1:1, a foto do outro participante; em grupo, sem foto (ícone).
     const photoUrl = c.isGroup ? null : (photoById.get(otherIds[0] ?? "") ?? null)
     const lm = lastByConv.get(c.id)
+    // Arquivada = marquei como arquivada E nada chegou depois disso —
+    // mensagem nova faz a conversa reaparecer sozinha (igual WhatsApp).
+    const archivedAt = archivedAtByConv.get(c.id)
+    const archived = Boolean(archivedAt && (!lm || lm.createdAt <= archivedAt))
     return {
+      archived,
       id: c.id,
       isGroup: c.isGroup,
       name: displayName,

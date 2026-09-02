@@ -518,6 +518,9 @@ model InternalConversationMember {
   userId         String
   // Marca até quando o usuário leu — base pra contar mensagens não lidas.
   lastReadAt     DateTime?
+  // Conversa arquivada por ESTE usuário (igual WhatsApp). Mensagem nova
+  // depois do arquivamento faz a conversa reaparecer na lista sozinha.
+  archivedAt     DateTime?
   createdAt      DateTime @default(now())
 
   @@unique([conversationId, userId])
@@ -594,4 +597,18 @@ model NightOffer {
   config   UraConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
 
   @@map("night_offers")
+}
+
+// Conversa (chat com cliente) arquivada POR USUÁRIO — igual WhatsApp: some
+// da lista só pra quem arquivou; mensagem nova depois do arquivamento faz
+// a conversa reaparecer automaticamente.
+model ChatArchive {
+  id         String   @id @default(cuid())
+  userId     String
+  contactId  String
+  archivedAt DateTime @default(now())
+
+  @@unique([userId, contactId])
+  @@index([userId])
+  @@map("chat_archives")
 }

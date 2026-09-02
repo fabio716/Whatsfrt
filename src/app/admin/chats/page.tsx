@@ -48,7 +48,7 @@ export default async function ChatsPage(
       }
     : null
 
-  const [inServiceContacts, requestedContact, allAgents] = await Promise.all([
+  const [inServiceContacts, requestedContact, allAgents, archives] = await Promise.all([
     prisma.contact.findMany({
       where: inServiceWhere,
       include: { messages: { orderBy: { createdAt: "asc" } } },
@@ -67,7 +67,14 @@ export default async function ChatsPage(
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    // Conversas que ESTE usuário arquivou (igual WhatsApp — só pra ele).
+    prisma.chatArchive.findMany({
+      where: { userId: session.id },
+      select: { contactId: true, archivedAt: true },
+    }),
   ])
+
+  const archivedAtByContact = new Map(archives.map((a) => [a.contactId, a.archivedAt]))
 
   // Junta: se o contato pedido não está na lista IN_SERVICE, adiciona ele.
   // Garante que /admin/chats?contact=X sempre abre X, mesmo IDLE.
@@ -87,7 +94,14 @@ export default async function ChatsPage(
   // precisa ver a lista de destinatarios possiveis.
   const agents = allAgents
 
-  const contacts: ContactData[] = rawContacts.map((c) => ({
+  const contacts: ContactData[] = rawContacts.map((c) => {
+    // Arquivada = tem marca de arquivo E nenhuma mensagem chegou depois dela
+    // (mensagem nova "desarquiva" automaticamente, igual WhatsApp).
+    const archivedAt = archivedAtByContact.get(c.id)
+    const lastMsg = c.messages[c.messages.length - 1]
+    const archived = Boolean(archivedAt && (!lastMsg || lastMsg.createdAt <= archivedAt))
+    return {
+    archived,
     id: c.id,
     whatsappId: c.whatsappId,
     name: c.name,
@@ -117,7 +131,7 @@ export default async function ChatsPage(
         quotedBody: m.quotedBody,
         quotedSender: m.quotedSender,
       })),
-  }))
+  }})
 
   return (
     <ChatsClient

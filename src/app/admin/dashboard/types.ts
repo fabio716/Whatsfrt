@@ -18,6 +18,8 @@ export interface MessageData {
 export type ChatStatus = "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "AWAITING_RATING"
 
 export interface ContactData {
+  // Conversa arquivada pelo usuário logado (igual WhatsApp — só pra ele).
+  archived?: boolean
   id: string
   whatsappId: string
   name: string

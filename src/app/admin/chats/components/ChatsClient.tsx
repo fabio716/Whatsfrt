@@ -484,6 +484,8 @@ export default function ChatsClient({
   const [replyingTo, setReplyingTo] = useState<MessageData | null>(null)
   // Resposta pendente não atravessa pra outra conversa.
   useEffect(() => { setReplyingTo(null) }, [activeId])
+  // Mostrar conversas arquivadas (igual WhatsApp).
+  const [showArchivedChats, setShowArchivedChats] = useState(false)
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
@@ -513,8 +515,13 @@ export default function ChatsClient({
     // MAS um IDLE que ainda está atribuído a alguém é uma conversa que a
     // agente iniciou (ex: cliente novo que ainda não respondeu). Esse NÃO pode
     // sumir da tela — era a causa de "a conversa some e não consigo enviar".
-    return c.chatStatus !== "IDLE" || !!c.assignedUserId
+    if (c.chatStatus === "IDLE" && !c.assignedUserId) return false
+    // Arquivadas ficam na "gaveta" (igual WhatsApp) — só aparecem no modo
+    // Arquivadas. Mensagem nova desarquiva sozinha (server + SSE).
+    return Boolean(c.archived) === showArchivedChats
   })
+
+  const archivedCount = contacts.filter((c) => c.archived).length
 
   // Scroll
   useEffect(() => {
@@ -597,7 +604,8 @@ export default function ChatsClient({
             const updated = exists
               ? prev.map((c) =>
                   c.id === contact.id
-                    ? { ...c, ...contact, messages: c.messages.some((m) => m.id === newMsg.id) ? c.messages : [...c.messages, newMsg] }
+                    // Mensagem nova desarquiva a conversa (igual WhatsApp).
+                    ? { ...c, ...contact, archived: false, messages: c.messages.some((m) => m.id === newMsg.id) ? c.messages : [...c.messages, newMsg] }
                     : c
                 )
               : [...prev, { ...contact, messages: [newMsg] }]
@@ -1021,6 +1029,18 @@ export default function ChatsClient({
     alert(`Erro: ${data.error ?? res.status}`)
   }, [activeId, replyingTo])
 
+  // Arquiva/desarquiva o chat só pra mim (igual WhatsApp). Mensagem nova do
+  // cliente faz o chat voltar pra lista sozinho.
+  const toggleArchiveContact = async (contactId: string, archive: boolean) => {
+    const res = await fetch(`/api/contacts/${contactId}/archive`, { method: archive ? "POST" : "DELETE" })
+    if (!res.ok) {
+      if (!handleSessionExpired(res.status)) alert("Não foi possível " + (archive ? "arquivar" : "desarquivar"))
+      return
+    }
+    setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, archived: archive } : c)))
+    if (archive) setActiveId(null)
+  }
+
   const handleSend = async () => {
     if (!inputValue.trim() || !activeId || sendingRef.current || !isOwner) return
     sendingRef.current = true
@@ -1218,6 +1238,15 @@ export default function ChatsClient({
 
         {/* Contact list */}
         <nav className="flex-1 overflow-y-auto">
+          {(archivedCount > 0 || showArchivedChats) && (
+            <button
+              type="button"
+              onClick={() => setShowArchivedChats((v) => !v)}
+              className="flex w-full items-center gap-2 border-b border-zinc-100 px-4 py-2.5 text-left text-[12px] font-medium text-zinc-500 hover:bg-zinc-50"
+            >
+              <span>📁</span> {showArchivedChats ? "Voltar às conversas" : `Arquivadas (${archivedCount})`}
+            </button>
+          )}
           {filteredContacts.length === 0 && (
             <p className="px-4 py-6 text-center text-[12px] text-zinc-400">Nenhum contato</p>
           )}
@@ -1339,6 +1368,18 @@ export default function ChatsClient({
                         role="menu"
                         className="absolute right-0 top-9 z-20 w-56 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg shadow-zinc-200/40"
                       >
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMenu(false); if (activeContact) void toggleArchiveContact(activeContact.id, !activeContact.archived) }}
+                          role="menuitem"
+                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-zinc-700 transition-colors hover:bg-zinc-50"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M20 13v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6M4 5h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1z" />
+                          </svg>
+                          {activeContact?.archived ? "Desarquivar conversa" : "Arquivar conversa"}
+                        </button>
+                        <div className="my-0.5 h-px bg-zinc-100" />
                         <button
                           type="button"
                           onClick={() => { setShowHeaderMenu(false); setShowTransfer(true) }}
