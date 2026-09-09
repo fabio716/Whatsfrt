@@ -17,6 +17,16 @@ async function assertMember(conversationId: string, userId: string): Promise<str
   return members.map((m) => m.userId)
 }
 
+// Até quando ESTE usuário "apagou a conversa" (clearedAt) — mensagens
+// anteriores a isso ficam invisíveis pra ele (igual WhatsApp).
+async function getMyClearedAt(conversationId: string, userId: string): Promise<Date | null> {
+  const me = await prisma.internalConversationMember.findFirst({
+    where: { conversationId, userId },
+    select: { clearedAt: true },
+  })
+  return me?.clearedAt ?? null
+}
+
 // ─── GET /api/internal/conversations/[id]/messages?before=<iso> ────────────────
 // Últimas 50 mensagens (mais antigas → mais novas). `before` pagina p/ trás.
 // Abrir a conversa marca como lida (atualiza lastReadAt do usuário).
@@ -33,10 +43,12 @@ export async function GET(
   if (!memberIds) return NextResponse.json({ error: "Sem acesso a esta conversa" }, { status: 403 })
 
   const before = request.nextUrl.searchParams.get("before")
+  const clearedAt = await getMyClearedAt(id, me.id)
   const rows = await prisma.internalMessage.findMany({
     where: {
       conversationId: id,
       ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+      ...(clearedAt ? { createdAt: { gt: clearedAt } } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: 50,

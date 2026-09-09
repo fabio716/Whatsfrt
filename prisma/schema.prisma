@@ -521,6 +521,10 @@ model InternalConversationMember {
   // Conversa arquivada por ESTE usuário (igual WhatsApp). Mensagem nova
   // depois do arquivamento faz a conversa reaparecer na lista sozinha.
   archivedAt     DateTime?
+  // "Apagar conversa" (igual WhatsApp): esconde PRA ESTE usuário tudo até
+  // aqui. A conversa some da lista dele e o histórico anterior não volta;
+  // mensagem nova reabre a conversa mostrando só o que vier depois.
+  clearedAt      DateTime?
   createdAt      DateTime @default(now())
 
   @@unique([conversationId, userId])

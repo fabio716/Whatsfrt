@@ -192,11 +192,13 @@ export default function MensagensPage() {
 
   // Meu próprio id — usado só pra não notificar de mensagem que eu mesmo mandei.
   const [myUserId, setMyUserId] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   useEffect(() => {
     void fetch("/api/me").then(async (res) => {
       if (!res.ok) return
-      const me = (await res.json()) as { id: string }
+      const me = (await res.json()) as { id: string; role?: string }
       setMyUserId(me.id)
+      setIsAdmin(me.role === "ADMIN")
     })
   }, [])
   const myUserIdRef = useRef<string | null>(null)
@@ -257,6 +259,20 @@ export default function MensagensPage() {
     }
     setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, archived: archive } : c)))
     if (archive) setActiveId(null) // fecha a conversa arquivada
+  }, [])
+
+  // "Apagar conversa" (igual WhatsApp): esconde o histórico e tira da MINHA
+  // lista — os outros membros não são afetados. Mensagem nova reabre.
+  const clearConversation = useCallback(async (convId: string) => {
+    if (!confirm("Apagar esta conversa?\n\nEla some da SUA lista e o histórico não volta pra você. Os outros participantes não são afetados. Se alguém mandar mensagem nova, a conversa reaparece.")) return
+    const res = await fetch(`/api/internal/conversations/${convId}/clear`, { method: "POST" })
+    if (!res.ok) {
+      if (!handleSessionExpired(res.status)) alert("Não foi possível apagar a conversa")
+      return
+    }
+    setConversations((prev) => prev.filter((c) => c.id !== convId))
+    setActiveId(null)
+    setMessages([])
   }, [])
 
   const openConversation = useCallback((convId: string) => {
@@ -679,6 +695,16 @@ export default function MensagensPage() {
               </div>
               <button
                 type="button"
+                onClick={() => void clearConversation(active.id)}
+                title="Apagar conversa (só pra você)"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-red-50 hover:text-red-600"
+              >
+                <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a2 2 0 01-2 2H8a2 2 0 01-2-2V7h12z" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 onClick={() => void toggleArchive(active.id, !active.archived)}
                 title={active.archived ? "Desarquivar conversa" : "Arquivar conversa"}
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100"
@@ -747,7 +773,7 @@ export default function MensagensPage() {
                 }
                 const m = item.msg
                 const canEdit = m.fromMe && !m.mediaType
-                const canDelete = m.fromMe && m.body !== "🚫 Mensagem apagada"
+                const canDelete = (m.fromMe || isAdmin) && m.body !== "🚫 Mensagem apagada"
                 const isEditingThis = editingMsgId === m.id
                 const groupedReactions = Object.values(
                   (m.reactions ?? []).reduce<Record<string, { emoji: string; count: number; mine: boolean; names: string[] }>>((acc, r) => {

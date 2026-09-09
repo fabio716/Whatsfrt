@@ -77,7 +77,9 @@ export async function DELETE(
   const message = await prisma.internalMessage.findUnique({ where: { id } })
   if (!message) return NextResponse.json({ error: "Mensagem não encontrada" }, { status: 404 })
 
-  if (message.senderId !== me.id) {
+  // Autor apaga a própria mensagem; ADMIN pode apagar de qualquer um
+  // (moderação de grupo).
+  if (message.senderId !== me.id && me.role !== "ADMIN") {
     return NextResponse.json({ error: "Você só pode apagar suas próprias mensagens" }, { status: 403 })
   }
 

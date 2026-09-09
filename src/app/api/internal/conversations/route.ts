@@ -15,13 +15,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const myMemberships = await prisma.internalConversationMember.findMany({
     where: { userId: me.id },
-    select: { conversationId: true, lastReadAt: true, archivedAt: true },
+    select: { conversationId: true, lastReadAt: true, archivedAt: true, clearedAt: true },
   })
   const convIds = myMemberships.map((m) => m.conversationId)
   if (convIds.length === 0) return NextResponse.json([])
 
   const lastReadByConv = new Map(myMemberships.map((m) => [m.conversationId, m.lastReadAt]))
   const archivedAtByConv = new Map(myMemberships.map((m) => [m.conversationId, m.archivedAt]))
+  const clearedAtByConv = new Map(myMemberships.map((m) => [m.conversationId, m.clearedAt]))
 
   const [conversations, allMembers, lastMessages] = await Promise.all([
     prisma.internalConversation.findMany({
@@ -77,7 +78,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   )
   const unreadByConv = new Map(unreadCounts)
 
-  const result = conversations.map((c) => {
+  // "Apagada" pra mim = nada aconteceu depois do clearedAt → fica fora da
+  // lista. Mensagem nova reabre a conversa automaticamente.
+  const visibleConversations = conversations.filter((c) => {
+    const clearedAt = clearedAtByConv.get(c.id)
+    if (!clearedAt) return true
+    const lm = lastByConv.get(c.id)
+    return Boolean(lm && lm.createdAt > clearedAt)
+  })
+
+  const result = visibleConversations.map((c) => {
     const memberIds = membersByConv.get(c.id) ?? []
     const otherIds = memberIds.filter((id) => id !== me.id)
     // Nome exibido: grupo usa o nome; 1:1 usa o nome do outro participante.
