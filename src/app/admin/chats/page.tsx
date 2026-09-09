@@ -102,6 +102,7 @@ export default async function ChatsPage(
     const archived = Boolean(archivedAt && (!lastMsg || lastMsg.createdAt <= archivedAt))
     return {
     archived,
+    empresa: c.empresa,
     id: c.id,
     whatsappId: c.whatsappId,
     name: c.name,

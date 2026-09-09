@@ -20,6 +20,8 @@ export type ChatStatus = "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "A
 export interface ContactData {
   // Conversa arquivada pelo usuário logado (igual WhatsApp — só pra ele).
   archived?: boolean
+  // Empresa do cadastro do cliente — usada na busca da lista de chats.
+  empresa?: string | null
   id: string
   whatsappId: string
   name: string

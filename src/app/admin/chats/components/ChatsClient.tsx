@@ -486,6 +486,8 @@ export default function ChatsClient({
   useEffect(() => { setReplyingTo(null) }, [activeId])
   // Mostrar conversas arquivadas (igual WhatsApp).
   const [showArchivedChats, setShowArchivedChats] = useState(false)
+  // Busca na lista de chats: nome, empresa ou telefone.
+  const [chatSearch, setChatSearch] = useState("")
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
@@ -518,7 +520,13 @@ export default function ChatsClient({
     if (c.chatStatus === "IDLE" && !c.assignedUserId) return false
     // Arquivadas ficam na "gaveta" (igual WhatsApp) — só aparecem no modo
     // Arquivadas. Mensagem nova desarquiva sozinha (server + SSE).
-    return Boolean(c.archived) === showArchivedChats
+    if (Boolean(c.archived) !== showArchivedChats) return false
+    // Busca por nome, empresa ou telefone.
+    const q = chatSearch.trim().toLowerCase()
+    if (!q) return true
+    return c.name.toLowerCase().includes(q)
+      || (c.empresa ?? "").toLowerCase().includes(q)
+      || c.whatsappId.includes(q)
   })
 
   const archivedCount = contacts.filter((c) => c.archived).length
@@ -1214,6 +1222,35 @@ export default function ChatsClient({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Busca por nome, empresa ou telefone */}
+        <div className="border-b border-zinc-100 px-4 py-2.5">
+          <div className="relative">
+            <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" fill="none" stroke="currentColor" strokeWidth={2}>
+              <circle cx="11" cy="11" r="7" />
+              <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              value={chatSearch}
+              onChange={(e) => setChatSearch(e.target.value)}
+              placeholder="Buscar por nome, empresa ou telefone…"
+              className="w-full rounded-lg border border-zinc-200 bg-zinc-50 py-1.5 pl-8 pr-7 text-[12px] text-zinc-700 outline-none placeholder:text-zinc-400 focus:border-zinc-300 focus:bg-white"
+            />
+            {chatSearch && (
+              <button
+                type="button"
+                onClick={() => setChatSearch("")}
+                aria-label="Limpar busca"
+                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+              >
+                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Agent filter (admins only) */}

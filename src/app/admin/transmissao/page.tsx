@@ -8,6 +8,7 @@ interface Cooperative { id: string; name: string }
 interface AudienceContact {
   id: string
   name: string
+  empresa?: string | null
   whatsappId: string
   cooperativeId: string | null
   chatStatus: string
@@ -107,7 +108,12 @@ export default function BroadcastPage() {
   // ── Derived ───────────────────────────────────────────────────────────────
   const manualFiltered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const base = q ? contacts.filter((c) => c.name.toLowerCase().includes(q) || c.whatsappId.includes(q)) : contacts
+    const base = q
+      ? contacts.filter((c) =>
+          c.name.toLowerCase().includes(q)
+          || (c.empresa ?? "").toLowerCase().includes(q)
+          || c.whatsappId.includes(q))
+      : contacts
     // Quem já está conversando aparece primeiro — mais fácil de achar quem
     // faz sentido chamar de novo, em vez de rolar a lista toda em ordem A-Z.
     return [...base].sort((a, b) => {
@@ -317,7 +323,7 @@ export default function BroadcastPage() {
           {mode === "manual" && (
             <div className="rounded-xl border border-zinc-100">
               <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 p-2">
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar contato…"
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome, empresa ou telefone…"
                   className="min-w-[140px] flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[13px] text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
                 <button type="button" onClick={selectSuggested} disabled={suggestedIds.length === 0}
                   title="Seleciona quem trocou mensagem com você nos últimos 7 dias"
@@ -338,7 +344,10 @@ export default function BroadcastPage() {
                     <label key={c.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-50">
                       <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleContact(c.id)}
                         className="h-4 w-4 rounded border-zinc-300 accent-zinc-900" />
-                      <span className="flex-1 truncate text-[13px] text-zinc-800">{c.name}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] text-zinc-800">{c.name}</span>
+                        {c.empresa && <span className="block truncate text-[11px] text-zinc-400">{c.empresa}</span>}
+                      </span>
                       <span className={`flex-shrink-0 text-[10px] font-medium ${suggestedIds.includes(c.id) ? "text-emerald-600" : "text-zinc-400"}`}>
                         {relativeActivity(c.lastMessageAt, c.chatStatus)}
                       </span>

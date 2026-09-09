@@ -29,7 +29,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }),
     prisma.contact.findMany({
       where: contactWhere,
-      select: { id: true, name: true, whatsappId: true, cooperativeId: true, chatStatus: true },
+      select: { id: true, name: true, whatsappId: true, cooperativeId: true, chatStatus: true, empresa: true },
       orderBy: { name: "asc" },
     }),
   ])
