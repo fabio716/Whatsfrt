@@ -155,6 +155,61 @@ function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string;
   )
 }
 
+// ─── Contato compartilhado ("👤 Nome — 5544...") ─────────────────────────────
+// Cada linha com telefone vira um cartão com botão pra abrir conversa com
+// aquele número (acha ou cria o contato via /api/contacts/open-by-phone).
+function SharedContactBody({ body }: Readonly<{ body: string }>) {
+  const [opening, setOpening] = useState<string | null>(null)
+  const openChat = async (phone: string, name: string) => {
+    if (opening) return
+    setOpening(phone)
+    try {
+      const res = await fetch("/api/contacts/open-by-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, name }),
+      })
+      const data = await res.json().catch(() => ({})) as { id?: string; error?: string }
+      if (res.ok && data.id) {
+        window.location.href = `/admin/chats?contact=${data.id}`
+      } else {
+        alert(data.error ?? "Não foi possível abrir a conversa")
+        setOpening(null)
+      }
+    } catch {
+      alert("Erro de rede ao abrir a conversa")
+      setOpening(null)
+    }
+  }
+  return (
+    <div className="space-y-1.5">
+      {body.split("\n").map((line, i) => {
+        const m = /^👤\s*(.+?)\s*—\s*(\+?[\d\s.()-]{8,})$/.exec(line.trim())
+        if (!m) return <p key={`${line}-${i}`} className="text-[13px] leading-relaxed">{line}</p>
+        const name = m[1]
+        const phone = m[2].replace(/\D/g, "")
+        return (
+          <div key={`${line}-${i}`} className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <span className="text-[18px]">👤</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12.5px] font-medium text-zinc-800">{name}</span>
+              <span className="block text-[11px] text-zinc-500">{m[2].trim()}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => void openChat(phone, name)}
+              disabled={opening !== null}
+              className="flex-shrink-0 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+            >
+              {opening === phone ? "Abrindo…" : "💬 Conversar"}
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Álbum de imagens (igual WhatsApp) ───────────────────────────────────────
 // Várias imagens seguidas, do mesmo lado, sem legenda e sem reação, com até
 // 3 min entre elas, viram UMA grade só com botão de baixar tudo.
@@ -1592,6 +1647,8 @@ export default function ChatsClient({
                               )}
                               {msg.mediaUrl && msg.mediaType ? (
                                 <MediaBubble mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />
+                              ) : msg.body.startsWith("👤") ? (
+                                <SharedContactBody body={msg.body} />
                               ) : (
                                 <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
                               )}
