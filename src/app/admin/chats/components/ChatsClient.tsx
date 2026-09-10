@@ -488,6 +488,13 @@ export default function ChatsClient({
   const [showArchivedChats, setShowArchivedChats] = useState(false)
   // Busca na lista de chats: nome, empresa ou telefone.
   const [chatSearch, setChatSearch] = useState("")
+  // Clicar na citação rola até a mensagem original e dá um "flash" nela.
+  const [flashMsgId, setFlashMsgId] = useState<string | null>(null)
+  const jumpToMessage = (msgId: string) => {
+    document.getElementById(`msg-${msgId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    setFlashMsgId(msgId)
+    setTimeout(() => setFlashMsgId((cur) => (cur === msgId ? null : cur)), 1600)
+  }
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
@@ -1515,8 +1522,8 @@ export default function ChatsClient({
                     const isEditingThis = editingMsgId === msg.id
                     const hasReaction = msg.myReaction || msg.theirReaction
                     return (
-                      <div key={msg.id} className={`group flex ${isOut ? "justify-end" : "justify-start"} ${hasReaction ? "mb-4" : "mb-1"}`}>
-                        <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm ${isOut ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
+                      <div key={msg.id} id={`msg-${msg.id}`} className={`group flex ${isOut ? "justify-end" : "justify-start"} ${hasReaction ? "mb-4" : "mb-1"}`}>
+                        <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm transition-shadow ${flashMsgId === msg.id ? "ring-2 ring-amber-400" : ""} ${isOut ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
                           {hasReaction && (
                             <div className={`absolute -bottom-3.5 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm ${isOut ? "right-2" : "left-2"}`}>
                               {msg.theirReaction && <span title="Reação do cliente">{msg.theirReaction}</span>}
@@ -1573,10 +1580,15 @@ export default function ChatsClient({
                           ) : (
                             <>
                               {msg.quotedBody && (
-                                <div className={`mb-1.5 rounded-lg border-l-4 border-emerald-500 px-2 py-1.5 ${isOut ? "bg-emerald-50/70" : "bg-zinc-50"}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => msg.quotedMsgId && jumpToMessage(msg.quotedMsgId)}
+                                  title="Ver a mensagem original"
+                                  className={`mb-1.5 block w-full cursor-pointer rounded-lg border-l-4 border-emerald-500 px-2 py-1.5 text-left hover:brightness-95 ${isOut ? "bg-emerald-50/70" : "bg-zinc-50"}`}
+                                >
                                   <p className="text-[11px] font-semibold text-emerald-700">{msg.quotedSender}</p>
                                   <p className="line-clamp-2 whitespace-pre-wrap break-words text-[12px] text-zinc-500">{msg.quotedBody}</p>
-                                </div>
+                                </button>
                               )}
                               {msg.mediaUrl && msg.mediaType ? (
                                 <MediaBubble mediaUrl={msg.mediaUrl} mediaType={msg.mediaType} body={msg.body} />

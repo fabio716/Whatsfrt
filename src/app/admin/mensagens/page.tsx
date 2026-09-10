@@ -187,6 +187,13 @@ export default function MensagensPage() {
   const [replyingTo, setReplyingTo] = useState<Msg | null>(null)
   // Mostrar a lista de conversas arquivadas (igual WhatsApp).
   const [showArchived, setShowArchived] = useState(false)
+  // Clicar na citação rola até a mensagem original e dá um "flash" nela.
+  const [flashMsgId, setFlashMsgId] = useState<string | null>(null)
+  const jumpToMessage = (msgId: string) => {
+    document.getElementById(`imsg-${msgId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    setFlashMsgId(msgId)
+    setTimeout(() => setFlashMsgId((cur) => (cur === msgId ? null : cur)), 1600)
+  }
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -786,8 +793,8 @@ export default function MensagensPage() {
                   }, {}),
                 )
                 return (
-                  <div key={m.id} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"} ${groupedReactions.length ? "mb-4" : "mb-1"}`}>
-                    <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm ${m.fromMe ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
+                  <div key={m.id} id={`imsg-${m.id}`} className={`group flex ${m.fromMe ? "justify-end" : "justify-start"} ${groupedReactions.length ? "mb-4" : "mb-1"}`}>
+                    <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm transition-shadow ${flashMsgId === m.id ? "ring-2 ring-amber-400" : ""} ${m.fromMe ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
                       {groupedReactions.length > 0 && (
                         <div className={`absolute -bottom-3.5 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm ${m.fromMe ? "right-2" : "left-2"}`}>
                           {groupedReactions.map((g) => (
@@ -857,10 +864,15 @@ export default function MensagensPage() {
                       ) : (
                         <>
                           {m.quotedBody && (
-                            <div className={`mb-1.5 rounded-lg border-l-4 px-2 py-1.5 ${m.fromMe ? "border-emerald-500 bg-emerald-50/70" : "border-emerald-500 bg-zinc-50"}`}>
+                            <button
+                              type="button"
+                              onClick={() => m.quotedMsgId && jumpToMessage(m.quotedMsgId)}
+                              title="Ver a mensagem original"
+                              className={`mb-1.5 block w-full cursor-pointer rounded-lg border-l-4 border-emerald-500 px-2 py-1.5 text-left hover:brightness-95 ${m.fromMe ? "bg-emerald-50/70" : "bg-zinc-50"}`}
+                            >
                               <p className="text-[11px] font-semibold text-emerald-700">{m.quotedSender}</p>
                               <p className="line-clamp-2 whitespace-pre-wrap break-words text-[12px] text-zinc-500">{m.quotedBody}</p>
-                            </div>
+                            </button>
                           )}
                           {m.mediaType?.startsWith("audio/") ? (
                             <audio controls src={m.mediaUrl ?? undefined} className="max-w-[240px]" />

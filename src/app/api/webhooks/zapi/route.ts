@@ -54,8 +54,8 @@ interface ZapiTextPayload {
   // Cliente compartilhou um contato do WhatsApp (cartão de visita/vCard) —
   // sem tratar isso a mensagem chegava sem body e sem media, virando um
   // balão vazio na tela do agente.
-  contact?: { displayName?: string; vcard?: string }
-  contacts?: { displayName?: string; vcard?: string }[]
+  contact?: SharedContact
+  contacts?: SharedContact[]
   // Presente quando o callback é uma REAÇÃO (não uma mensagem normal) — o
   // cliente reagiu com emoji numa mensagem nossa ou dele mesmo. value="" =
   // removeu a reação.
@@ -162,11 +162,32 @@ function extractMediaUrl(p: ZapiTextPayload): { url: string; mimetype: string; f
 // Extrai nome+telefone de um vCard (campo TEL, formato "waid=5511999999999"
 // ou número puro depois dos dois-pontos). Best-effort — se não achar telefone,
 // mostra só o nome.
-function describeContact(c: { displayName?: string; vcard?: string }): string {
-  const name = c.displayName?.trim() || "Contato sem nome"
-  const waidMatch = c.vcard?.match(/waid=(\d+)/)
-  const telMatch = c.vcard?.match(/TEL[^:]*:([+\d][\d\s()-]*\d)/)
-  const phone = waidMatch?.[1] ?? telMatch?.[1]?.trim()
+// A Z-API varia o formato entre versões: o vCard pode vir como "vcard" ou
+// "vCard", e às vezes o telefone vem fora do vCard (phone/phones). Tentamos
+// TODAS as fontes — sem número o cartão não serve de nada pra vendedora.
+interface SharedContact {
+  displayName?: string
+  name?: string
+  vcard?: string
+  vCard?: string
+  phone?: string
+  phones?: string[]
+}
+
+function describeContact(c: SharedContact): string {
+  const name = c.displayName?.trim() || c.name?.trim() || "Contato sem nome"
+  const vcard = c.vcard ?? c.vCard
+  const waidMatch = vcard?.match(/waid=(\d+)/)
+  const telMatch = vcard?.match(/TEL[^:]*:\s*([+\d][\d\s.()-]*\d)/i)
+  const phone = waidMatch?.[1]
+    ?? telMatch?.[1]?.trim()
+    ?? c.phone?.trim()
+    ?? c.phones?.[0]?.trim()
+  if (!phone && vcard) {
+    // Último recurso: qualquer sequência longa de dígitos dentro do vCard.
+    const digits = vcard.match(/\+?\d[\d\s.()-]{8,}\d/)
+    if (digits) return `👤 ${name} — ${digits[0].trim()}`
+  }
   return phone ? `👤 ${name} — ${phone}` : `👤 ${name}`
 }
 

@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { sendText, sendMedia } from "@/lib/whatsapp"
+import { MessageDirection, MessageStatus } from "@/generated/prisma/enums"
+import { broadcast } from "@/lib/sse-emitter"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Campaign Queue com Proteções Avançadas
@@ -120,7 +122,7 @@ export async function processCampaign(campaignId: string): Promise<void> {
 
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { messageText: true, mediaUrl: true, mediaType: true, delayMin: true, delayMax: true },
+      select: { messageText: true, mediaUrl: true, mediaType: true, delayMin: true, delayMax: true, createdById: true },
     })
 
     if (!campaign) return
@@ -198,6 +200,41 @@ export async function processCampaign(campaignId: string): Promise<void> {
         })
 
         if (ok) {
+          // Grava a mensagem da transmissão no HISTÓRICO do chat do contato.
+          // Sem isso, quando o cliente respondia, o agente via só a resposta
+          // "do nada", sem saber de qual campanha veio a conversa.
+          try {
+            const saved = await prisma.message.create({
+              data: {
+                body: personalizedMessage,
+                direction: MessageDirection.OUTBOUND,
+                status: MessageStatus.SENT,
+                contactId: log.contact.id,
+                agentId: campaign.createdById ?? null,
+                ...(messageId ? { whatsappKeyId: messageId } : {}),
+                ...(hasMedia ? { mediaUrl: campaign.mediaUrl, mediaType: campaign.mediaType } : {}),
+              },
+            })
+            const contactFull = await prisma.contact.findUnique({
+              where: { id: log.contact.id },
+              select: { id: true, whatsappId: true, name: true, profilePhotoUrl: true, chatStatus: true, assignedUserId: true },
+            })
+            if (contactFull) {
+              broadcast({
+                type: "new_message",
+                data: {
+                  id: saved.id, body: saved.body, direction: saved.direction,
+                  status: saved.status, createdAt: saved.createdAt.toISOString(),
+                  agentId: saved.agentId, contactId: saved.contactId,
+                  mediaUrl: saved.mediaUrl, mediaType: saved.mediaType,
+                  contact: contactFull,
+                },
+              }, contactFull.assignedUserId)
+            }
+          } catch (err) {
+            // Duplicata de whatsappKeyId (retry) ou afim — não derruba a campanha.
+            console.warn(`[Campaign ${campaignId}] mensagem enviada mas não gravada no chat:`, err instanceof Error ? err.message : err)
+          }
           console.log(`[Campaign ${campaignId}] ✓ Enviado para ${log.contact.name}`)
         } else {
           console.warn(`[Campaign ${campaignId}] ✗ Falha ao enviar para ${log.contact.name}`)
