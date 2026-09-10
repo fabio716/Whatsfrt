@@ -211,6 +211,31 @@ async function downloadMediaToBuffer(url: string): Promise<Buffer | null> {
   return safeFetchBuffer(url)
 }
 
+// ─── Lead do site ────────────────────────────────────────────────────────────
+// Toda conversa iniciada pelo botão de WhatsApp do site frtautomacao.com.br
+// vai DIRETO pra agente do site (Amanda), SEM EXCEÇÃO — mesmo que o contato
+// já esteja na carteira de outra vendedora. Detecção pelo texto pré-
+// preenchido do botão do site. Termos extras: env SITE_LEAD_KEYWORDS
+// (separados por vírgula). Agente alvo: env SITE_LEAD_AGENT_NAME (padrão
+// "Amanda" — busca por nome entre agentes ativos).
+const DEFAULT_SITE_KEYWORDS = [
+  "frtautomacao.com.br",
+  "frtautomacao",
+  "vim do site",
+  "vim pelo site",
+  "vim atraves do site",
+  "vi no site",
+  "site da frt",
+]
+
+function isSiteLead(text: string): boolean {
+  if (!text) return false
+  const norm = text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+  const extras = (process.env.SITE_LEAD_KEYWORDS ?? "")
+    .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  return [...DEFAULT_SITE_KEYWORDS, ...extras].some((k) => norm.includes(k))
+}
+
 // ─── Tipo: mensagem recebida ─────────────────────────────────────────────────
 
 async function handleReceived(p: ZapiTextPayload): Promise<void> {
@@ -241,11 +266,52 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
   const pushName = p.senderName ?? p.chatName ?? whatsappId
 
   // 1 — Acha (considerando variante com/sem 9º dígito) ou cria contato
-  const contact = await findOrCreateContact(whatsappId, {
+  let contact = await findOrCreateContact(whatsappId, {
     name: p.senderName,
     fallbackName: pushName,
     profilePhotoUrl: p.senderPhoto,
   })
+
+  // 1b — LEAD DO SITE: vai direto pra agente do site, sem exceção. Se o
+  // contato tinha outra vendedora, é transferido (com registro no log de
+  // transferências pra auditoria).
+  if (isSiteLead(messageText)) {
+    const targetName = process.env.SITE_LEAD_AGENT_NAME?.trim() || "Amanda"
+    const siteAgent = await prisma.user.findFirst({
+      where: { isActive: true, role: "AGENT", name: { contains: targetName, mode: "insensitive" } },
+      select: { id: true, name: true },
+    })
+    if (siteAgent && contact.assignedUserId !== siteAgent.id) {
+      const fromUser = contact.assignedUserId
+        ? await prisma.user.findUnique({ where: { id: contact.assignedUserId }, select: { id: true, name: true } })
+        : null
+      const [updated] = await prisma.$transaction([
+        prisma.contact.update({
+          where: { id: contact.id },
+          data: {
+            assignedUserId: siteAgent.id,
+            chatStatus: ChatStatus.IN_SERVICE,
+            inServiceSince: new Date(),
+            pendingDepartment: null,
+          },
+        }),
+        prisma.contactTransferLog.create({
+          data: {
+            contactId: contact.id,
+            contactName: contact.name,
+            fromUserId: fromUser?.id ?? null,
+            fromUserName: fromUser?.name ?? null,
+            toUserId: siteAgent.id,
+            toUserName: siteAgent.name,
+          },
+        }),
+      ])
+      contact = updated
+      console.log(`[zapi-webhook] LEAD DO SITE → ${siteAgent.name}${fromUser ? ` (transferido de ${fromUser.name})` : ""}`)
+    } else if (!siteAgent) {
+      console.error(`[zapi-webhook] lead do site detectado, mas agente "${targetName}" não encontrado/ativo — seguiu fluxo normal`)
+    }
+  }
 
   // 2 — Baixa mídia se houver, salva privado, gera mediaUrl interno.
   // Retry 1x: a URL da Z-API às vezes falha na primeira tentativa (CDN
