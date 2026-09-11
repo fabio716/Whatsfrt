@@ -35,8 +35,9 @@ alerta() {
 
 ok() { rm -f "$STATE_DIR/$1"; }
 
-# 1. App no ar? (health check interno)
-HTTP="$(curl -sk -m 10 -o /dev/null -w '%{http_code}' https://localhost/api/health || echo 000)"
+# 1. App no ar? (health check pelo caminho real, via Cloudflare — localhost
+# devolvia 301 do nginx porque o server block espera o Host frtwhats.com)
+HTTP="$(curl -sk -m 10 -o /dev/null -w '%{http_code}' https://frtwhats.com/api/health || echo 000)"
 if [ "$HTTP" != "200" ]; then
   alerta "app" "O sistema está FORA DO AR (health check retornou $HTTP). Verifique o servidor: ssh root@62.171.178.160 e rode: docker ps"
 else
