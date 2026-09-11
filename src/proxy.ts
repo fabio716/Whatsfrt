@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { jwtVerify } from "jose"
-import { COOKIE_NAME } from "@/lib/auth"
+import { jwtVerify, SignJWT } from "jose"
+import { COOKIE_NAME, SESSION_COOKIE_OPTS } from "@/lib/auth"
 
 // Mesma política de auth.ts: falha-hard em produção.
 function getSecret(): Uint8Array {
@@ -55,6 +55,34 @@ const AGENT_ALLOWED_ADMIN_APIS = [
   /^\/api\/admin\/quick-replies\/[^/]+$/,
 ]
 
+// ─── Sessão deslizante ────────────────────────────────────────────────────────
+// O token dura 8h, mas quem está USANDO o sistema não pode ser deslogado no
+// meio do expediente (aba aberta o dia todo = imagens quebrando, envios com
+// 401). A cada request autenticado, se o token já tem mais de 30 min de
+// idade, emitimos um novo de 8h no response — sessão renova sozinha enquanto
+// a pessoa trabalha; só expira de verdade após 8h de INATIVIDADE.
+const RENEW_AFTER_SEC = 30 * 60
+
+async function maybeRenewSession(
+  response: NextResponse,
+  payload: Record<string, unknown>,
+): Promise<NextResponse> {
+  const iat = typeof payload.iat === "number" ? payload.iat : 0
+  const ageSec = Math.floor(Date.now() / 1000) - iat
+  if (ageSec < RENEW_AFTER_SEC) return response
+  try {
+    const fresh = await new SignJWT({ id: payload.id, name: payload.name, role: payload.role })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("8h")
+      .sign(getSecret())
+    response.cookies.set(COOKIE_NAME, fresh, SESSION_COOKIE_OPTS)
+  } catch {
+    // Renovação é best-effort — falhou, segue com o token atual.
+  }
+  return response
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const token = request.cookies.get(COOKIE_NAME)?.value
@@ -72,7 +100,7 @@ export async function proxy(request: NextRequest) {
     const role = (payload as { role?: string }).role
 
     // ADMIN passa em tudo.
-    if (role === "ADMIN") return NextResponse.next()
+    if (role === "ADMIN") return maybeRenewSession(NextResponse.next(), payload)
 
     // AGENT acessando área admin-only: bloquear.
     const isAdminOnlyPage = ADMIN_ONLY_PREFIXES.some((p) => pathname.startsWith(p))
@@ -84,7 +112,7 @@ export async function proxy(request: NextRequest) {
     if (isAdminOnlyApi) {
       return NextResponse.json({ error: "Acesso restrito a administradores" }, { status: 403 })
     }
-    return NextResponse.next()
+    return maybeRenewSession(NextResponse.next(), payload)
   } catch {
     if (pathname.startsWith("/api/")) {
       const response = NextResponse.json({ error: "Sessão inválida" }, { status: 401 })

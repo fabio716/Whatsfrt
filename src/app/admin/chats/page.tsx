@@ -51,13 +51,19 @@ export default async function ChatsPage(
   const [inServiceContacts, requestedContact, allAgents, archives] = await Promise.all([
     prisma.contact.findMany({
       where: inServiceWhere,
-      include: { messages: { orderBy: { createdAt: "asc" } } },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        tags: { select: { id: true, name: true, color: true }, orderBy: { name: "asc" } },
+      },
       orderBy: { updatedAt: "desc" },
     }),
     requestedWhere
       ? prisma.contact.findUnique({
           where: { id: requestedContactId! },
-          include: { messages: { orderBy: { createdAt: "asc" } } },
+          include: {
+            messages: { orderBy: { createdAt: "asc" } },
+            tags: { select: { id: true, name: true, color: true }, orderBy: { name: "asc" } },
+          },
         })
       : Promise.resolve(null),
     prisma.user.findMany({
@@ -103,6 +109,9 @@ export default async function ChatsPage(
     return {
     archived,
     empresa: c.empresa,
+    notes: c.notes,
+    temperature: c.temperature,
+    tags: c.tags,
     id: c.id,
     whatsappId: c.whatsappId,
     name: c.name,

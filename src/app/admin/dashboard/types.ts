@@ -22,6 +22,10 @@ export interface ContactData {
   archived?: boolean
   // Empresa do cadastro do cliente — usada na busca da lista de chats.
   empresa?: string | null
+  // Ficha comercial: notas internas, termômetro (HOT/WARM/COLD) e etiquetas.
+  notes?: string
+  temperature?: string | null
+  tags?: { id: string; name: string; color: string }[]
   id: string
   whatsappId: string
   name: string

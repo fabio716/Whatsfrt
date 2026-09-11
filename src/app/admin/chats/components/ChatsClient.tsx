@@ -69,6 +69,16 @@ function fileInfoFromUrl(url: string): { icon: string; name: string } {
   return { icon, name }
 }
 
+// Termômetro comercial do cliente — ícone junto do nome.
+const TEMP_META: Record<string, { icon: string; label: string }> = {
+  HOT:  { icon: "🔥", label: "Quente" },
+  WARM: { icon: "🌤️", label: "Morno" },
+  COLD: { icon: "❄️", label: "Frio" },
+}
+
+// Cores prontas pras etiquetas (o usuário só clica numa bolinha).
+const TAG_COLORS = ["#10b981", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ef4444", "#ec4899", "#64748b", "#84cc16"]
+
 function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string; mediaType: string; body: string }>) {
   const [expanded, setExpanded] = useState(false)
   if (mediaType.startsWith("image/")) {
@@ -543,6 +553,70 @@ export default function ChatsClient({
   const [showArchivedChats, setShowArchivedChats] = useState(false)
   // Busca na lista de chats: nome, empresa ou telefone.
   const [chatSearch, setChatSearch] = useState("")
+  // Ficha comercial (etiquetas + notas + termômetro).
+  const [showCrm, setShowCrm] = useState(false)
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([])
+  const [crmTagIds, setCrmTagIds] = useState<Set<string>>(new Set())
+  const [crmNotes, setCrmNotes] = useState("")
+  const [crmTemp, setCrmTemp] = useState<string | null>(null)
+  const [newTagName, setNewTagName] = useState("")
+  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0])
+  const [savingCrm, setSavingCrm] = useState(false)
+
+  const openCrm = async () => {
+    if (!activeContact) return
+    setCrmTagIds(new Set((activeContact.tags ?? []).map((t) => t.id)))
+    setCrmNotes(activeContact.notes ?? "")
+    setCrmTemp(activeContact.temperature ?? null)
+    setNewTagName("")
+    setShowCrm(true)
+    const res = await fetch("/api/tags")
+    if (res.ok) setAllTags(await res.json() as typeof allTags)
+  }
+
+  const createTag = async () => {
+    const name = newTagName.trim()
+    if (!name) return
+    const res = await fetch("/api/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, color: newTagColor }),
+    })
+    if (res.ok) {
+      const tag = await res.json() as { id: string; name: string; color: string }
+      setAllTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag].sort((a, b) => a.name.localeCompare(b.name))))
+      setCrmTagIds((prev) => new Set([...prev, tag.id]))
+      setNewTagName("")
+    } else if (!handleSessionExpired(res.status)) {
+      alert("Não foi possível criar a etiqueta")
+    }
+  }
+
+  const saveCrm = async () => {
+    if (!activeContact || savingCrm) return
+    setSavingCrm(true)
+    try {
+      const res = await fetch(`/api/contacts/${activeContact.id}/crm`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagIds: [...crmTagIds], notes: crmNotes, temperature: crmTemp }),
+      })
+      if (!res.ok) {
+        if (!handleSessionExpired(res.status)) {
+          const data = await res.json().catch(() => ({})) as { error?: string }
+          alert(data.error ?? "Não foi possível salvar")
+        }
+        return
+      }
+      const data = await res.json() as { notes: string; temperature: string | null; tags: { id: string; name: string; color: string }[] }
+      setContacts((prev) => prev.map((c) => (c.id === activeContact.id
+        ? { ...c, notes: data.notes, temperature: data.temperature, tags: data.tags }
+        : c)))
+      setShowCrm(false)
+    } finally {
+      setSavingCrm(false)
+    }
+  }
   // Clicar na citação rola até a mensagem original e dá um "flash" nela.
   const [flashMsgId, setFlashMsgId] = useState<string | null>(null)
   const jumpToMessage = (msgId: string) => {
@@ -1361,7 +1435,13 @@ export default function ChatsClient({
                 <Avatar name={c.name} photoUrl={c.profilePhotoUrl} size="h-9 w-9" fallback="bg-zinc-200 text-zinc-600 text-[13px] font-semibold" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
+                    {c.temperature && TEMP_META[c.temperature] && (
+                      <span className="flex-shrink-0 text-[11px]" title={`Cliente ${TEMP_META[c.temperature].label.toLowerCase()}`}>{TEMP_META[c.temperature].icon}</span>
+                    )}
                     <span className={`truncate text-[13px] ${isUnread ? "font-bold text-zinc-900" : "font-medium text-zinc-800"}`}>{c.name}</span>
+                    {(c.tags ?? []).slice(0, 3).map((t) => (
+                      <span key={t.id} className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: t.color }} title={t.name} />
+                    ))}
                     <StatusBadge status={c.chatStatus} />
                   </div>
                   <p className={`mt-0.5 truncate text-[11px] ${isUnread ? "font-semibold text-zinc-700" : "text-zinc-400"}`}>
@@ -1396,8 +1476,22 @@ export default function ChatsClient({
                   </svg>
                 </button>
                 <Avatar name={activeContact.name} photoUrl={activeContact.profilePhotoUrl} size="h-9 w-9" fallback="bg-zinc-200 text-zinc-600 text-sm font-semibold" />
-                <div>
-                  <p className="text-[14px] font-semibold text-zinc-900">{activeContact.name}</p>
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-[14px] font-semibold text-zinc-900">
+                    {activeContact.temperature && TEMP_META[activeContact.temperature] && (
+                      <span title={`Cliente ${TEMP_META[activeContact.temperature].label.toLowerCase()}`}>{TEMP_META[activeContact.temperature].icon}</span>
+                    )}
+                    <span className="truncate">{activeContact.name}</span>
+                    {(activeContact.tags ?? []).map((t) => (
+                      <span
+                        key={t.id}
+                        className="flex-shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-bold text-white"
+                        style={{ backgroundColor: t.color }}
+                      >
+                        {t.name}
+                      </span>
+                    ))}
+                  </p>
                   <p className="text-[11px] text-zinc-400">
                     {activeContact.whatsappId.replace("@s.whatsapp.net", "")}
                     {activeContact.assignedUserId && (
@@ -1412,6 +1506,14 @@ export default function ChatsClient({
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void openCrm()}
+                  title="Ficha do cliente: etiquetas, termômetro e notas"
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 text-[12px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50"
+                >
+                  🏷️ Ficha
+                </button>
                 <StatusBadge status={activeContact.chatStatus} />
 
                 {/* Ação primária — uma só, depende do contexto.
@@ -1972,6 +2074,106 @@ export default function ChatsClient({
           </div>
         )}
       </main>
+
+      {/* ─── Ficha do cliente: etiquetas + termômetro + notas ───────────── */}
+      {showCrm && activeContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowCrm(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-[15px] font-semibold text-zinc-900">🏷️ Ficha de {activeContact.name}</h2>
+
+            <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Termômetro</p>
+            <div className="flex gap-2">
+              {Object.entries(TEMP_META).map(([key, meta]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCrmTemp(crmTemp === key ? null : key)}
+                  className={`flex-1 rounded-xl border px-2 py-2 text-[12.5px] font-semibold transition-colors ${crmTemp === key ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-zinc-200 text-zinc-600 hover:bg-zinc-50"}`}
+                >
+                  {meta.icon} {meta.label}
+                </button>
+              ))}
+            </div>
+
+            <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Etiquetas</p>
+            <div className="flex flex-wrap gap-1.5">
+              {allTags.length === 0 && <p className="text-[12px] text-zinc-400">Nenhuma etiqueta criada ainda — crie a primeira abaixo.</p>}
+              {allTags.map((t) => {
+                const on = crmTagIds.has(t.id)
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setCrmTagIds((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(t.id)) next.delete(t.id); else next.add(t.id)
+                      return next
+                    })}
+                    className={`rounded-full px-3 py-1 text-[11.5px] font-semibold transition-all ${on ? "text-white shadow-sm" : "text-zinc-600 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50"}`}
+                    style={on ? { backgroundColor: t.color } : {}}
+                  >
+                    {t.name}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="text"
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void createTag() } }}
+                placeholder="Nova etiqueta…"
+                maxLength={40}
+                className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[12px] outline-none focus:border-zinc-300"
+              />
+              <div className="flex gap-1">
+                {TAG_COLORS.map((cor) => (
+                  <button
+                    key={cor}
+                    type="button"
+                    onClick={() => setNewTagColor(cor)}
+                    aria-label={`Cor ${cor}`}
+                    className={`h-5 w-5 rounded-full transition-transform ${newTagColor === cor ? "scale-110 ring-2 ring-zinc-700 ring-offset-1" : ""}`}
+                    style={{ backgroundColor: cor }}
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => void createTag()}
+                disabled={!newTagName.trim()}
+                className="rounded-lg bg-zinc-900 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-zinc-700 disabled:opacity-40"
+              >
+                Criar
+              </button>
+            </div>
+
+            <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Notas internas</p>
+            <textarea
+              value={crmNotes}
+              onChange={(e) => setCrmNotes(e.target.value)}
+              rows={4}
+              maxLength={5000}
+              placeholder="Ex.: prefere PIX · pediu orçamento da AS-1610 · retornar em outubro…"
+              className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] outline-none focus:border-zinc-300 focus:bg-white"
+            />
+            <p className="mt-1 text-[10.5px] text-zinc-400">Visível só pra equipe — o cliente nunca vê.</p>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowCrm(false)} className="rounded-xl px-4 py-2 text-[13px] font-medium text-zinc-600 hover:bg-zinc-100">Cancelar</button>
+              <button
+                type="button"
+                onClick={() => void saveCrm()}
+                disabled={savingCrm}
+                className="rounded-xl bg-emerald-500 px-5 py-2 text-[13px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {savingCrm ? "Salvando…" : "Salvar ficha"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Transferir Conversa Modal ──────────────────────────────────── */}
       {showTransfer && activeContact && (!isAgent || isOwner) && (

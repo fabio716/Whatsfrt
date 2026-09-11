@@ -145,6 +145,16 @@ model Contact {
   empresa  String?
   cidade   String?
 
+  // Notas internas sobre o cliente (visíveis pra equipe, nunca pro cliente).
+  notes    String @default("")
+
+  // Termômetro comercial: HOT (🔥 quente) | WARM (🌤️ morno) | COLD (❄️ frio).
+  // null = não classificado. Ícone aparece junto do nome no chat.
+  temperature String?
+
+  // Etiquetas coloridas (m2m) — "orçamento enviado", "prefere PIX", etc.
+  tags     Tag[]
+
   // Departamento alvo que o cliente escolheu na URA (ex: "VENDAS", "FINANCEIRO").
   // Populado quando o contato entra em WAITING_AGENT vindo da URA. Usado pela
   // pagina Fila de espera pra mostrar cada contato APENAS pros agentes do
@@ -633,4 +643,15 @@ model StatusPost {
   createdAt     DateTime @default(now())
 
   @@map("status_posts")
+}
+
+// Etiqueta colorida de cliente (compartilhada pela equipe toda).
+model Tag {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  color     String    @default("#10b981") // hex
+  createdAt DateTime  @default(now())
+  contacts  Contact[]
+
+  @@map("tags")
 }
