@@ -137,6 +137,42 @@ export async function sendZapiText(
   return { ok: true, messageId: data?.messageId ?? data?.id ?? null, attempts: res.attempts, errorMsg: null }
 }
 
+// ─── Status (story) ──────────────────────────────────────────────────────────
+// Publica um Status do número conectado (igual postar pelo celular).
+// Endpoints Z-API: /send-text-status, /send-image-status, /send-video-status.
+export async function sendZapiStatus(opts: {
+  kind: "text" | "image" | "video"
+  message?: string
+  mediaUrlOrBase64?: string
+  caption?: string
+}): Promise<ZapiSendResult> {
+  const endpoint = opts.kind === "text" ? "send-text-status"
+    : opts.kind === "image" ? "send-image-status"
+    : "send-video-status"
+  const url = buildUrl(endpoint)
+  if (!url) return { ok: false, messageId: null, attempts: 0, errorMsg: "ZAPI_INSTANCE_ID/ZAPI_TOKEN ausente" }
+
+  const body: Record<string, unknown> = opts.kind === "text"
+    ? { message: opts.message }
+    : {
+        [opts.kind]: opts.mediaUrlOrBase64,
+        ...(opts.caption ? { caption: opts.caption } : {}),
+      }
+
+  const res = await evolutionFetch(url, {
+    label: `zapi:${endpoint}`,
+    method: "POST",
+    headers: commonHeaders(),
+    body: JSON.stringify(body),
+    timeoutMs: 30_000,
+  })
+  if (!res.ok) {
+    return { ok: false, messageId: null, attempts: res.attempts, errorMsg: res.lastError ?? `status ${res.status}` }
+  }
+  const data = res.responseJson as { messageId?: string; id?: string } | null
+  return { ok: true, messageId: data?.messageId ?? data?.id ?? null, attempts: res.attempts, errorMsg: null }
+}
+
 // Edita uma mensagem de texto já enviada. Z-API reaproveita o /send-text com
 // o campo editMessageId apontando pro messageId original. Só funciona dentro
 // da janela que o WhatsApp permite editar (alguns minutos após o envio) —

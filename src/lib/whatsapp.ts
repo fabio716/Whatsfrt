@@ -24,6 +24,7 @@ import {
   getZapiQrCode,
   isZapiEnvOk,
   sendZapiMedia,
+  sendZapiStatus,
   sendZapiReaction,
   sendZapiText,
   zapiPhoneExists,
@@ -98,6 +99,32 @@ export async function sendReaction(
     return sendZapiReaction(whatsappId, providerMessageId, reaction)
   }
   return { ok: false, errorMsg: "Reação não é suportada no provedor Evolution" }
+}
+
+// Publica um Status (story) do número conectado. Só Z-API — Evolution não
+// tem esse recurso. Pra mídia, mesma URL assinada usada no envio de mídia.
+export async function sendStatus(args: {
+  kind: "text" | "image" | "video"
+  text?: string          // texto do status (kind=text) ou legenda (image/video)
+  filename?: string      // arquivo salvo pelo saveMediaBuffer (image/video)
+  mimetype?: string
+}): Promise<SendResult> {
+  if (activeProvider() !== "zapi") {
+    return { ok: false, messageId: null, attempts: 0, errorMsg: "Status só é suportado no provedor Z-API" }
+  }
+  if (args.kind === "text") {
+    return sendZapiStatus({ kind: "text", message: args.text })
+  }
+  const publicBase = resolvePublicBaseUrl()
+  if (!publicBase || !args.filename) {
+    return { ok: false, messageId: null, attempts: 0, errorMsg: "Sem APP_PUBLIC_URL ou arquivo pra publicar status de mídia" }
+  }
+  const signed = signMediaUrl(args.filename, 30 * 60).queryString
+  return sendZapiStatus({
+    kind: args.kind,
+    mediaUrlOrBase64: `${publicBase}/api/media/${args.filename}?${signed}`,
+    caption: args.text,
+  })
 }
 
 // Mais simples — quando só precisa saber se foi ou não.

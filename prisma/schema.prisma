@@ -616,3 +616,21 @@ model ChatArchive {
   @@index([userId])
   @@map("chat_archives")
 }
+
+// Status (story do WhatsApp) publicado pelo sistema — histórico do que foi
+// postado, por quem e se a Z-API aceitou. O status em si expira em 24h no
+// WhatsApp; aqui fica só o registro.
+model StatusPost {
+  id            String   @id @default(cuid())
+  kind          String   // TEXT | IMAGE | VIDEO
+  text          String   @default("") // texto do status ou legenda da mídia
+  mediaUrl      String?
+  mediaType     String?
+  createdById   String?
+  createdByName String?
+  ok            Boolean  @default(true)
+  errorMsg      String?
+  createdAt     DateTime @default(now())
+
+  @@map("status_posts")
+}
