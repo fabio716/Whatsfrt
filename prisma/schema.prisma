@@ -655,3 +655,15 @@ model Tag {
 
   @@map("tags")
 }
+
+// Base de conhecimento do Copiloto (IA) — texto livre que o admin mantém:
+// produtos, políticas, garantia, diferenciais, tom de voz. É o "cérebro FRT"
+// que a IA usa pra sugerir respostas. Singleton (uma linha só).
+model AiKnowledge {
+  id        String   @id @default("main")
+  content   String   @default("")
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("ai_knowledge")
+}

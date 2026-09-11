@@ -167,6 +167,16 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/copiloto",
+        label: "Copiloto (IA)",
+        roles: ["ADMIN"],
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3zM19 14l.85 2.3L22 17.2l-2.15.85L19 20.3l-.85-2.25L16 17.2l2.15-.9L19 14z" />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/status",
         label: "Status",
         roles: ["ADMIN"],

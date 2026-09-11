@@ -553,6 +553,38 @@ export default function ChatsClient({
   const [showArchivedChats, setShowArchivedChats] = useState(false)
   // Busca na lista de chats: nome, empresa ou telefone.
   const [chatSearch, setChatSearch] = useState("")
+  // Copiloto (IA): sugestão de resposta — a IA NUNCA envia sozinha.
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiSuggestion, setAiSuggestion] = useState("")
+  const [aiError, setAiError] = useState<string | null>(null)
+  useEffect(() => { setAiOpen(false); setAiSuggestion(""); setAiError(null) }, [activeId])
+
+  const askCopilot = async () => {
+    if (!activeId || aiLoading) return
+    setReplyingTo(null)
+    setAiOpen(true)
+    setAiLoading(true)
+    setAiError(null)
+    try {
+      const res = await fetch("/api/ai/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: activeId }),
+      })
+      const data = await res.json().catch(() => ({})) as { suggestion?: string; error?: string }
+      if (res.ok && data.suggestion) {
+        setAiSuggestion(data.suggestion)
+      } else {
+        setAiError(data.error ?? `Erro ${res.status}`)
+      }
+    } catch {
+      setAiError("Erro de rede — tente de novo.")
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   // Ficha comercial (etiquetas + notas + termômetro).
   const [showCrm, setShowCrm] = useState(false)
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([])
@@ -1828,6 +1860,55 @@ export default function ChatsClient({
 
             {/* Read-only footer / owned footer */}
             <footer className="relative flex items-center gap-2 border-t border-zinc-100 bg-white px-4 py-3">
+              {isOwner && aiOpen && (
+                <div className="absolute bottom-full left-0 right-0 border-t-2 border-violet-500 bg-violet-50 px-4 py-3">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="text-[14px]">✨</span>
+                    <span className="text-[12px] font-bold text-violet-800">Copiloto FRT — sugestão de resposta</span>
+                    <span className="hidden text-[10.5px] text-violet-500 sm:inline">baseada na conversa + ficha + conhecimento FRT</span>
+                    <button
+                      type="button"
+                      onClick={() => { setAiOpen(false); setAiSuggestion(""); setAiError(null) }}
+                      aria-label="Fechar Copiloto"
+                      className="ml-auto flex h-6 w-6 items-center justify-center rounded-full text-violet-400 hover:bg-violet-100 hover:text-violet-700"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  {aiLoading ? (
+                    <p className="rounded-xl border border-violet-200 bg-white px-3 py-3 text-[12.5px] text-violet-600">
+                      ✨ Analisando a conversa e escrevendo uma sugestão…
+                    </p>
+                  ) : aiError ? (
+                    <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[12.5px] text-red-700">{aiError}</p>
+                  ) : aiSuggestion ? (
+                    <>
+                      <div className="max-h-44 overflow-y-auto whitespace-pre-wrap rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-[12.5px] leading-relaxed text-zinc-700">
+                        {aiSuggestion}
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setInputValue(aiSuggestion); setAiOpen(false); setAiSuggestion("") }}
+                          className="rounded-lg bg-violet-600 px-3.5 py-1.5 text-[12px] font-bold text-white hover:bg-violet-700"
+                        >
+                          ✓ Usar resposta
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void askCopilot()}
+                          className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-violet-700 hover:bg-violet-100"
+                        >
+                          ↻ Gerar outra
+                        </button>
+                        <span className="ml-auto hidden text-[10px] text-violet-500 sm:inline">Revise antes de enviar — a IA nunca envia sozinha</span>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              )}
               {isOwner && replyingTo && (
                 <div className="absolute bottom-full left-0 right-0 flex items-start gap-2 border-t border-zinc-100 bg-zinc-50 px-4 py-2">
                   <div className="min-w-0 flex-1 rounded-lg border-l-4 border-emerald-500 bg-white px-2 py-1.5">
@@ -1980,6 +2061,21 @@ export default function ChatsClient({
                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void askCopilot()}
+                    disabled={aiLoading}
+                    title="Copiloto (IA): sugerir resposta"
+                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-violet-600 text-[16px] text-white shadow transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {aiLoading ? (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      "✨"
                     )}
                   </button>
                   {showTemplates && (

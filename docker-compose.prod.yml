@@ -127,6 +127,7 @@ services:
       EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
       UPLOADS_DIR: /app/private-uploads
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       # Volume privado: nada de /public/uploads. Acesso só via /api/media.
       - app_uploads:/app/private-uploads
