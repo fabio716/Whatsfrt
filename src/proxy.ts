@@ -28,6 +28,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/equipe-ao-vivo",
   "/admin/avaliacoes",
   "/admin/respostas-rapidas",
+  "/admin/status",
 ]
 
 // APIs sob /api/admin/* que AGENT tambem pode chamar. Sao endpoints que
@@ -50,8 +51,6 @@ const AGENT_ALLOWED_ADMIN_APIS = [
   // Respostas rápidas: agente só LÊ (usa no painel de disparo do Chats) —
   // POST/PATCH/DELETE são bloqueados dentro do próprio route.ts (requireAdmin).
   /^\/api\/admin\/quick-replies$/,
-  // Status (story): todos os agentes publicam (decisão 11/09/2026).
-  /^\/api\/admin\/status$/,
   /^\/api\/admin\/quick-replies\/[^/]+$/,
 ]
 

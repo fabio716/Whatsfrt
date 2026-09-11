@@ -116,6 +116,9 @@ export default function StatusPage() {
         <p className="mt-0.5 text-[12.5px] text-zinc-500">
           Publica no Status do WhatsApp da empresa (some em 24h). Só vê quem tem o número salvo na agenda.
         </p>
+        <p className="mt-2 inline-block rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12px] font-medium text-amber-800">
+          ⚠️ O status é do número da EMPRESA — todos os clientes que têm o número salvo veem. Não é um story individual.
+        </p>
       </header>
 
       <div className="mx-auto max-w-2xl px-4 py-6 md:px-8">

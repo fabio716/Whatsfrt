@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireSession, isErrorResponse } from "@/lib/auth"
+import { requireAdmin, isErrorResponse } from "@/lib/auth"
 import { sendStatus } from "@/lib/whatsapp"
 
 export const dynamic = "force-dynamic"
@@ -8,11 +8,12 @@ export const dynamic = "force-dynamic"
 // ─── Status (story do WhatsApp) ───────────────────────────────────────────────
 // GET  → histórico dos últimos publicados.
 // POST → publica um status novo (texto, imagem ou vídeo) no número da empresa.
-// Liberado pra TODOS os usuários autenticados (admin e vendedoras) — decisão
-// do Fabio em 11/09/2026.
+// SÓ ADMIN (decisão do Fabio em 11/09/2026, revisada no mesmo dia): o status
+// é do NÚMERO DA EMPRESA — todo cliente com o número salvo vê. Liberar pra
+// todo mundo gerou confusão (agentes achando que era story individual).
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireSession(request)
+  const auth = await requireAdmin(request)
   if (isErrorResponse(auth)) return auth
 
   const posts = await prisma.statusPost.findMany({
@@ -30,7 +31,7 @@ interface PostBody {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireSession(request)
+  const auth = await requireAdmin(request)
   if (isErrorResponse(auth)) return auth
 
   let body: PostBody
