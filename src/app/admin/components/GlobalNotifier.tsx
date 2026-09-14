@@ -19,6 +19,22 @@ export interface NotifyCounts {
   clients: number
 }
 
+// Preferências de aviso por pessoa (ficam no navegador dela). Cada chave
+// controla badge + aviso na tela + som + notificação do navegador.
+export interface NotifyPrefs {
+  internal: boolean   // mensagens da equipe (chat interno)
+  clients: boolean    // mensagens de clientes
+  sound: boolean      // bip
+}
+
+export const NOTIFY_PREFS_KEY = "whatsfrt:notify-prefs"
+
+// Admin não atende cliente (modo supervisão) — com 900+ contatos o aviso de
+// cliente viraria ruído constante, então já começa desligado pra ele.
+export function defaultPrefs(role: "ADMIN" | "AGENT"): NotifyPrefs {
+  return { internal: true, clients: role !== "ADMIN", sound: true }
+}
+
 interface Toast {
   id: number
   kind: "internal" | "client"
@@ -52,7 +68,8 @@ function beep(): void {
 
 export default function GlobalNotifier({
   onCounts,
-}: Readonly<{ onCounts: (c: NotifyCounts) => void }>) {
+  prefs,
+}: Readonly<{ onCounts: (c: NotifyCounts) => void; prefs: NotifyPrefs }>) {
   const pathname = usePathname()
   const router = useRouter()
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -60,6 +77,8 @@ export default function GlobalNotifier({
   const clientsRef = useRef(0)
   const pathRef = useRef(pathname)
   useEffect(() => { pathRef.current = pathname }, [pathname])
+  const prefsRef = useRef(prefs)
+  useEffect(() => { prefsRef.current = prefs }, [prefs])
 
   const publish = useCallback(() => {
     onCounts({ internal: internalRef.current, clients: clientsRef.current })
@@ -80,7 +99,9 @@ export default function GlobalNotifier({
       const data = await res.json() as { internalUnread: number }
       // Na própria tela de Mensagens o badge não faz sentido (ela marca como
       // lido ao abrir a conversa) — evita badge "fantasma".
-      internalRef.current = pathRef.current.startsWith("/admin/mensagens") ? 0 : data.internalUnread
+      internalRef.current = (!prefsRef.current.internal || pathRef.current.startsWith("/admin/mensagens"))
+        ? 0
+        : data.internalUnread
       publish()
     } catch {
       // rede instável — tenta de novo no próximo ciclo
@@ -92,6 +113,12 @@ export default function GlobalNotifier({
     const t = setInterval(() => void loadCounts(), 60_000)
     return () => clearInterval(t)
   }, [loadCounts])
+
+  // Desligou o aviso? Some o contador na hora. Ligou o da equipe? Recarrega.
+  useEffect(() => {
+    if (!prefs.internal) { internalRef.current = 0; publish() } else { void loadCounts() }
+    if (!prefs.clients) { clientsRef.current = 0; publish() }
+  }, [prefs.internal, prefs.clients, publish, loadCounts])
 
   // Ao entrar na tela correspondente, zera o contador daquele tipo.
   useEffect(() => {
@@ -116,13 +143,14 @@ export default function GlobalNotifier({
 
         // ── Mensagem interna da equipe ──
         if (p.type === "internal_message") {
+          if (!prefsRef.current.internal) return // avisado desligado por ela
           const d = p.data as { conversationId?: string; senderName?: string; body?: string; mediaType?: string | null }
           if (pathRef.current.startsWith("/admin/mensagens")) return // a própria tela cuida
           internalRef.current += 1
           publish()
           const quem = d.senderName || "Equipe"
           const texto = d.mediaType ? "📎 Anexo" : (d.body || "Nova mensagem")
-          beep()
+          if (prefsRef.current.sound) beep()
           pushToast({ kind: "internal", title: `💬 ${quem}`, body: texto, href: "/admin/mensagens" })
           notifyDesktop(`${quem} (equipe)`, texto, { tag: "interno-global", force: true, onClick: () => router.push("/admin/mensagens") })
           return
@@ -130,6 +158,7 @@ export default function GlobalNotifier({
 
         // ── Mensagem nova de cliente ──
         if (p.type === "new_message") {
+          if (!prefsRef.current.clients) return // aviso de cliente desligado
           const d = p.data as { direction?: string; body?: string; mediaType?: string | null; contact?: { id?: string; name?: string } }
           if (d.direction !== "INBOUND") return // só o que o cliente manda
           if (pathRef.current.startsWith("/admin/chats")) return // a própria tela cuida
@@ -137,7 +166,7 @@ export default function GlobalNotifier({
           publish()
           const quem = d.contact?.name || "Cliente"
           const texto = d.mediaType ? "📎 Mídia" : (d.body || "Nova mensagem")
-          beep()
+          if (prefsRef.current.sound) beep()
           pushToast({
             kind: "client",
             title: `🟢 ${quem}`,

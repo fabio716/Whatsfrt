@@ -1,7 +1,10 @@
 "use client"
 
+import { useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { APP_VERSION } from "@/lib/version"
+import type { NotifyPrefs } from "./GlobalNotifier"
+
 
 type Role = "ADMIN" | "AGENT"
 
@@ -246,15 +249,20 @@ export default function AdminNav({
   isOpen = false,
   onNavigate,
   badges = {},
+  prefs,
+  onPrefsChange,
 }: Readonly<{
   userRole: Role
   isOpen?: boolean
   onNavigate?: () => void
   // Contagem de não lidas por href — mostra bolinha vermelha no item.
   badges?: Record<string, number>
+  prefs?: NotifyPrefs | null
+  onPrefsChange?: (patch: Partial<NotifyPrefs>) => void
 }>) {
   const pathname = usePathname()
   const router = useRouter()
+  const [showPrefs, setShowPrefs] = useState(false)
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" })
@@ -319,8 +327,50 @@ export default function AdminNav({
         ))}
       </div>
 
-      {/* Footer — user + logout */}
+      {/* Footer — preferências de aviso + logout */}
       <div className="border-t border-zinc-100 px-2 py-3">
+        {prefs && onPrefsChange && (
+          <>
+            {showPrefs && (
+              <div className="mb-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2.5">
+                <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                  Avisar sobre
+                </p>
+                {([
+                  ["internal", "💬 Mensagens da equipe"],
+                  ["clients", "🟢 Mensagens de clientes"],
+                  ["sound", "🔊 Som de aviso"],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onPrefsChange({ [key]: !prefs[key] })}
+                    className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-[12px] text-zinc-600 hover:bg-white"
+                  >
+                    <span className="flex-1">{label}</span>
+                    <span className={`relative h-4 w-7 flex-shrink-0 rounded-full transition-colors ${prefs[key] ? "bg-emerald-500" : "bg-zinc-300"}`}>
+                      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${prefs[key] ? "left-3.5" : "left-0.5"}`} />
+                    </span>
+                  </button>
+                ))}
+                <p className="mt-1 px-1 text-[10px] leading-snug text-zinc-400">
+                  Vale só neste computador/navegador.
+                </p>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowPrefs((v) => !v)}
+              className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0a3 3 0 11-6 0" />
+              </svg>
+              <span className="flex-1 text-left">Notificações</span>
+              <span className="text-[10px] text-zinc-400">{showPrefs ? "▾" : "▸"}</span>
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={() => void handleLogout()}

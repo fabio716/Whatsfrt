@@ -1,10 +1,10 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import AdminNav from "./AdminNav"
 import EvolutionStatusBanner from "./EvolutionStatusBanner"
 import NotificationsPrompt from "./NotificationsPrompt"
-import GlobalNotifier, { type NotifyCounts } from "./GlobalNotifier"
+import GlobalNotifier, { type NotifyCounts, type NotifyPrefs, NOTIFY_PREFS_KEY, defaultPrefs } from "./GlobalNotifier"
 
 type Role = "ADMIN" | "AGENT"
 
@@ -20,6 +20,28 @@ export default function AdminShell({
   const [counts, setCounts] = useState<NotifyCounts>({ internal: 0, clients: 0 })
   const handleCounts = useCallback((c: NotifyCounts) => setCounts(c), [])
 
+  // Preferências de aviso — padrão por perfil (admin sem aviso de cliente),
+  // ajustável por cada pessoa e guardado no navegador dela.
+  const [prefs, setPrefs] = useState<NotifyPrefs | null>(null)
+  useEffect(() => {
+    let base = defaultPrefs(userRole)
+    try {
+      const raw = localStorage.getItem(NOTIFY_PREFS_KEY)
+      if (raw) base = { ...base, ...(JSON.parse(raw) as Partial<NotifyPrefs>) }
+    } catch {
+      // preferência corrompida — segue com o padrão do perfil
+    }
+    setPrefs(base)
+  }, [userRole])
+
+  const updatePrefs = useCallback((patch: Partial<NotifyPrefs>) => {
+    setPrefs((prev) => {
+      const next = { ...(prev ?? defaultPrefs(userRole)), ...patch }
+      try { localStorage.setItem(NOTIFY_PREFS_KEY, JSON.stringify(next)) } catch { /* modo privado */ }
+      return next
+    })
+  }, [userRole])
+
   return (
     <div className="flex h-screen overflow-hidden bg-white">
       {/* Backdrop (só no celular, quando a gaveta está aberta) */}
@@ -32,13 +54,15 @@ export default function AdminShell({
         />
       )}
 
-      <GlobalNotifier onCounts={handleCounts} />
+      {prefs && <GlobalNotifier onCounts={handleCounts} prefs={prefs} />}
 
       <AdminNav
         userRole={userRole}
         isOpen={menuOpen}
         onNavigate={() => setMenuOpen(false)}
         badges={{ "/admin/mensagens": counts.internal, "/admin/chats": counts.clients }}
+        prefs={prefs}
+        onPrefsChange={updatePrefs}
       />
 
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
