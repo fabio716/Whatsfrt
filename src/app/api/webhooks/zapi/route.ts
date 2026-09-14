@@ -211,6 +211,19 @@ async function downloadMediaToBuffer(url: string): Promise<Buffer | null> {
   return safeFetchBuffer(url)
 }
 
+// A CDN de mídia da Z-API (Backblaze) falha de forma INTERMITENTE com erro
+// de rede ("fetch failed") — repetir imediatamente quase nunca resolve, mas
+// com uma pausa costuma resolver. Até 4 tentativas com espera crescente.
+async function downloadWithRetries(url: string): Promise<Buffer | null> {
+  const delaysMs = [0, 2000, 5000, 10000]
+  for (const delay of delaysMs) {
+    if (delay) await new Promise((r) => setTimeout(r, delay))
+    const buf = await downloadMediaToBuffer(url)
+    if (buf && buf.length > 0) return buf
+  }
+  return null
+}
+
 // ─── Lead do site ────────────────────────────────────────────────────────────
 // Toda conversa iniciada pelo botão de WhatsApp do site frtautomacao.com.br
 // vai DIRETO pra agente do site (Amanda), SEM EXCEÇÃO — mesmo que o contato
@@ -322,10 +335,7 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
   let mediaLost = false
   const rawMedia = extractMediaUrl(p)
   if (rawMedia) {
-    let buf = await downloadMediaToBuffer(rawMedia.url)
-    if (!buf || buf.length === 0) {
-      buf = await downloadMediaToBuffer(rawMedia.url)
-    }
+    const buf = await downloadWithRetries(rawMedia.url)
     if (buf && buf.length > 0) {
       try {
         const saved = await saveMediaBuffer(buf, rawMedia.mimetype, rawMedia.fileName)
@@ -342,7 +352,7 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     } else {
       mediaLost = true
       console.error(
-        `[zapi-webhook] FALHA AO BAIXAR mídia (2 tentativas) messageId=${p.messageId} ` +
+        `[zapi-webhook] FALHA AO BAIXAR mídia (4 tentativas) messageId=${p.messageId} ` +
         `tipo=${rawMedia.mimetype} url=${rawMedia.url.slice(0, 120)}`,
       )
     }
