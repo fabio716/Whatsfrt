@@ -49,7 +49,9 @@ export default function LoginPage() {
         <div className="overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-xl shadow-zinc-200/40">
           <div className="h-[3px] bg-gradient-to-r from-emerald-500 to-emerald-700" />
 
-          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5 p-8">
+          {/* autoComplete off: sistema compartilhado entre vendedoras no mesmo
+            computador — o navegador não deve gravar nem preencher credenciais. */}
+        <form onSubmit={(e) => void handleSubmit(e)} autoComplete="off" className="space-y-5 p-8">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-zinc-700" htmlFor="email">
                 E-mail
@@ -57,7 +59,7 @@ export default function LoginPage() {
               <input
                 id="email"
                 type="email"
-                autoComplete="email"
+                autoComplete="off"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -73,7 +75,7 @@ export default function LoginPage() {
               <input
                 id="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

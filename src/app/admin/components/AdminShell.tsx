@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import AdminNav from "./AdminNav"
 import EvolutionStatusBanner from "./EvolutionStatusBanner"
 import NotificationsPrompt from "./NotificationsPrompt"
+import GlobalNotifier, { type NotifyCounts } from "./GlobalNotifier"
 
 type Role = "ADMIN" | "AGENT"
 
@@ -14,6 +15,10 @@ export default function AdminShell({
   children,
 }: Readonly<{ userRole: Role; children: React.ReactNode }>) {
   const [menuOpen, setMenuOpen] = useState(false)
+  // Contadores de não lidas (interno e clientes) — alimentados pelo
+  // notificador global, que escuta em qualquer tela.
+  const [counts, setCounts] = useState<NotifyCounts>({ internal: 0, clients: 0 })
+  const handleCounts = useCallback((c: NotifyCounts) => setCounts(c), [])
 
   return (
     <div className="flex h-screen overflow-hidden bg-white">
@@ -27,7 +32,14 @@ export default function AdminShell({
         />
       )}
 
-      <AdminNav userRole={userRole} isOpen={menuOpen} onNavigate={() => setMenuOpen(false)} />
+      <GlobalNotifier onCounts={handleCounts} />
+
+      <AdminNav
+        userRole={userRole}
+        isOpen={menuOpen}
+        onNavigate={() => setMenuOpen(false)}
+        badges={{ "/admin/mensagens": counts.internal, "/admin/chats": counts.clients }}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Barra superior — só no celular */}

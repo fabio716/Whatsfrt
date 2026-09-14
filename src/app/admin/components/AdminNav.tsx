@@ -245,7 +245,14 @@ export default function AdminNav({
   userRole,
   isOpen = false,
   onNavigate,
-}: Readonly<{ userRole: Role; isOpen?: boolean; onNavigate?: () => void }>) {
+  badges = {},
+}: Readonly<{
+  userRole: Role
+  isOpen?: boolean
+  onNavigate?: () => void
+  // Contagem de não lidas por href — mostra bolinha vermelha no item.
+  badges?: Record<string, number>
+}>) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -298,7 +305,12 @@ export default function AdminNav({
                     }`}
                   >
                     {item.icon}
-                    {item.label}
+                    <span className="flex-1">{item.label}</span>
+                    {(badges[itemPath] ?? 0) > 0 && (
+                      <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {badges[itemPath] > 99 ? "99+" : badges[itemPath]}
+                      </span>
+                    )}
                   </a>
                 )
               })}
