@@ -1860,7 +1860,7 @@ export default function ChatsClient({
 
             {/* Read-only footer / owned footer */}
             <footer className="relative flex items-center gap-2 border-t border-zinc-100 bg-white px-4 py-3">
-              {isOwner && aiOpen && (
+              {(isOwner || !isAgent) && aiOpen && (
                 <div className="absolute bottom-full left-0 right-0 border-t-2 border-violet-500 bg-violet-50 px-4 py-3">
                   <div className="mb-1.5 flex items-center gap-2">
                     <span className="text-[14px]">✨</span>
@@ -1889,13 +1889,27 @@ export default function ChatsClient({
                         {aiSuggestion}
                       </div>
                       <div className="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => { setInputValue(aiSuggestion); setAiOpen(false); setAiSuggestion("") }}
-                          className="rounded-lg bg-violet-600 px-3.5 py-1.5 text-[12px] font-bold text-white hover:bg-violet-700"
-                        >
-                          ✓ Usar resposta
-                        </button>
+                        {isOwner ? (
+                          <button
+                            type="button"
+                            onClick={() => { setInputValue(aiSuggestion); setAiOpen(false); setAiSuggestion("") }}
+                            className="rounded-lg bg-violet-600 px-3.5 py-1.5 text-[12px] font-bold text-white hover:bg-violet-700"
+                          >
+                            ✓ Usar resposta
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(aiSuggestion)
+                                .then(() => alert("Sugestão copiada! Cole onde precisar."))
+                                .catch(() => alert("Não foi possível copiar — selecione o texto e copie manualmente."))
+                            }}
+                            className="rounded-lg bg-violet-600 px-3.5 py-1.5 text-[12px] font-bold text-white hover:bg-violet-700"
+                          >
+                            ⧉ Copiar texto
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => void askCopilot()}
@@ -2160,6 +2174,18 @@ export default function ChatsClient({
                   <span className="flex-1 text-[12px] text-zinc-500">
                     Modo supervisão (admin). Você vê a conversa mas não pode responder — use <b>&ldquo;…&rdquo;</b> pra transferir.
                   </span>
+                  {/* Admin não responde, mas precisa poder TESTAR o Copiloto e
+                      calibrar a base de conhecimento — a sugestão sai como
+                      texto pra copiar (ou repassar pra vendedora). */}
+                  <button
+                    type="button"
+                    onClick={() => void askCopilot()}
+                    disabled={aiLoading}
+                    title="Copiloto (IA): gerar sugestão de resposta (só pra você ver/copiar)"
+                    className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {aiLoading ? "✨ Gerando…" : "✨ Sugerir resposta"}
+                  </button>
                 </div>
               )}
             </footer>
