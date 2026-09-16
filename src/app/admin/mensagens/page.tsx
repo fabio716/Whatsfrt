@@ -187,6 +187,10 @@ export default function MensagensPage() {
   const [replyingTo, setReplyingTo] = useState<Msg | null>(null)
   // Mostrar a lista de conversas arquivadas (igual WhatsApp).
   const [showArchived, setShowArchived] = useState(false)
+  // Painel "participantes do grupo": adicionar/remover gente em grupo já criado.
+  const [showMembers, setShowMembers] = useState(false)
+  const [memberBusy, setMemberBusy] = useState(false)
+  const [pickMembers, setPickMembers] = useState<Set<string>>(new Set())
   // Clicar na citação rola até a mensagem original e dá um "flash" nela.
   const [flashMsgId, setFlashMsgId] = useState<string | null>(null)
   const jumpToMessage = (msgId: string) => {
@@ -418,6 +422,66 @@ export default function MensagensPage() {
       alert(`Erro de rede: ${err instanceof Error ? err.message : "desconhecido"}`)
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  // ── Participantes do grupo ──
+  const openMembers = async () => {
+    setPickMembers(new Set())
+    setShowMembers(true)
+    if (users.length === 0) {
+      const res = await fetch("/api/internal/users")
+      if (res.ok) setUsers(await res.json() as UserOpt[])
+    }
+  }
+
+  const addMembers = async () => {
+    if (!activeId || pickMembers.size === 0 || memberBusy) return
+    setMemberBusy(true)
+    try {
+      const res = await fetch(`/api/internal/conversations/${activeId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds: [...pickMembers] }),
+      })
+      const data = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok) {
+        if (!handleSessionExpired(res.status)) alert(data.error ?? "Não foi possível adicionar")
+        return
+      }
+      setShowMembers(false)
+      setPickMembers(new Set())
+      await loadConversations()
+      await loadMessages(activeId)
+    } finally {
+      setMemberBusy(false)
+    }
+  }
+
+  const removeMember = async (userId: string, nome: string) => {
+    if (!activeId || memberBusy) return
+    const sou = userId === myUserId
+    if (!confirm(sou ? "Sair deste grupo?" : `Remover ${nome} do grupo?`)) return
+    setMemberBusy(true)
+    try {
+      const res = await fetch(`/api/internal/conversations/${activeId}/members?userId=${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+      })
+      const data = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok) {
+        if (!handleSessionExpired(res.status)) alert(data.error ?? "Não foi possível remover")
+        return
+      }
+      if (sou) {
+        setShowMembers(false)
+        setActiveId(null)
+        setMessages([])
+      } else {
+        await loadMessages(activeId)
+      }
+      await loadConversations()
+    } finally {
+      setMemberBusy(false)
     }
   }
 
@@ -700,6 +764,18 @@ export default function MensagensPage() {
                   {active.isGroup ? `${active.memberCount} participantes · ${active.memberNames.join(", ")}` : "Conversa direta"}
                 </p>
               </div>
+              {active.isGroup && (
+                <button
+                  type="button"
+                  onClick={() => void openMembers()}
+                  title="Participantes do grupo"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.36-1.86M17 20H7m10 0v-2c0-.66-.13-1.3-.36-1.86m0 0A5 5 0 007 18v2m10-10a3 3 0 11-6 0 3 3 0 016 0zm6 3h-3m1.5-1.5v3" />
+                  </svg>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void clearConversation(active.id)}
@@ -1095,6 +1171,87 @@ export default function MensagensPage() {
       </section>
 
       {/* ── Modal: nova conversa ── */}
+      {/* ── Participantes do grupo ── */}
+      {showMembers && active?.isGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <button type="button" aria-label="Fechar" className="absolute inset-0 cursor-default bg-black/30 backdrop-blur-sm" onClick={() => setShowMembers(false)} />
+          <div className="relative w-full max-w-md rounded-2xl border border-zinc-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+              <h2 className="text-[14px] font-semibold text-zinc-900">👥 Participantes de &ldquo;{active.name}&rdquo;</h2>
+              <button type="button" onClick={() => setShowMembers(false)} className="text-zinc-400 hover:text-zinc-600">✕</button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto p-5">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                No grupo ({active.members.length})
+              </p>
+              <div className="mb-4 space-y-1">
+                {active.members.map((m) => (
+                  <div key={m.id} className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-zinc-50">
+                    <Avatar name={m.name} photoUrl={null} size="h-8 w-8" fallback="bg-emerald-100 text-emerald-700 text-[11px] font-semibold" />
+                    <span className="flex-1 text-[13px] font-medium text-zinc-800">
+                      {m.name}{m.id === myUserId && <span className="ml-1 text-[11px] font-normal text-zinc-400">(você)</span>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void removeMember(m.id, m.name)}
+                      disabled={memberBusy}
+                      className="rounded-lg px-2 py-1 text-[11px] font-semibold text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                    >
+                      {m.id === myUserId ? "Sair" : "Remover"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Adicionar ao grupo</p>
+              {(() => {
+                const jaNoGrupo = new Set(active.members.map((m) => m.id))
+                const disponiveis = users.filter((u) => !jaNoGrupo.has(u.id))
+                if (disponiveis.length === 0) {
+                  return <p className="py-3 text-center text-[12px] text-zinc-400">Todos os colegas já estão neste grupo.</p>
+                }
+                return (
+                  <div className="space-y-1">
+                    {disponiveis.map((u) => (
+                      <label key={u.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-zinc-50">
+                        <input
+                          type="checkbox"
+                          checked={pickMembers.has(u.id)}
+                          onChange={() => setPickMembers((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(u.id)) next.delete(u.id); else next.add(u.id)
+                            return next
+                          })}
+                          className="h-4 w-4 rounded border-zinc-300 accent-emerald-500"
+                        />
+                        <Avatar name={u.name} photoUrl={u.photoUrl} size="h-8 w-8" fallback="bg-zinc-100 text-zinc-600 text-[11px] font-semibold" />
+                        <span className="flex-1">
+                          <span className="block text-[13px] font-medium text-zinc-800">{u.name}</span>
+                          <span className="block text-[11px] text-zinc-400">{u.role === "ADMIN" ? "Admin" : "Vendedor"}{u.department ? ` · ${u.department}` : ""}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-t border-zinc-100 px-5 py-3">
+              <p className="text-[10.5px] text-zinc-400">Quem entrar vê o histórico do grupo.</p>
+              <button
+                type="button"
+                onClick={() => void addMembers()}
+                disabled={pickMembers.size === 0 || memberBusy}
+                className="rounded-lg bg-emerald-500 px-4 py-2 text-[12px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-40"
+              >
+                {memberBusy ? "Adicionando…" : `Adicionar (${pickMembers.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showNew && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <button type="button" aria-label="Fechar" className="absolute inset-0 cursor-default bg-black/30 backdrop-blur-sm" onClick={() => setShowNew(false)} />
