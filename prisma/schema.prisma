@@ -91,9 +91,10 @@ model User {
   // Foto de perfil do próprio usuário (interna) — mostrada no chat da equipe.
   photoUrl     String?
   // Limite diário de mensagens OUTBOUND iniciadas por este usuário.
-  // Protege contra anti-spam do WhatsApp. Admin pode ajustar em /admin/users.
-  // 0 = ilimitado.
-  dailyMessageLimit Int    @default(150)
+  // 0 = ILIMITADO, que é o padrão desde 16/09/2026: o teto de 150 travava
+  // vendedora em dia de movimento (a Maria Isabel bateu 169). O admin pode
+  // definir um teto por pessoa em /admin/users quando precisar.
+  dailyMessageLimit Int    @default(0)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 

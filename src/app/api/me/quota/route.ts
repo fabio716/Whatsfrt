@@ -15,7 +15,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     where: { id: session.id },
     select: { dailyMessageLimit: true },
   })
-  const limit = user?.dailyMessageLimit ?? 150
+  const limit = user?.dailyMessageLimit ?? 0
   const sent = await getDailyMessageCount(session.id)
 
   return NextResponse.json({
