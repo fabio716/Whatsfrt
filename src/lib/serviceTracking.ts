@@ -102,6 +102,7 @@ export async function assignAgent(
     where: { id: contactId },
     data: {
       assignedUserId: agentId,
+      lastAgentUserId: agentId, // nunca zerado — garante o histórico visível
       chatStatus: ChatStatus.IN_SERVICE,
       inServiceSince: now,
       pendingDepartment: null,

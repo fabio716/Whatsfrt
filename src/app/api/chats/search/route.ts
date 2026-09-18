@@ -28,12 +28,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const rows = await prisma.contact.findMany({
     where: {
       deletedAt: null,
-      ...(me.role === "AGENT" ? { assignedUserId: me.id } : {}),
-      OR: [
+      // Encerrar o atendimento zera assignedUserId (o contato volta ao pool),
+      // então a carteira "de hoje" não basta: sem lastAgentUserId a agente
+      // perdia de vista tudo que ela mesma já tinha atendido.
+      ...(me.role === "AGENT"
+        ? { OR: [{ assignedUserId: me.id }, { lastAgentUserId: me.id }] }
+        : {}),
+      AND: [{ OR: [
         { name: { contains: q, mode: "insensitive" } },
         { empresa: { contains: q, mode: "insensitive" } },
         ...(digits.length >= 3 ? [{ whatsappId: { contains: digits } }] : []),
-      ],
+      ] }],
     },
     orderBy: { updatedAt: "desc" },
     take: 30,

@@ -132,6 +132,13 @@ model Contact {
   chatStatus      ChatStatus @default(IDLE)
   assignedUserId  String?
   assignedUser    User?      @relation("AssignedContacts", fields: [assignedUserId], references: [id])
+
+  // Quem atendeu por ÚLTIMO. Diferente de assignedUserId, este campo nunca é
+  // zerado: encerrar o atendimento (ou o cliente dar a nota) devolve o contato
+  // ao pool, mas a agente continua achando a conversa pela busca. Sem isso a
+  // conversa desaparecia da tela dela no encerramento e parecia que o sistema
+  // tinha apagado o histórico (relato da Joana, 18/09/2026).
+  lastAgentUserId String?
   cooperativeId   String?
   cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id])
 

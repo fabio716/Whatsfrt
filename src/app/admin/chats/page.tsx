@@ -44,7 +44,12 @@ export default async function ChatsPage(
     ? {
         id: requestedContactId,
         deletedAt: null,
-        ...(isAgent ? { assignedUserId: session.id } : {}),
+        // Aceita também o que a agente atendeu antes (lastAgentUserId): depois
+        // do encerramento o assignedUserId fica nulo e ela não conseguia nem
+        // reabrir a própria conversa pelo link da busca.
+        ...(isAgent
+          ? { OR: [{ assignedUserId: session.id }, { lastAgentUserId: session.id }] }
+          : {}),
       }
     : null
 
@@ -58,8 +63,12 @@ export default async function ChatsPage(
       orderBy: { updatedAt: "desc" },
     }),
     requestedWhere
-      ? prisma.contact.findUnique({
-          where: { id: requestedContactId! },
+      // findFirst (e não findUnique) porque o requestedWhere carrega o filtro
+      // de visibilidade. Antes era findUnique só pelo id e o requestedWhere era
+      // montado mas nunca usado — qualquer agente abria o chat de qualquer
+      // contato digitando ?contact=<id> na URL.
+      ? prisma.contact.findFirst({
+          where: requestedWhere,
           include: {
             messages: { orderBy: { createdAt: "asc" } },
             tags: { select: { id: true, name: true, color: true }, orderBy: { name: "asc" } },

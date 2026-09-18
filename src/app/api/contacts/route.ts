@@ -63,6 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       empresa,
       cidade,
       assignedUserId: session.id,
+      lastAgentUserId: session.id,
       chatStatus: "IDLE",
     },
     update: {
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ...(empresa !== null ? { empresa } : {}),
       ...(cidade !== null ? { cidade } : {}),
       assignedUserId: session.id,
+      lastAgentUserId: session.id,
       deletedAt: null,
     },
     select: { id: true, name: true, whatsappId: true, empresa: true, cidade: true },

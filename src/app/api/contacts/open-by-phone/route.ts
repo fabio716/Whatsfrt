@@ -47,7 +47,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!contact.assignedUserId) {
       await prisma.contact.update({
         where: { id: contact.id },
-        data: { assignedUserId: auth.id },
+        data: { assignedUserId: auth.id, lastAgentUserId: auth.id },
       })
     }
   }

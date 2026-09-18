@@ -303,6 +303,7 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
           where: { id: contact.id },
           data: {
             assignedUserId: siteAgent.id,
+            lastAgentUserId: siteAgent.id,
             chatStatus: ChatStatus.IN_SERVICE,
             inServiceSince: new Date(),
             pendingDepartment: null,

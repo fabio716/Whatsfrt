@@ -52,6 +52,7 @@ export async function POST(
       where: { id },
       data: {
         assignedUserId: session.id,
+        lastAgentUserId: session.id,
         ...(fromAnotherAgent ? { historyResetAt: new Date() } : {}),
       },
     }),

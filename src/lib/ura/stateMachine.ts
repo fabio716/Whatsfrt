@@ -167,6 +167,7 @@ export class UraStateMachine {
       where: { whatsappId },
       data: {
         assignedUserId: assignment.userId || null,
+        ...(assignment.userId ? { lastAgentUserId: assignment.userId } : {}),
         chatStatus: assignment.userId ? "IN_SERVICE" : "WAITING_AGENT",
       },
     })
