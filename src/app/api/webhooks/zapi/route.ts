@@ -51,6 +51,9 @@ interface ZapiTextPayload {
   video?: { videoUrl?: string; mimeType?: string; caption?: string }
   audio?: { audioUrl?: string; mimeType?: string }
   document?: { documentUrl?: string; mimeType?: string; fileName?: string; caption?: string }
+  // Figurinha. A Z-API manda como objeto ({stickerUrl}) e, em algumas
+  // versões, a URL crua numa string — daí os dois formatos aqui.
+  sticker?: { stickerUrl?: string; mimeType?: string } | string
   // Cliente compartilhou um contato do WhatsApp (cartão de visita/vCard) —
   // sem tratar isso a mensagem chegava sem body e sem media, virando um
   // balão vazio na tela do agente.
@@ -156,6 +159,13 @@ function extractMediaUrl(p: ZapiTextPayload): { url: string; mimetype: string; f
   if (p.video?.videoUrl) return { url: p.video.videoUrl, mimetype: p.video.mimeType ?? "video/mp4", caption: p.video.caption }
   if (p.audio?.audioUrl) return { url: p.audio.audioUrl, mimetype: p.audio.mimeType ?? "audio/ogg" }
   if (p.document?.documentUrl) return { url: p.document.documentUrl, mimetype: p.document.mimeType ?? "application/octet-stream", fileName: p.document.fileName, caption: p.document.caption }
+  // Figurinha: sem isso a mensagem chegava sem texto e sem mídia e a vendedora
+  // via uma bolha VAZIA no chat, sem saber que o cliente tinha mandado algo.
+  if (p.sticker) {
+    const url = typeof p.sticker === "string" ? p.sticker : p.sticker.stickerUrl
+    const mime = typeof p.sticker === "string" ? undefined : p.sticker.mimeType
+    if (url) return { url, mimetype: mime ?? "image/webp" }
+  }
   return null
 }
 
@@ -370,7 +380,8 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     })
     if (original) {
       const preview = original.body?.trim()
-        || (original.mediaType?.startsWith("image/") ? "🖼️ Imagem"
+        || (original.mediaType === "image/webp" ? "🧩 Figurinha"
+          : original.mediaType?.startsWith("image/") ? "🖼️ Imagem"
           : original.mediaType?.startsWith("video/") ? "🎬 Vídeo"
           : original.mediaType?.startsWith("audio/") ? "🎤 Áudio"
           : original.mediaType ? "📎 Arquivo" : "")
@@ -383,13 +394,20 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
   }
 
   // Aviso visível no chat quando a mídia se perdeu.
-  const mediaKind = rawMedia?.mimetype.startsWith("image/") ? "uma imagem"
+  const mediaKind = rawMedia?.mimetype === "image/webp" ? "uma figurinha"
+    : rawMedia?.mimetype.startsWith("image/") ? "uma imagem"
     : rawMedia?.mimetype.startsWith("video/") ? "um vídeo"
     : rawMedia?.mimetype.startsWith("audio/") ? "um áudio"
     : "um arquivo"
   const finalText = mediaLost && !messageText
     ? `⚠️ O cliente enviou ${mediaKind}, mas não foi possível baixar. Peça para reenviar.`
-    : messageText
+    // Sem texto, sem mídia e sem falha de download = tipo de mensagem que ainda
+    // não sabemos ler (foi o caso da figurinha até 18/09/2026: localização,
+    // enquete e afins caem aqui). Antes a vendedora via uma bolha VAZIA, sem
+    // pista de que o cliente tinha mandado algo. Melhor dizer o que houve.
+    : (!messageText && !media && !rawMedia)
+      ? "⚠️ O cliente enviou um tipo de mensagem que o sistema ainda não mostra (figurinha, localização, enquete…). Veja no celular da empresa se precisar."
+      : messageText
 
   // 3 — Cria Message com dedupe por messageId (whatsappKeyId)
   let saved

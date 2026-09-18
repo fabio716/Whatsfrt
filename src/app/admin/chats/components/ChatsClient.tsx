@@ -93,12 +93,20 @@ const TAG_COLORS = ["#10b981", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ef4444", "#ec4
 
 function MediaBubble({ mediaUrl, mediaType, body }: Readonly<{ mediaUrl: string; mediaType: string; body: string }>) {
   const [expanded, setExpanded] = useState(false)
+  // Figurinha (webp): menor e sem recorte. Com object-cover ela sairia cortada
+  // e do tamanho de uma foto, o que não é o que o cliente mandou.
+  const isFigurinha = mediaType === "image/webp"
   if (mediaType.startsWith("image/")) {
     return (
       <>
         <div className="space-y-1">
           <button type="button" onClick={() => setExpanded(true)} className="block cursor-zoom-in">
-            <img src={mediaUrl} alt={body || "imagem"} className="max-h-48 max-w-xs rounded-xl object-cover" loading="lazy" />
+            <img
+              src={mediaUrl}
+              alt={body || (isFigurinha ? "figurinha" : "imagem")}
+              className={isFigurinha ? "max-h-32 max-w-[128px] object-contain" : "max-h-48 max-w-xs rounded-xl object-cover"}
+              loading="lazy"
+            />
           </button>
           {body && <p className="text-[13px] leading-relaxed">{body}</p>}
         </div>
@@ -240,6 +248,7 @@ type ChatRenderItem = { kind: "single"; msg: MessageData } | { kind: "album"; ms
 const ALBUM_MAX_GAP_MS = 3 * 60 * 1000
 
 function isChatAlbumCandidate(m: MessageData): boolean {
+  if (m.mediaType === "image/webp") return false // figurinha não vira álbum
   return Boolean(m.mediaType?.startsWith("image/") && m.mediaUrl && !m.body && !m.myReaction && !m.theirReaction && !m.quotedBody)
 }
 
@@ -2015,7 +2024,8 @@ export default function ChatsClient({
                     </p>
                     <p className="line-clamp-2 whitespace-pre-wrap break-words text-[12px] text-zinc-500">
                       {replyingTo.body?.trim()
-                        || (replyingTo.mediaType?.startsWith("image/") ? "🖼️ Imagem"
+                        || (replyingTo.mediaType === "image/webp" ? "🧩 Figurinha"
+                          : replyingTo.mediaType?.startsWith("image/") ? "🖼️ Imagem"
                           : replyingTo.mediaType?.startsWith("audio/") ? "🎤 Áudio"
                           : replyingTo.mediaType?.startsWith("video/") ? "🎬 Vídeo"
                           : replyingTo.mediaType ? "📎 Arquivo" : "")}
