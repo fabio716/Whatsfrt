@@ -10,6 +10,18 @@ import { handleSessionExpired } from "@/lib/sessionGuard"
 
 type Agent = { id: string; name: string }
 
+// Resultado da busca no histórico completo (GET /api/chats/search).
+// É só o cabeçalho da conversa — ao clicar, a tela abre o contato pela
+// URL ?contact=<id>, que já carrega TODAS as mensagens dele.
+type OldChatResult = {
+  id: string
+  name: string
+  empresa: string | null
+  whatsappId: string
+  lastAt: string
+  lastBody: string
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatTime(iso: string): string {
@@ -553,6 +565,38 @@ export default function ChatsClient({
   const [showArchivedChats, setShowArchivedChats] = useState(false)
   // Busca na lista de chats: nome, empresa ou telefone.
   const [chatSearch, setChatSearch] = useState("")
+  // A lista da esquerda traz só quem teve mensagem nos últimos 7 dias
+  // (carregar 900+ conversas inteiras travaria a tela). Então a busca
+  // também pergunta ao servidor pelo histórico ANTIGO — era isso que
+  // fazia parecer que o sistema "não guarda histórico".
+  const [oldResults, setOldResults] = useState<OldChatResult[]>([])
+  const [searchingOld, setSearchingOld] = useState(false)
+
+  // Busca no servidor com 400ms de espera — só a partir de 3 letras, pra não
+  // disparar uma consulta por tecla digitada.
+  useEffect(() => {
+    const termo = chatSearch.trim()
+    if (termo.length < 3) {
+      setOldResults([])
+      setSearchingOld(false)
+      return
+    }
+    let cancelado = false
+    setSearchingOld(true)
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/chats/search?q=${encodeURIComponent(termo)}`)
+          if (!res.ok || cancelado) return
+          const data = (await res.json()) as { results: OldChatResult[] }
+          if (!cancelado) setOldResults(data.results)
+        } finally {
+          if (!cancelado) setSearchingOld(false)
+        }
+      })()
+    }, 400)
+    return () => { cancelado = true; clearTimeout(t) }
+  }, [chatSearch])
   // Copiloto (IA): sugestão de resposta — a IA NUNCA envia sozinha.
   const [aiOpen, setAiOpen] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
@@ -1486,6 +1530,46 @@ export default function ChatsClient({
               </button>
             )
           })}
+
+          {/* ── Histórico antigo (fora da janela de 7 dias) ── */}
+          {chatSearch.trim().length >= 3 && (() => {
+            const jaNaLista = new Set(contacts.map((c) => c.id))
+            const antigos = oldResults.filter((r) => !jaNaLista.has(r.id))
+            if (searchingOld && antigos.length === 0) {
+              return <p className="px-4 py-3 text-center text-[11px] text-zinc-400">Procurando no histórico…</p>
+            }
+            if (antigos.length === 0) return null
+            return (
+              <>
+                <p className="border-y border-zinc-100 bg-zinc-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                  Conversas antigas ({antigos.length})
+                </p>
+                {antigos.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    // Navegação de página inteira de propósito: é o servidor que monta a
+                    // conversa com o histórico completo a partir do ?contact=.
+                    onClick={() => { window.location.href = `/admin/chats?contact=${r.id}` }}
+                    className="flex w-full items-start gap-3 border-b border-zinc-50 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+                  >
+                    <Avatar name={r.name} photoUrl={null} size="h-9 w-9" fallback="bg-zinc-200 text-zinc-500 text-[13px] font-semibold" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="truncate text-[13px] font-medium text-zinc-700">{r.name}</p>
+                        <span className="shrink-0 text-[10px] text-zinc-400">
+                          {new Date(r.lastAt).toLocaleDateString("pt-BR")}
+                        </span>
+                      </div>
+                      <p className="truncate text-[11.5px] text-zinc-400">
+                        {r.empresa ? `${r.empresa} · ` : ""}{r.lastBody || r.whatsappId}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </>
+            )
+          })()}
         </nav>
       </aside>
 

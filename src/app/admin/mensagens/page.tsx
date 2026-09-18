@@ -157,6 +157,11 @@ export default function MensagensPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Msg[]>([])
   const [loadingMsgs, setLoadingMsgs] = useState(false)
+  // Histórico: a conversa abre com as 50 últimas e o botão "Carregar
+  // mensagens anteriores" vai buscando de 50 em 50 pra trás. Nada é
+  // apagado no banco — antes a tela só não tinha como pedir o resto.
+  const [hasMoreMsgs, setHasMoreMsgs] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [text, setText] = useState("")
   // @menção (só em grupo) — mentionStart é o índice do "@" no texto; null =
   // não está mencionando agora.
@@ -230,6 +235,9 @@ export default function MensagensPage() {
 
   const activeIdRef = useRef<string | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  // Caixa das mensagens — usada pra segurar a posição de leitura ao
+  // carregar o histórico antigo por cima.
+  const msgsBoxRef = useRef<HTMLDivElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
@@ -250,13 +258,46 @@ export default function MensagensPage() {
     try {
       const res = await fetch(`/api/internal/conversations/${convId}/messages`)
       if (res.ok) {
-        const data = (await res.json()) as { messages: Msg[] }
+        const data = (await res.json()) as { messages: Msg[]; hasMore?: boolean }
         setMessages(data.messages)
+        setHasMoreMsgs(Boolean(data.hasMore))
       }
     } finally {
       setLoadingMsgs(false)
     }
   }, [])
+
+  // Busca o bloco anterior (50 mensagens mais antigas que a primeira da tela)
+  // e coloca no topo, mantendo a posição de leitura onde ela estava.
+  const loadOlderMessages = useCallback(async () => {
+    const convId = activeIdRef.current
+    if (!convId || loadingOlder || messages.length === 0) return
+    setLoadingOlder(true)
+    const box = msgsBoxRef.current
+    const alturaAntes = box?.scrollHeight ?? 0
+    try {
+      const before = new Date(messages[0].createdAt).toISOString()
+      const res = await fetch(`/api/internal/conversations/${convId}/messages?before=${encodeURIComponent(before)}`)
+      if (!res.ok) {
+        if (!handleSessionExpired(res.status)) alert("Não foi possível carregar o histórico")
+        return
+      }
+      const data = (await res.json()) as { messages: Msg[]; hasMore?: boolean }
+      setHasMoreMsgs(Boolean(data.hasMore))
+      if (data.messages.length > 0) {
+        const jaNaTela = new Set(messages.map((m) => m.id))
+        const antigas = data.messages.filter((m) => !jaNaTela.has(m.id))
+        setMessages((prev) => [...antigas, ...prev])
+        // Sem isso a tela "pula" pro topo e a pessoa perde o lugar da leitura.
+        requestAnimationFrame(() => {
+          const b = msgsBoxRef.current
+          if (b) b.scrollTop += b.scrollHeight - alturaAntes
+        })
+      }
+    } finally {
+      setLoadingOlder(false)
+    }
+  }, [messages, loadingOlder])
 
   // Arquiva/desarquiva a conversa só pra mim (igual WhatsApp). Mensagem nova
   // faz a conversa voltar pra lista sozinha (lógica no GET /conversations).
@@ -805,7 +846,19 @@ export default function MensagensPage() {
             </header>
 
             {/* Mensagens */}
-            <div className="flex-1 space-y-1 overflow-y-auto bg-zinc-50 px-6 py-4">
+            <div ref={msgsBoxRef} className="flex-1 space-y-1 overflow-y-auto bg-zinc-50 px-6 py-4">
+              {!loadingMsgs && hasMoreMsgs && messages.length > 0 && (
+                <div className="mb-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => void loadOlderMessages()}
+                    disabled={loadingOlder}
+                    className="rounded-full border border-zinc-200 bg-white px-4 py-1.5 text-[12px] font-medium text-zinc-600 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {loadingOlder ? "Carregando…" : "↑ Carregar mensagens anteriores"}
+                  </button>
+                </div>
+              )}
               {loadingMsgs ? (
                 <p className="py-8 text-center text-[12px] text-zinc-400">Carregando…</p>
               ) : messages.length === 0 ? (
