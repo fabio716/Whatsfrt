@@ -140,9 +140,13 @@ export class BusinessHoursValidator {
   static formatNextOpenTime(date: Date | undefined): string {
     if (!date) return "em breve"
 
-    const zonedDate = toZonedTime(date, TIMEZONE)
-    const dayName = format(zonedDate, "EEEE", { timeZone: TIMEZONE })
-    const time = format(zonedDate, "HH:mm", { timeZone: TIMEZONE })
+    // NÃO converter o fuso aqui. `date` vem de getNextOpenTime, que trabalha
+    // em cima do "now" já zonado pelo check() — ou seja, os campos deste Date
+    // JÁ são o relógio de São Paulo. O toZonedTime que existia aqui aplicava
+    // a conversão uma segunda vez e tirava 3 horas: o cliente recebeu
+    // "Voltamos Segunda-feira às 05:00" quando a FRT abre às 08:00.
+    const dayName = format(date, "EEEE", { timeZone: TIMEZONE })
+    const time = format(date, "HH:mm", { timeZone: TIMEZONE })
 
     const dayNames: Record<string, string> = {
       Monday: "Segunda-feira",
