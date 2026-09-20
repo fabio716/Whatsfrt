@@ -3,11 +3,25 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Tokens de superfície usados por componentes de biblioteca (padrão shadcn).
+     Valores alinhados ao zinc que o painel já usa, pra um card novo não
+     destoar das telas existentes. */
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --muted-foreground: #71717a;
+  --border: #e4e4e7;
+  --ring: #18181b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
