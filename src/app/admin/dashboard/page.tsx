@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
-import HomeClient from "./components/HomeClient"
+import PainelWidgets from "./components/PainelWidgets"
 
 export const dynamic = "force-dynamic"
 
@@ -9,8 +9,9 @@ export const metadata = {
   title: "Visão geral · WhatsFRT",
 }
 
-// Antes essa página era a tela principal de atendimento (chat embedded).
-// Agora ela é puramente executiva: KPIs + volume + agentes online.
+// Painel de cartões: cada pessoa vê os próprios números e organiza os
+// cartões arrastando. O recorte por pessoa é feito no servidor
+// (/api/dashboard) — a vendedora não recebe o dado das outras nem no JSON.
 // Atendimento vive 100% em /admin/chats — fonte única de verdade.
 export default async function DashboardPage() {
   const cookieStore = await cookies()
@@ -18,5 +19,5 @@ export default async function DashboardPage() {
   const session = token ? await verifySessionToken(token) : null
   if (!session) redirect("/login")
 
-  return <HomeClient userName={session.name} userRole={session.role} />
+  return <PainelWidgets nome={session.name} papel={session.role} />
 }

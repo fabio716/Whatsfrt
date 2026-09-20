@@ -95,6 +95,11 @@ model User {
   // vendedora em dia de movimento (a Maria Isabel bateu 169). O admin pode
   // definir um teto por pessoa em /admin/users quando precisar.
   dailyMessageLimit Int    @default(0)
+
+  // Ordem dos cartões do painel, escolhida arrastando. JSON com a lista de
+  // ids ("" = ainda não mexeu, usa a ordem padrão do papel dela). Fica no
+  // banco e não no navegador pra seguir a pessoa do computador pro celular.
+  dashboardLayout String @default("")
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -220,6 +225,8 @@ model ServiceSession {
   @@index([agentId, startedAt])
   @@index([contactId])
   @@index([endedAt, rating])
+  // Painel: atendimentos abertos hoje (a empresa toda, sem filtro de agente).
+  @@index([startedAt])
   @@map("service_sessions")
 }
 
@@ -274,6 +281,10 @@ model Message {
   agent   User?   @relation(fields: [agentId], references: [id])
 
   @@index([status, createdAt])
+  // Consultas do painel: última mensagem de cada contato e o que cada
+  // vendedora mandou hoje.
+  @@index([contactId, createdAt])
+  @@index([agentId, createdAt])
   @@map("messages")
 }
 
