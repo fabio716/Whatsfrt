@@ -14,6 +14,7 @@ import { sendText as sendWhatsAppText } from "@/lib/whatsapp"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { markWaitingForAgent, assignAgent } from "@/lib/serviceTracking"
+import { BusinessHoursValidator } from "@/lib/ura/businessHours"
 import {
   markAwaitingSubMenu,
   getAwaitingSubMenu,
@@ -112,7 +113,17 @@ export async function handleInboundForUra(
     const bizStatus = isBusinessHour(cfg)
 
     if (bizStatus === "CLOSED") {
-      if (cfg.outOfOfficeMessage) await sendUraMessage(contact, cfg.outOfOfficeMessage)
+      if (cfg.outOfOfficeMessage) {
+        // Dizer que está fechado sem dizer até quando deixa o cliente no
+        // escuro. Mesmo texto que o contato COM vendedora recebe (webhook),
+        // pra ninguém ter duas experiências diferentes.
+        const { nextOpenTime } = await BusinessHoursValidator.check()
+        const volta = BusinessHoursValidator.formatNextOpenTime(nextOpenTime)
+        await sendUraMessage(
+          contact,
+          `${cfg.outOfOfficeMessage}\n\n🕐 Voltamos ${volta} e entraremos em contato com você.`,
+        )
+      }
       return
     }
     if (bizStatus === "LUNCH") {

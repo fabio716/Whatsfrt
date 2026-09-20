@@ -25,6 +25,7 @@ import { applyRating, parseRating } from "@/lib/serviceTracking"
 import { sendTextOk } from "@/lib/whatsapp"
 import { findOrCreateContact } from "@/lib/contactLookup"
 import { sendPushToUsers } from "@/lib/push"
+import { BusinessHoursValidator } from "@/lib/ura/businessHours"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -257,6 +258,84 @@ function isSiteLead(text: string): boolean {
   const extras = (process.env.SITE_LEAD_KEYWORDS ?? "")
     .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
   return [...DEFAULT_SITE_KEYWORDS, ...extras].some((k) => norm.includes(k))
+}
+
+// ─── Aviso de fora do horário ────────────────────────────────────────────────
+// Quem escreve fora do expediente merece saber disso e quando voltamos. A URA
+// já fazia isso, MAS só para contato sem vendedora — e o lead do site é
+// atribuído à agente do site na hora, então ele caía num silêncio total até
+// alguém abrir o painel no dia seguinte.
+//
+// Manda UM aviso por período fechado: guardamos o horário da reabertura em
+// offHoursNoticeUntil, então cinco mensagens de madrugada geram um aviso só.
+async function avisarForaDoHorario(contact: {
+  id: string
+  whatsappId: string
+  name: string
+  profilePhotoUrl: string | null
+  chatStatus: ChatStatus
+  assignedUserId: string | null
+  offHoursNoticeUntil: Date | null
+}): Promise<void> {
+  const agora = new Date()
+  if (contact.offHoursNoticeUntil && contact.offHoursNoticeUntil > agora) return
+
+  const expediente = await BusinessHoursValidator.check()
+  if (expediente.isOpen && !expediente.isLunchTime) return
+
+  const cfg = await prisma.uraConfig.findFirst({
+    where: { isActive: true },
+    select: { outOfOfficeMessage: true, lunchMessage: true },
+  })
+  if (!cfg) return
+
+  let texto: string
+  let avisadoAte: Date | null
+  if (expediente.isLunchTime) {
+    // A mensagem de almoço já diz a hora da volta — não duplicar.
+    texto = cfg.lunchMessage
+    avisadoAte = new Date(agora.getTime() + 60 * 60 * 1000)
+  } else {
+    const volta = BusinessHoursValidator.formatNextOpenTime(expediente.nextOpenTime)
+    texto = `${cfg.outOfOfficeMessage}\n\n🕐 Voltamos ${volta} e entraremos em contato com você.`
+    avisadoAte = expediente.nextOpenTime ?? new Date(agora.getTime() + 12 * 60 * 60 * 1000)
+  }
+  if (!texto.trim()) return
+
+  const ok = await sendTextOk(contact.whatsappId, texto)
+  const saved = await prisma.message.create({
+    data: {
+      body: texto,
+      direction: MessageDirection.OUTBOUND,
+      status: ok ? MessageStatus.SENT : MessageStatus.FAILED,
+      contactId: contact.id,
+    },
+  })
+  // Só marca como avisado se realmente saiu — falhou, tenta na próxima.
+  if (ok) {
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: { offHoursNoticeUntil: avisadoAte },
+    })
+  }
+  // A vendedora vê o aviso no chat dela, pra saber o que o cliente recebeu.
+  broadcast({
+    type: "new_message",
+    data: {
+      id: saved.id, body: saved.body, direction: saved.direction,
+      status: saved.status, createdAt: saved.createdAt.toISOString(),
+      agentId: null, contactId: contact.id,
+      contact: {
+        id: contact.id,
+        name: contact.name,
+        whatsappId: contact.whatsappId,
+        profilePhotoUrl: contact.profilePhotoUrl,
+        // Acabou de virar IN_SERVICE no 5b — o objeto local ainda tem o antigo.
+        chatStatus: ChatStatus.IN_SERVICE,
+        assignedUserId: contact.assignedUserId,
+      },
+    },
+  })
 }
 
 // ─── Tipo: mensagem recebida ─────────────────────────────────────────────────
@@ -494,6 +573,10 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
         data: { chatStatus: ChatStatus.IN_SERVICE },
       })
     }
+    // Fora do expediente a vendedora não vai responder agora — o cliente
+    // precisa saber disso e quando voltamos. Vale inclusive pro lead do site,
+    // que é atribuído na hora e por isso nunca passava pela URA.
+    await avisarForaDoHorario(contact)
     return
   }
 

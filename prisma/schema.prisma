@@ -144,6 +144,11 @@ model Contact {
   // conversa desaparecia da tela dela no encerramento e parecia que o sistema
   // tinha apagado o histórico (relato da Joana, 18/09/2026).
   lastAgentUserId String?
+
+  // Até quando o aviso de "estamos fechados" já foi dado pra este contato.
+  // Guardamos o horário da REABERTURA: assim quem manda cinco mensagens na
+  // madrugada de sábado recebe UM aviso, não cinco. Zera sozinho ao reabrir.
+  offHoursNoticeUntil DateTime?
   cooperativeId   String?
   cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id])
 
