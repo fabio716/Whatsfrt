@@ -114,6 +114,33 @@ export default function GlobalNotifier({
     return () => clearInterval(t)
   }, [loadCounts])
 
+  // ── Batida de presença ──
+  // Quem diz "estou aqui" é o navegador, a cada 30s, e SÓ com a tela à vista.
+  // A batida do SSE não servia: ela é do servidor pra cá, então provava que o
+  // servidor está vivo, não que tem alguém do outro lado — por isso o painel
+  // mostrava a equipe inteira online num feriado.
+  //
+  // Aba escondida não bate: a marca vence em 90s e a pessoa fica offline, que
+  // é o certo pra quem deixou o sistema aberto e foi embora. Como este
+  // componente vive na casca do painel, qualquer tela do WhatsFRT que estiver
+  // à vista mantém a presença.
+  useEffect(() => {
+    const bater = () => {
+      if (document.hidden) return
+      void fetch("/api/presence", { method: "POST", cache: "no-store" }).catch(() => {
+        // Rede instável não muda nada aqui: a próxima batida resolve.
+      })
+    }
+    bater()
+    const t = setInterval(bater, 30_000)
+    // Voltar pra aba marca presença na hora, sem esperar o próximo ciclo.
+    document.addEventListener("visibilitychange", bater)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener("visibilitychange", bater)
+    }
+  }, [])
+
   // Desligou o aviso? Some o contador na hora. Ligou o da equipe? Recarrega.
   useEffect(() => {
     if (!prefs.internal) { internalRef.current = 0; publish() } else { void loadCounts() }

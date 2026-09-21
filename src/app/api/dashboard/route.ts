@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
-import { getOnlineUserIds } from "@/lib/sse-emitter"
+import { idsOnline } from "@/lib/presence"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -193,11 +193,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }))
     .sort((a, b) => b.atendimentos - a.atendimentos)
 
-  const online = getOnlineUserIds()
+  const online = await idsOnline()
   const naEquipe: NaEquipe[] = equipe.map((u) => {
     const atendendo = u.assignedContacts.length
-    const status: NaEquipe["status"] =
-      atendendo > 0 ? "ATTENDING" : online.has(u.id) ? "ONLINE" : "OFFLINE"
+    // A ORDEM importa: estar online vem primeiro. Antes "tem conversa aberta"
+    // já pintava de ATTENDING, então quem estava de folga com conversa da
+    // sexta pendente aparecia atendendo — num feriado a equipe inteira ficava
+    // verde. Conversa em aberto não é presença; continua no contador.
+    const status: NaEquipe["status"] = !online.has(u.id)
+      ? "OFFLINE"
+      : atendendo > 0
+        ? "ATTENDING"
+        : "ONLINE"
     return { id: u.id, name: u.name, status, atendendo }
   })
 
