@@ -284,8 +284,6 @@ function CartaoPorVendedora({ d }: Readonly<{ d: Painel }>) {
 }
 
 function CartaoEquipe({ d }: Readonly<{ d: Painel }>) {
-  const atendendo = d.equipe.filter((a) => a.status === "ATTENDING").length
-  const online = d.equipe.filter((a) => a.status === "ONLINE").length
   if (d.equipe.length === 0) {
     return (
       <Cartao titulo="Equipe">
@@ -293,10 +291,30 @@ function CartaoEquipe({ d }: Readonly<{ d: Painel }>) {
       </Cartao>
     )
   }
+  const presentes = d.equipe.filter((a) => a.status !== "OFFLINE").length
+
+  // Quem está trabalhando vem PRIMEIRO, não em ordem alfabética.
+  // Antes a lista era alfabética e cortada nos 10 primeiros: com 15 pessoas
+  // cadastradas, a Priscila (11ª no alfabeto) estava online, entrava na
+  // contagem do cabeçalho e não aparecia na tela. Quem olhava concluía, com
+  // razão, que a presença estava errada.
+  const PESO = { ATTENDING: 0, ONLINE: 1, OFFLINE: 2 } as const
+  const ordenada = [...d.equipe].sort(
+    (a, b) => PESO[a.status] - PESO[b.status] || a.name.localeCompare(b.name, "pt-BR"),
+  )
+
   return (
-    <Cartao titulo="Equipe agora" canto={<span className="text-[11.5px] text-zinc-400">{atendendo} atendendo · {online} online</span>}>
-      <ul className="grid grid-cols-2 gap-x-5 gap-y-1.5 overflow-hidden">
-        {d.equipe.slice(0, 10).map((a) => (
+    <Cartao
+      titulo="Equipe agora"
+      canto={
+        <span className="text-[11.5px] text-zinc-400">
+          {presentes === 0 ? "ninguém no sistema" : `${presentes} no sistema`}
+        </span>
+      }
+    >
+      {/* Ninguém é escondido: com muita gente cadastrada a lista rola. */}
+      <ul className="grid min-h-0 flex-1 grid-cols-2 gap-x-5 gap-y-1.5 overflow-y-auto pr-1">
+        {ordenada.map((a) => (
           <li key={a.id} className="flex items-center gap-2 text-[12.5px]">
             <Bolinha cor={a.status === "ATTENDING" ? "bg-emerald-500" : a.status === "ONLINE" ? "bg-emerald-300" : "bg-zinc-300"} />
             <span className={`min-w-0 flex-1 truncate ${a.status === "OFFLINE" ? "text-zinc-400" : "text-zinc-700"}`}>{a.name}</span>
