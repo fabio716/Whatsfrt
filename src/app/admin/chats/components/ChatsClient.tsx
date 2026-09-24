@@ -1587,8 +1587,12 @@ export default function ChatsClient({
         {activeContact ? (
           <>
             {/* Header */}
-            <header className="flex items-center justify-between border-b border-zinc-100 bg-white px-4 py-3.5 shadow-sm shadow-zinc-100/60 md:px-6">
-              <div className="flex items-center gap-2 md:gap-3">
+            <header className="flex items-center justify-between gap-2 border-b border-zinc-100 bg-white px-4 py-3.5 shadow-sm shadow-zinc-100/60 md:px-6">
+              {/* min-w-0 = o nome do cliente ENCOLHE. Sem isso ele empurrava os
+                  botões da direita pra fora da tela no celular, e o menu "..."
+                  (onde vive Transferir conversa) era cortado — a vendedora não
+                  conseguia transferir pelo telefone. */}
+              <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
                 {/* Voltar — só no celular */}
                 <button
                   type="button"
@@ -1630,16 +1634,21 @@ export default function ChatsClient({
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-shrink-0 items-center gap-1.5 md:gap-2">
                 <button
                   type="button"
                   onClick={() => void openCrm()}
                   title="Ficha do cliente: etiquetas, termômetro e notas"
-                  className="flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 text-[12px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50"
+                  className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 text-[12px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50"
                 >
-                  🏷️ Ficha
+                  🏷️ <span className="hidden sm:inline">Ficha</span>
                 </button>
-                <StatusBadge status={activeContact.chatStatus} />
+                {/* A etiqueta de status some no celular: ela é informativa e
+                    estava roubando o espaço de botão que a pessoa precisa
+                    tocar. O status já aparece na lista de conversas. */}
+                <span className="hidden sm:inline">
+                  <StatusBadge status={activeContact.chatStatus} />
+                </span>
 
                 {/* Ação primária — uma só, depende do contexto.
                     isOwner + IN_SERVICE → Encerrar (verde, ação mais comum)
@@ -1653,9 +1662,13 @@ export default function ChatsClient({
                     onClick={() => void handleEndService()}
                     disabled={ending}
                     title="Encerrar e pedir nota ao cliente"
-                    className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                    className="flex-shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50 md:px-3.5"
                   >
-                    {ending ? "Encerrando..." : "Encerrar atendimento"}
+                    {ending ? "Encerrando..." : (
+                      <>
+                        Encerrar<span className="hidden md:inline"> atendimento</span>
+                      </>
+                    )}
                   </button>
                 )}
                 {!isOwner && isAgent && (
@@ -1663,9 +1676,13 @@ export default function ChatsClient({
                     type="button"
                     onClick={() => void handleTakeOver()}
                     disabled={taking}
-                    className="rounded-lg bg-zinc-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
+                    className="flex-shrink-0 rounded-lg bg-zinc-900 px-3 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 md:px-3.5"
                   >
-                    {taking ? "Assumindo..." : "Assumir atendimento"}
+                    {taking ? "Assumindo..." : (
+                      <>
+                        Assumir<span className="hidden md:inline"> atendimento</span>
+                      </>
+                    )}
                   </button>
                 )}
 
@@ -1680,7 +1697,7 @@ export default function ChatsClient({
                       title="Mais ações"
                       aria-haspopup="menu"
                       aria-expanded={showHeaderMenu}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700"
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700"
                     >
                       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
                         <circle cx="5" cy="12" r="1.6" />
