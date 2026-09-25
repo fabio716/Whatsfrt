@@ -15,7 +15,22 @@ import { emitConnectionStateChange, type EvolutionState } from "./events"
 import { activeProvider } from "@/lib/whatsapp"
 import { getZapiConnectionState } from "@/lib/zapi"
 
-const POLL_INTERVAL_MS = 30_000
+// De quanto em quanto tempo perguntamos ao provedor se o WhatsApp está
+// conectado. Ajustável pelo .env (WATCHDOG_POLL_SEC) pra dar pra mexer sem
+// precisar de deploy.
+//
+// 30s davam 2.880 chamadas por dia só pra saber se está de pé — bastante pra
+// um endpoint que existe pra detectar queda, e candidato a levar 429 do
+// provedor (o que aparece como state "unknown" e polui a saúde). 120s detecta
+// queda em até 2 minutos, que é de sobra pro nosso caso.
+//
+// Limites: mínimo 15s (abaixo disso é ataque ao provedor), máximo 10 min
+// (acima disso a queda passa despercebida tempo demais).
+const POLL_INTERVAL_MS = (() => {
+  const bruto = Number.parseInt(process.env.WATCHDOG_POLL_SEC ?? "", 10)
+  const seg = Number.isFinite(bruto) && bruto > 0 ? Math.min(600, Math.max(15, bruto)) : 120
+  return seg * 1000
+})()
 const RECONNECT_BACKOFF_MS = 60_000 // não tenta reconectar mais que 1x/min
 
 const STATE_KEY = Symbol.for("whatsfrt.reliability.watchdog.state")
