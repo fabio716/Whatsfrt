@@ -10,6 +10,7 @@ interface UserRow {
   role: "ADMIN" | "AGENT"
   department: string | null
   isActive: boolean
+  uraMenuVisible: boolean
   createdAt: string
 }
 
@@ -97,7 +98,7 @@ export default function UsersPage() {
 
   // ─── Edit user state ────────────────────────────────────────────────────────
   const [editUser,      setEditUser]      = useState<UserRow | null>(null)
-  const [editForm,      setEditForm]      = useState<{ name: string; email: string; password: string; role: "ADMIN" | "AGENT"; department: string | null }>({ name: "", email: "", password: "", role: "AGENT", department: "VENDAS" })
+  const [editForm,      setEditForm]      = useState<{ name: string; email: string; password: string; role: "ADMIN" | "AGENT"; department: string | null; uraMenuVisible: boolean }>({ name: "", email: "", password: "", role: "AGENT", department: "VENDAS", uraMenuVisible: true })
   const [editError,     setEditError]     = useState<string | null>(null)
   const [editSubmitting,setEditSubmitting] = useState(false)
   const [exporting,     setExporting]     = useState<string | null>(null)
@@ -164,7 +165,7 @@ export default function UsersPage() {
 
   const openEdit = (u: UserRow) => {
     setEditUser(u)
-    setEditForm({ name: u.name, email: u.email, password: "", role: u.role, department: u.department ?? "VENDAS" })
+    setEditForm({ name: u.name, email: u.email, password: "", role: u.role, department: u.department ?? "VENDAS", uraMenuVisible: u.uraMenuVisible })
     setEditError(null)
   }
 
@@ -179,6 +180,7 @@ export default function UsersPage() {
         email: editForm.email,
         role: editForm.role,
         department: editForm.department,
+        uraMenuVisible: editForm.uraMenuVisible,
       }
       if (editForm.password) body.password = editForm.password
       const res = await fetch(`/api/admin/users/${editUser.id}`, {
@@ -463,6 +465,28 @@ export default function UsersPage() {
                     <option value="ADMIN">Administrador</option>
                   </select>
                 </Field>
+
+                {/* Só faz sentido pra quem atende: admin não entra em menu de
+                    URA de qualquer forma. */}
+                {editForm.role === "AGENT" && (
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-3">
+                    <input
+                      type="checkbox"
+                      checked={editForm.uraMenuVisible}
+                      onChange={(e) => patchEdit({ uraMenuVisible: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-zinc-900"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-zinc-900">Aparece no menu da URA</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-zinc-500">
+                        Desmarcado, o cliente deixa de ver esta pessoa na lista de escolha
+                        (&ldquo;1 Técnico Dione, 2 Secretária Joana…&rdquo;). Ela continua ativa, no
+                        mesmo setor, recebendo transferência e atendendo a carteira dela.
+                      </span>
+                    </span>
+                  </label>
+                )}
+
                 {editError && <p className="rounded-xl bg-red-50 px-4 py-3 text-xs font-medium text-red-600">{editError}</p>}
               </div>
               <div className="flex items-center justify-end gap-2 border-t border-zinc-100 px-6 py-4">

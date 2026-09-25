@@ -100,6 +100,13 @@ model User {
   // ids ("" = ainda não mexeu, usa a ordem padrão do papel dela). Fica no
   // banco e não no navegador pra seguir a pessoa do computador pro celular.
   dashboardLayout String @default("")
+
+  // Aparece na lista que o cliente escolhe no menu da URA ("1 Técnico Dione,
+  // 2 Secretária Joana...")? Desligar tira a pessoa DO MENU e nada mais: ela
+  // continua ativa, no mesmo setor, recebendo transferência e atendendo a
+  // carteira. Tirar o setor também sumiria do menu, mas de quebra a removeria
+  // da distribuição por setor — que raramente é o que se quer.
+  uraMenuVisible Boolean @default(true)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 

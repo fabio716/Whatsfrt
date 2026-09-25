@@ -85,6 +85,9 @@ export async function getAgentsForSubMenu(
     where: {
       role: "AGENT",
       isActive: true,
+      // Quem está com "aparece no menu da URA" desligado fica de fora da
+      // lista que o cliente escolhe, mas segue recebendo transferência.
+      uraMenuVisible: true,
       department: { in: departments as never[] },
     },
     select: { id: true, name: true, department: true },

@@ -12,7 +12,7 @@ export async function requireAdmin(request: NextRequest) {
 
 const USER_SELECT = {
   id: true, name: true, email: true,
-  role: true, department: true, isActive: true, dailyMessageLimit: true, createdAt: true,
+  role: true, department: true, isActive: true, dailyMessageLimit: true, uraMenuVisible: true, createdAt: true,
 } as const
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
