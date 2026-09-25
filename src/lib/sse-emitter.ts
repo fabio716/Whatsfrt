@@ -101,6 +101,19 @@ export interface SSETransferDecisionPayload {
   data: { contactId: string; contactName: string; approved: boolean; deciderName: string }
 }
 
+// Contato mudou de dono. Sem isso a conversa só aparecia pra nova vendedora
+// no próximo F5 — na prática, até 20 minutos depois da transferência.
+export interface SSEContactTransferPayload {
+  type: "contact_transfer"
+  data: {
+    contactId: string
+    contactName: string
+    toUserId: string
+    fromUserId: string | null
+    byName: string
+  }
+}
+
 export type SSEPayload =
   | SSENewMessagePayload
   | SSEMessageUpdatePayload
@@ -110,6 +123,7 @@ export type SSEPayload =
   | SSEInternalReactionPayload
   | SSETransferRequestPayload
   | SSETransferDecisionPayload
+  | SSEContactTransferPayload
 
 // ─── Singleton client registry ────────────────────────────────────────────────
 // O Set é compartilhado entre bundles via globalThis + Symbol.for. Em Next.js
@@ -192,7 +206,8 @@ export function broadcastToUsers(
     | SSEInternalMessageUpdatePayload
     | SSEInternalReactionPayload
     | SSETransferRequestPayload
-    | SSETransferDecisionPayload,
+    | SSETransferDecisionPayload
+    | SSEContactTransferPayload,
 ): void {
   const targets = new Set(userIds)
   const chunk = `data: ${JSON.stringify(payload)}\n\n`

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { assignAgent } from "@/lib/serviceTracking"
+import { broadcastToUsers } from "@/lib/sse-emitter"
+import { sendPushToUsers } from "@/lib/push"
 
 // POST /api/admin/contacts/[id]/transfer
 //
@@ -69,6 +71,32 @@ export async function POST(
 
   // Usa o mesmo helper que normalmente assume — cria session, seta IN_SERVICE
   await assignAgent(id, targetAgentId)
+
+  // Avisa em tempo real quem recebeu e quem passou. Sem isso a conversa só
+  // aparecia pra nova vendedora no próximo F5 — a equipe relatou "até 20
+  // minutos", que era só o tempo até alguém recarregar a página por acaso.
+  const anterior = contact.assignedUserId ?? null
+  const envolvidos = [targetAgentId, ...(anterior && anterior !== targetAgentId ? [anterior] : [])]
+  broadcastToUsers(envolvidos, {
+    type: "contact_transfer",
+    data: {
+      contactId: id,
+      contactName: contact.name ?? "Cliente",
+      toUserId: targetAgentId,
+      fromUserId: anterior,
+      byName: session.name,
+    },
+  })
+
+  // Push real (navegador fechado) só pra quem recebeu — quem passou já sabe.
+  if (targetAgentId !== session.id) {
+    void sendPushToUsers([targetAgentId], {
+      title: `${contact.name ?? "Cliente"} é sua agora`,
+      body: `${session.name} transferiu esta conversa pra você.`,
+      tag: `transfer-${id}`,
+      url: `/admin/chats?contact=${id}`,
+    })
+  }
 
   return NextResponse.json({
     ok: true,

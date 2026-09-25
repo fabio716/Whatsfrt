@@ -861,6 +861,47 @@ export default function ChatsClient({
           return
         }
 
+        // ── Conversa mudou de dono ──
+        // Quem recebeu ganha a conversa na lista na hora; quem passou perde.
+        // Antes nada disso acontecia e a conversa só aparecia no próximo F5.
+        if (p.type === "contact_transfer") {
+          const d = p.data as {
+            contactId: string; contactName: string
+            toUserId: string; fromUserId: string | null; byName: string
+          }
+
+          if (d.toUserId === currentUserId) {
+            void (async () => {
+              try {
+                const res = await fetch(`/api/chats/contact/${d.contactId}`, { cache: "no-store" })
+                if (!res.ok) return
+                const novo = (await res.json()) as ContactData
+                setContacts((prev) => {
+                  const resto = prev.filter((c) => c.id !== novo.id)
+                  return [novo, ...resto]   // entra no topo: é o mais urgente agora
+                })
+                setUnreadIds((prev) => new Set(prev).add(novo.id))
+              } catch {
+                // Rede falhou: a conversa aparece no próximo carregamento.
+              }
+            })()
+            notifyDesktop(`${d.contactName} é sua agora`, `${d.byName} transferiu esta conversa pra você.`, {
+              tag: `transfer-${d.contactId}`,
+              force: true,
+              onClick: () => setActiveId(d.contactId),
+            })
+            return
+          }
+
+          if (d.fromUserId === currentUserId) {
+            setContacts((prev) => prev.filter((c) => c.id !== d.contactId))
+            // Se a conversa que saiu estava aberta, não deixa a tela num
+            // contato que não é mais dela.
+            setActiveId((atual) => (atual === d.contactId ? null : atual))
+          }
+          return
+        }
+
         if (p.type === "message_update") {
           // Atualiza status da mensagem (SENT/DELIVERED/READ/FAILED). O reaper
           // emite FAILED para mensagens travadas em PENDING > 10min.
@@ -895,7 +936,10 @@ export default function ChatsClient({
     }
     connect()
     return () => { alive = false; if (retry) clearTimeout(retry); source?.close() }
-  }, [])
+    // currentUserId entra aqui porque o tratamento de transferência compara
+    // com ele. Na prática é um valor fixo da sessão, então isso não provoca
+    // reconexão — mas deixar de fora seria mentir pro React.
+  }, [currentUserId])
 
   // Delete contact
   const handleDelete = useCallback(async () => {
