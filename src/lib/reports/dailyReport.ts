@@ -62,8 +62,122 @@ export function hojeNoBrasil(): string {
   return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
+// ─── Períodos ────────────────────────────────────────────────────────────────
+// Toda a matemática de calendário é feita em cima da STRING AAAA-MM-DD, em
+// UTC, e só no fim virá instante com -03:00. Fazer conta de dia com objeto de
+// data em fuso é onde esse tipo de código erra (e já errou aqui: o relatório
+// quebrou por causa de um parâmetro sem tipo em aritmética de data).
+
+export type TipoPeriodo = "dia" | "semana" | "mes"
+
+function somaDias(dia: string, n: number): string {
+  const d = new Date(`${dia}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Segunda-feira da semana em que cai `dia`. */
+function segundaDaSemana(dia: string): string {
+  const d = new Date(`${dia}T00:00:00Z`)
+  // getUTCDay: 0=domingo. Queremos voltar até segunda, então domingo volta 6.
+  const recuo = (d.getUTCDay() + 6) % 7
+  return somaDias(dia, -recuo)
+}
+
+const primeiroDoMes = (dia: string) => `${dia.slice(0, 7)}-01`
+
+export interface Periodo {
+  tipo: TipoPeriodo
+  /** Primeiro dia do período (AAAA-MM-DD). */
+  de: string
+  /** Último dia do período, já cortado em hoje. */
+  ate: string
+  rotulo: string
+  ini: Date
+  fim: Date
+  /** Mesmo tamanho de janela, imediatamente antes. */
+  iniAnterior: Date
+  fimAnterior: Date
+}
+
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+
+/**
+ * Resolve o período a partir de uma data de referência.
+ *
+ * O período anterior tem o MESMO TEMPO DECORRIDO, não o mês/semana cheio.
+ * Comparar 1 a 25 de setembro com agosto inteiro diria que setembro caiu,
+ * quando na verdade setembro ainda não acabou.
+ */
+export function resolverPeriodo(tipo: TipoPeriodo, ref: string): Periodo {
+  const hoje = hojeNoBrasil()
+  let de: string
+  let fimExclusivo: string
+  let rotulo: string
+
+  if (tipo === "semana") {
+    de = segundaDaSemana(ref)
+    fimExclusivo = somaDias(de, 7)
+    rotulo = `Semana de ${dataCurta(de)} a ${dataCurta(somaDias(de, 6))}`
+  } else if (tipo === "mes") {
+    de = primeiroDoMes(ref)
+    fimExclusivo = somaDias(`${de.slice(0, 7)}-28`, 7).slice(0, 7) + "-01"
+    const [ano, mes] = de.split("-")
+    rotulo = `${MESES[Number(mes) - 1]} de ${ano}`
+  } else {
+    de = ref
+    fimExclusivo = somaDias(ref, 1)
+    rotulo = dataBonita(ref)
+  }
+
+  const ini = new Date(`${de}T00:00:00-03:00`)
+  const fimCheio = new Date(`${fimExclusivo}T00:00:00-03:00`)
+  const agora = new Date()
+  // Não contamos o futuro: período em andamento termina agora. E se o período
+  // TODO ainda está por vir (alguém pediu a semana que vem), a janela fecha
+  // em zero — antes dava duração negativa, e o período anterior terminava
+  // antes de começar.
+  const fim = fimCheio > agora ? (agora > ini ? agora : ini) : fimCheio
+  const decorrido = Math.max(0, fim.getTime() - ini.getTime())
+
+  // Início do período anterior: uma semana antes, um mês antes, um dia antes.
+  const deAnterior = tipo === "semana" ? somaDias(de, -7)
+    : tipo === "mes" ? mesAnterior(de)
+      : somaDias(de, -1)
+  const iniAnterior = new Date(`${deAnterior}T00:00:00-03:00`)
+
+  // A janela anterior tem o mesmo tempo decorrido, MAS nunca passa do início
+  // da atual. Sem esse corte, março (31 dias) comparava com 31 dias contados
+  // de 1º de fevereiro — entrava em março e contava os mesmos dias duas
+  // vezes. Com o corte: mês fechado compara com o mês anterior inteiro, e mês
+  // em andamento compara com o mesmo número de dias do mês anterior.
+  const fimAnteriorBruto = iniAnterior.getTime() + decorrido
+  const fimAnterior = new Date(Math.min(fimAnteriorBruto, ini.getTime()))
+
+  // Último dia visível do período, sem cair antes do primeiro.
+  const ultimoDia = somaDias(fimExclusivo, -1)
+  const ate = ultimoDia > hoje ? (hoje > de ? hoje : de) : ultimoDia
+
+  return { tipo, de, ate, rotulo, ini, fim, iniAnterior, fimAnterior }
+}
+
+function mesAnterior(primeiroDia: string): string {
+  const d = new Date(`${primeiroDia}T00:00:00Z`)
+  d.setUTCMonth(d.getUTCMonth() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+const dataCurta = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`
+
+/** Relatório de um dia — usado pela mensagem das 18h. */
 export async function gerarRelatorioDiario(dia: string): Promise<RelatorioDiario> {
   const { ini, fim } = limitesDoDia(dia)
+  return gerarRelatorio(dia, ini, fim)
+}
+
+export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): Promise<RelatorioDiario> {
+  const dia = rotuloDia
 
   const [atendRows, tempoRows, trocaRows, notaRows, usuarios] = await Promise.all([
     // ── Atendimentos assumidos no dia ──

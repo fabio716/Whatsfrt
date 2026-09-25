@@ -30,8 +30,30 @@ interface Vendedora {
   notasBaixas: number
 }
 
+type TipoPeriodo = "dia" | "semana" | "mes"
+
+interface Totais {
+  atendimentos: number
+  conversas: number
+  mensagens: number
+  respostas: number
+  mediaSeg: number | null
+  lentas: number
+  notas: number
+  notaMedia: number | null
+  notasBaixas: number
+}
+
 interface Relatorio {
   dia: string
+  periodo: {
+    tipo: TipoPeriodo
+    de: string
+    ate: string
+    rotulo: string
+    emAndamento: boolean
+  }
+  anterior: Totais | null
   totais: {
     atendimentos: number
     conversas: number
@@ -63,19 +85,52 @@ function hoje(): string {
   return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
-function ontem(): string {
-  return new Date(Date.now() - 3 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+/** Anda no calendário a partir de AAAA-MM-DD, em UTC (conta de dia, sem fuso). */
+function andar(dia: string, tipo: TipoPeriodo, passo: 1 | -1): string {
+  const d = new Date(`${dia}T00:00:00Z`)
+  if (tipo === "mes") d.setUTCMonth(d.getUTCMonth() + passo)
+  else d.setUTCDate(d.getUTCDate() + (tipo === "semana" ? 7 * passo : passo))
+  return d.toISOString().slice(0, 10)
 }
 
-function Total({ rotulo, valor, detalhe, alerta }: Readonly<{
+// Variação contra o período anterior equivalente.
+// `menorEhMelhor` inverte a cor: cair no tempo de resposta é bom.
+function Variacao({ atual, antes, menorEhMelhor }: Readonly<{
+  atual: number | null
+  antes: number | null | undefined
+  menorEhMelhor?: boolean
+}>) {
+  if (atual === null || antes === null || antes === undefined) return null
+  if (antes === 0) {
+    // Sem base de comparação: mostrar "+∞%" não informa nada.
+    return atual > 0 ? <span className="text-[11.5px] text-zinc-400">novo</span> : null
+  }
+  const pct = Math.round(((atual - antes) / antes) * 100)
+  if (pct === 0) return <span className="text-[11.5px] text-zinc-400">igual</span>
+  const subiu = pct > 0
+  const bom = menorEhMelhor ? !subiu : subiu
+  return (
+    <span className={`text-[11.5px] font-medium tabular-nums ${bom ? "text-emerald-600" : "text-amber-600"}`}>
+      <span aria-hidden="true">{subiu ? "↑" : "↓"} </span>
+      {Math.abs(pct)}%
+      <span className="sr-only">{subiu ? " acima" : " abaixo"} do período anterior</span>
+    </span>
+  )
+}
+
+function Total({ rotulo, valor, detalhe, alerta, variacao }: Readonly<{
   rotulo: string
   valor: ReactNode
   detalhe?: string
   alerta?: boolean
+  variacao?: ReactNode
 }>) {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">{rotulo}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">{rotulo}</p>
+        {variacao}
+      </div>
       <p className={`mt-2 text-[26px] font-medium leading-none tracking-tight tabular-nums ${alerta ? "text-amber-600" : "text-zinc-900"}`}>
         {valor}
       </p>
@@ -95,6 +150,7 @@ function Metrica({ rotulo, valor, alerta }: Readonly<{ rotulo: string; valor: Re
 
 export default function RelatorioClient() {
   const [dia, setDia] = useState(hoje)
+  const [periodo, setPeriodo] = useState<TipoPeriodo>("dia")
   const [dados, setDados] = useState<Relatorio | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -108,7 +164,7 @@ export default function RelatorioClient() {
       setCarregando(true)
       setErro(null)
       try {
-        const res = await fetch(`/api/reports/daily?dia=${dia}`, { cache: "no-store" })
+        const res = await fetch(`/api/reports/daily?dia=${dia}&periodo=${periodo}`, { cache: "no-store" })
         if (!vivo) return
         if (!res.ok) {
           setErro(res.status === 403 ? "Só o administrador vê este relatório." : "Não foi possível carregar o relatório.")
@@ -124,7 +180,7 @@ export default function RelatorioClient() {
       }
     })()
     return () => { vivo = false }
-  }, [dia])
+  }, [dia, periodo])
 
   const t = dados?.totais
 
@@ -133,35 +189,77 @@ export default function RelatorioClient() {
       <header className="border-b border-zinc-200 bg-white px-4 py-5 md:px-8">
         <h1 className="text-xl font-semibold tracking-tight text-zinc-900 md:text-2xl">📊 Relatório de atendimento</h1>
         <p className="mt-0.5 max-w-2xl text-[12.5px] text-zinc-500">
-          Os mesmos números que chegam no WhatsApp às 18h. Escolha o dia para consultar.
+          Os mesmos números que chegam no WhatsApp às 18h. Escolha o dia, a semana ou o mês.
         </p>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        {/* Dia / Semana / Mês */}
+        <div className="mt-4 inline-flex rounded-xl border border-zinc-200 bg-white p-0.5">
+          {([["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]] as Array<[TipoPeriodo, string]>).map(([valor, texto]) => (
+            <button
+              key={valor}
+              type="button"
+              onClick={() => setPeriodo(valor)}
+              aria-pressed={periodo === valor}
+              className={`min-h-8 rounded-[10px] px-3.5 text-[12.5px] font-semibold transition-colors ${
+                periodo === valor ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"
+              }`}
+            >
+              {texto}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setDia(andar(dia, periodo, -1))}
+              aria-label="Período anterior"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => { const p = andar(dia, periodo, 1); if (p <= hoje()) setDia(p) }}
+              disabled={andar(dia, periodo, 1) > hoje()}
+              aria-label="Período seguinte"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Qual período está na tela. Sem isso, "Semana" com uma data solta
+              no seletor não diz de quando até quando o número é. */}
+          <p className="text-[13px] font-semibold capitalize text-zinc-800">
+            {dados?.periodo?.rotulo ?? "…"}
+            {dados?.periodo?.emAndamento && (
+              <span className="ml-1.5 font-normal text-zinc-400">(em andamento)</span>
+            )}
+          </p>
+
+          <span className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block" />
+
           <input
             type="date"
             value={dia}
             max={hoje()}
             onChange={(e) => { if (e.target.value) setDia(e.target.value) }}
-            aria-label="Dia do relatório"
+            aria-label={periodo === "dia" ? "Dia do relatório" : "Data de referência do período"}
             className="min-h-9 rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[12.5px] text-zinc-700 outline-none focus:border-zinc-400"
           />
           <button
             type="button"
             onClick={() => setDia(hoje())}
-            className={`min-h-9 rounded-xl px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors ${
-              dia === hoje() ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
-            }`}
+            disabled={dia === hoje()}
+            className="min-h-9 rounded-xl border border-zinc-200 bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
           >
-            Hoje
-          </button>
-          <button
-            type="button"
-            onClick={() => setDia(ontem())}
-            className={`min-h-9 rounded-xl px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors ${
-              dia === ontem() ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
-            }`}
-          >
-            Ontem
+            {periodo === "dia" ? "Hoje" : periodo === "semana" ? "Esta semana" : "Este mês"}
           </button>
         </div>
       </header>
@@ -195,23 +293,35 @@ export default function RelatorioClient() {
                   rotulo="Atendimentos"
                   valor={numero(t.atendimentos)}
                   detalhe={`${numero(t.conversas)} conversas`}
+                  variacao={<Variacao atual={t.atendimentos} antes={dados.anterior?.atendimentos} />}
                 />
                 <Total
                   rotulo="Mensagens"
                   valor={numero(t.mensagens)}
                   detalhe={t.conversas > 0 ? `${decimal(t.mensagens / t.conversas)} por conversa` : undefined}
+                  variacao={<Variacao atual={t.mensagens} antes={dados.anterior?.mensagens} />}
                 />
                 <Total
                   rotulo="Resposta média"
                   valor={duracao(t.mediaSeg)}
                   detalhe={`${numero(t.respostas)} respostas`}
+                  variacao={<Variacao atual={t.mediaSeg} antes={dados.anterior?.mediaSeg} menorEhMelhor />}
                 />
                 <Total
                   rotulo="Avaliação"
                   valor={t.notas > 0 ? `${decimal(t.notaMedia ?? 0)}` : "—"}
                   detalhe={t.notas > 0 ? `${numero(t.notas)} ${t.notas === 1 ? "nota" : "notas"}${t.notasBaixas > 0 ? ` · ${t.notasBaixas} abaixo de 4` : ""}` : "nenhuma nota"}
+                  variacao={<Variacao atual={t.notaMedia} antes={dados.anterior?.notaMedia} />}
                 />
               </section>
+
+              {dados.anterior && (
+                <p className="mt-3 text-[11.5px] text-zinc-500">
+                  As setas comparam com {dados.periodo.tipo === "dia" ? "o dia anterior"
+                    : dados.periodo.tipo === "semana" ? "a semana anterior" : "o mês anterior"}
+                  {dados.periodo.emAndamento && <> — e só com o <strong className="font-semibold">mesmo tempo decorrido</strong>, para período em andamento não parecer pior do que é</>}.
+                </p>
+              )}
 
               {t.lentas > 0 && (
                 <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12.5px] text-amber-800">
