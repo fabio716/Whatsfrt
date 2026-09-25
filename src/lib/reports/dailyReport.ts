@@ -440,3 +440,95 @@ export function formatarParaWhatsApp(r: RelatorioDiario): string {
 
   return linhas.join("\n")
 }
+
+// ─── Quem esperou demais ─────────────────────────────────────────────────────
+// O número "4 acima de 1h" mostra que existe problema; esta lista mostra ONDE.
+// Sem ela não dá pra corrigir nada — é o caso a caso que permite falar com a
+// vendedora sobre um atendimento concreto em vez de um percentual.
+
+export interface RespostaLenta {
+  contactId: string
+  cliente: string
+  agentId: string
+  vendedora: string
+  /** Quando o cliente escreveu. */
+  clienteEm: string
+  /** Quando respondemos. Null = ninguém respondeu até agora. */
+  respostaEm: string | null
+  esperaSeg: number
+  /** O que o cliente disse (começo da mensagem). */
+  pergunta: string
+}
+
+export async function listarRespostasLentas(
+  ini: Date,
+  fim: Date,
+  agentId?: string,
+): Promise<RespostaLenta[]> {
+  const limiteSeg = LIMITE_RESPOSTA_MIN * 60
+
+  // Duas situações entram na mesma lista, porque pro cliente é a mesma coisa:
+  // esperou muito, ou está esperando até agora.
+  const linhas = await prisma.$queryRaw<Array<{
+    contactId: string
+    cliente: string
+    agentId: string | null
+    clienteEm: Date
+    respostaEm: Date | null
+    espera_seg: number
+    pergunta: string | null
+  }>>`
+    WITH base AS (
+      SELECT m."contactId", m.direction, m."agentId", m."createdAt", m.body,
+             LEAD(m.direction)   OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima,
+             LEAD(m."createdAt") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima_em,
+             LEAD(m."agentId")   OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima_agente
+      FROM messages m
+      WHERE m."createdAt" >= ${ini}::timestamp - INTERVAL '12 hours'
+        AND m."createdAt" <  ${fim}
+    )
+    SELECT b."contactId",
+           c.name AS cliente,
+           -- Sem resposta ainda: a cobrança é de quem tem o cliente na carteira.
+           COALESCE(b.proxima_agente, ct."assignedUserId", ct."lastAgentUserId") AS "agentId",
+           b."createdAt" AS "clienteEm",
+           CASE WHEN b.proxima = 'OUTBOUND' THEN b.proxima_em END AS "respostaEm",
+           EXTRACT(EPOCH FROM (COALESCE(
+             CASE WHEN b.proxima = 'OUTBOUND' THEN b.proxima_em END,
+             ${fim}::timestamp
+           ) - b."createdAt"))::INT AS espera_seg,
+           b.body AS pergunta
+    FROM base b
+    JOIN contacts c  ON c.id = b."contactId"
+    JOIN contacts ct ON ct.id = b."contactId"
+    WHERE b.direction = 'INBOUND'
+      AND b."createdAt" >= ${ini}
+      AND c."deletedAt" IS NULL
+      -- Ou demorou demais pra responder, ou ninguém respondeu até o fim da janela.
+      AND (b.proxima IS DISTINCT FROM 'OUTBOUND'
+           OR EXTRACT(EPOCH FROM (b.proxima_em - b."createdAt")) > ${limiteSeg})
+      AND EXTRACT(EPOCH FROM (COALESCE(
+            CASE WHEN b.proxima = 'OUTBOUND' THEN b.proxima_em END,
+            ${fim}::timestamp
+          ) - b."createdAt")) > ${limiteSeg}
+      AND (${agentId ?? null}::text IS NULL
+           OR COALESCE(b.proxima_agente, ct."assignedUserId", ct."lastAgentUserId") = ${agentId ?? null})
+    ORDER BY espera_seg DESC
+    LIMIT 100
+  `
+
+  const nomes = new Map(
+    (await prisma.user.findMany({ select: { id: true, name: true } })).map((u) => [u.id, u.name]),
+  )
+
+  return linhas.map((l) => ({
+    contactId: l.contactId,
+    cliente: l.cliente,
+    agentId: l.agentId ?? "",
+    vendedora: l.agentId ? (nomes.get(l.agentId) ?? "—") : "sem vendedora",
+    clienteEm: l.clienteEm.toISOString(),
+    respostaEm: l.respostaEm ? l.respostaEm.toISOString() : null,
+    esperaSeg: Number(l.espera_seg),
+    pergunta: (l.pergunta ?? "").slice(0, 120),
+  }))
+}

@@ -32,6 +32,16 @@ interface Vendedora {
 
 type TipoPeriodo = "dia" | "semana" | "mes"
 
+interface CasoLento {
+  contactId: string
+  cliente: string
+  vendedora: string
+  clienteEm: string
+  respostaEm: string | null
+  esperaSeg: number
+  pergunta: string
+}
+
 interface Totais {
   atendimentos: number
   conversas: number
@@ -151,6 +161,17 @@ function Metrica({ rotulo, valor, alerta }: Readonly<{ rotulo: string; valor: Re
 export default function RelatorioClient() {
   const [dia, setDia] = useState(hoje)
   const [periodo, setPeriodo] = useState<TipoPeriodo>("dia")
+  // Quem esperou demais. `null` = painel fechado. O filtro guarda o id da
+  // vendedora (ou "" pra empresa inteira) e o nome só pra mostrar no título.
+  const [lentas, setLentas] = useState<{ agentId: string; nome: string } | null>(null)
+  const [casos, setCasos] = useState<CasoLento[] | null>(null)
+
+  // Limpa a lista ao abrir: trocando de vendedora com o painel aberto, os
+  // casos da anterior não podem ficar na tela por um instante.
+  const abrirLentas = (agentId: string, nome: string) => {
+    setCasos(null)
+    setLentas({ agentId, nome })
+  }
   const [dados, setDados] = useState<Relatorio | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -181,6 +202,26 @@ export default function RelatorioClient() {
     })()
     return () => { vivo = false }
   }, [dia, periodo])
+
+  // Busca os casos concretos quando o painel abre.
+  useEffect(() => {
+    // Fechado: nada a buscar. A lista antiga não incomoda porque o painel
+    // está escondido, e abrirLentas() limpa antes de abrir de novo.
+    if (!lentas) return
+    let vivo = true
+    void (async () => {
+      try {
+        const alvo = lentas.agentId ? `&agente=${encodeURIComponent(lentas.agentId)}` : ""
+        const res = await fetch(`/api/reports/slow?dia=${dia}&periodo=${periodo}${alvo}`, { cache: "no-store" })
+        if (!vivo) return
+        const json = res.ok ? ((await res.json()) as { casos: CasoLento[] }) : { casos: [] }
+        if (vivo) setCasos(json.casos)
+      } catch {
+        if (vivo) setCasos([])
+      }
+    })()
+    return () => { vivo = false }
+  }, [lentas, dia, periodo])
 
   const t = dados?.totais
 
@@ -324,10 +365,18 @@ export default function RelatorioClient() {
               )}
 
               {t.lentas > 0 && (
-                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12.5px] text-amber-800">
-                  ⚠️ {numero(t.lentas)} {t.lentas === 1 ? "resposta levou" : "respostas levaram"} mais de 1 hora — essas
-                  ficam fora da média e aparecem por vendedora abaixo.
-                </p>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+                  <p className="text-[12.5px] text-amber-800">
+                    ⚠️ {numero(t.lentas)} {t.lentas === 1 ? "cliente esperou" : "clientes esperaram"} mais de 1 hora.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => abrirLentas("", "toda a equipe")}
+                    className="min-h-8 shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-amber-700"
+                  >
+                    Ver quem esperou
+                  </button>
+                </div>
               )}
 
               {/* ── Por vendedora ── */}
@@ -353,7 +402,15 @@ export default function RelatorioClient() {
                         <Metrica rotulo="Metade em até" valor={duracao(v.medianaSeg)} />
                         <Metrica
                           rotulo="Acima de 1h"
-                          valor={v.lentas === 0 ? "nenhuma" : numero(v.lentas)}
+                          valor={v.lentas === 0 ? "nenhuma" : (
+                            <button
+                              type="button"
+                              onClick={() => abrirLentas(v.id, v.nome)}
+                              className="rounded underline decoration-amber-300 decoration-2 underline-offset-2 hover:decoration-amber-500"
+                            >
+                              {numero(v.lentas)} <span className="text-[11px] font-normal">ver quais</span>
+                            </button>
+                          )}
                           alerta={v.lentas > 0}
                         />
                       </dl>
@@ -412,6 +469,87 @@ export default function RelatorioClient() {
           )
         )}
       </div>
+
+      {/* ─── Quem esperou demais ───────────────────────────────────────────
+          É aqui que o relatório vira ação: cada linha é um atendimento
+          concreto, com link pra abrir a conversa e ver o que aconteceu. */}
+      {lentas && (
+        <div
+          className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
+          onClick={() => setLentas(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
+              <div>
+                <h2 className="text-[15px] font-semibold text-zinc-900">
+                  Clientes que esperaram mais de 1 hora
+                </h2>
+                <p className="mt-0.5 text-[12px] text-zinc-500">
+                  {lentas.nome} · {dados?.periodo?.rotulo}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLentas(null)}
+                aria-label="Fechar"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {casos === null ? (
+                <p className="px-5 py-10 text-center text-[12.5px] text-zinc-400">Carregando…</p>
+              ) : casos.length === 0 ? (
+                <p className="px-5 py-10 text-center text-[12.5px] text-zinc-500">
+                  Nenhum cliente esperou mais de 1 hora neste período. 👏
+                </p>
+              ) : (
+                <ul className="divide-y divide-zinc-100">
+                  {casos.map((c) => (
+                    <li key={`${c.contactId}-${c.clienteEm}`}>
+                      <a
+                        href={`/admin/chats?contact=${c.contactId}`}
+                        className="block px-5 py-3.5 transition-colors hover:bg-zinc-50"
+                      >
+                        <div className="flex items-baseline justify-between gap-3">
+                          <p className="truncate text-[13.5px] font-semibold text-zinc-900">{c.cliente}</p>
+                          <span className={`shrink-0 text-[12.5px] font-semibold tabular-nums ${c.respostaEm ? "text-amber-600" : "text-red-600"}`}>
+                            {c.respostaEm ? duracao(c.esperaSeg) : "sem resposta"}
+                          </span>
+                        </div>
+                        {c.pergunta && (
+                          <p className="mt-1 line-clamp-2 text-[12.5px] text-zinc-600">&ldquo;{c.pergunta}&rdquo;</p>
+                        )}
+                        <p className="mt-1 text-[11px] text-zinc-400">
+                          Cliente escreveu {new Date(c.clienteEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          {c.respostaEm
+                            ? ` · respondido ${new Date(c.respostaEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                            : " · ninguém respondeu"}
+                          {lentas.agentId === "" && ` · ${c.vendedora}`}
+                        </p>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <footer className="border-t border-zinc-100 px-5 py-3">
+              <p className="text-[11.5px] text-zinc-500">
+                Clique numa linha para abrir a conversa. &ldquo;Sem resposta&rdquo; é o cliente que escreveu e
+                não foi atendido até o fim do período.
+              </p>
+            </footer>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
