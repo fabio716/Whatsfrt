@@ -102,6 +102,16 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Dados",
     items: [
       {
+        href: "/admin/relatorio",
+        label: "Relatório do dia",
+        roles: ["ADMIN"],
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V9m4 8V5m4 12v-6M4 19h16" />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/dashboard",
         label: "Visão geral",
         roles: ["ADMIN", "AGENT"],

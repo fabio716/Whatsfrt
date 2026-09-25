@@ -30,6 +30,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/respostas-rapidas",
   "/admin/status",
   "/admin/copiloto",
+  "/admin/relatorio",
 ]
 
 // APIs sob /api/admin/* que AGENT tambem pode chamar. Sao endpoints que
