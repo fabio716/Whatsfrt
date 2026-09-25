@@ -94,7 +94,11 @@ export async function gerarRelatorioDiario(dia: string): Promise<RelatorioDiario
                LAG(m.direction)    OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
                LAG(m."createdAt")  OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_em
         FROM messages m
-        WHERE m."createdAt" >= ${ini} - INTERVAL '12 hours'
+        -- O ::timestamp é OBRIGATÓRIO. Sem ele o parâmetro chega sem tipo,
+        -- o Postgres resolve "? - INTERVAL" como interval menos interval, o
+        -- resultado vira um intervalo e a comparação explode com
+        -- "operator does not exist: timestamp without time zone >= interval".
+        WHERE m."createdAt" >= ${ini}::timestamp - INTERVAL '12 hours'
           AND m."createdAt" <  ${fim}
       ),
       respostas AS (
