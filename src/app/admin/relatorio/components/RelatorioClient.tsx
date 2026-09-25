@@ -532,6 +532,14 @@ export default function RelatorioClient() {
                     </dd>
                   </div>
                   <div>
+                    <dt className="inline font-semibold text-zinc-800">Transmissões não contam: </dt>
+                    <dd className="inline text-zinc-600">
+                      quando mandamos comunicado em massa, muita gente responde &ldquo;ok&rdquo; ou tem
+                      resposta automática. Essas respostas ficam fora do tempo de resposta e da lista de
+                      espera — não é cliente pedindo atendimento.
+                    </dd>
+                  </div>
+                  <div>
                     <dt className="inline font-semibold text-zinc-800">Média da empresa: </dt>
                     <dd className="inline text-zinc-600">
                       ponderada pelo número de respostas. Quem deu 200 respostas pesa mais que quem deu 3.

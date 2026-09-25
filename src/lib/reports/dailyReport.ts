@@ -206,7 +206,11 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
                m.direction,
                m."createdAt",
                LAG(m.direction)    OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
-               LAG(m."createdAt")  OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_em
+               LAG(m."createdAt")  OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_em,
+               -- Duas casas atrás: a mensagem NOSSA que veio antes da do
+               -- cliente. Se foi transmissão, o cliente só reagiu ao
+               -- comunicado e isso não é tempo de atendimento.
+               LAG(m."isBroadcast", 2) OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS antes_era_transmissao
         FROM messages m
         -- O ::timestamp é OBRIGATÓRIO. Sem ele o parâmetro chega sem tipo,
         -- o Postgres resolve "? - INTERVAL" como interval menos interval, o
@@ -223,6 +227,7 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           AND anterior = 'INBOUND'
           AND "agentId" IS NOT NULL
           AND "createdAt" >= ${ini}
+          AND COALESCE(antes_era_transmissao, false) = false
       )
       SELECT "agentId",
              COUNT(*) FILTER (WHERE espera <= ${LIMITE_RESPOSTA_MIN} * 60)::INT AS respostas,
@@ -482,7 +487,10 @@ export async function listarRespostasLentas(
       SELECT m."contactId", m.direction, m."agentId", m."createdAt", m.body,
              LEAD(m.direction)   OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima,
              LEAD(m."createdAt") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima_em,
-             LEAD(m."agentId")   OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima_agente
+             LEAD(m."agentId")   OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima_agente,
+             -- A mensagem nossa logo ANTES da do cliente. Transmissão ali
+             -- significa que ele só respondeu ao comunicado.
+             LAG(m."isBroadcast")     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao
       FROM messages m
       WHERE m."createdAt" >= ${ini}::timestamp - INTERVAL '12 hours'
         AND m."createdAt" <  ${fim}
@@ -504,6 +512,8 @@ export async function listarRespostasLentas(
     WHERE b.direction = 'INBOUND'
       AND b."createdAt" >= ${ini}
       AND c."deletedAt" IS NULL
+      -- Resposta a comunicado em massa não é cliente esperando atendimento.
+      AND COALESCE(b.anterior_transmissao, false) = false
       -- Ou demorou demais pra responder, ou ninguém respondeu até o fim da janela.
       AND (b.proxima IS DISTINCT FROM 'OUTBOUND'
            OR EXTRACT(EPOCH FROM (b.proxima_em - b."createdAt")) > ${limiteSeg})

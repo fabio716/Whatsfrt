@@ -211,6 +211,7 @@ export async function processCampaign(campaignId: string): Promise<void> {
                 status: MessageStatus.SENT,
                 contactId: log.contact.id,
                 agentId: campaign.createdById ?? null,
+                isBroadcast: true,
                 ...(messageId ? { whatsappKeyId: messageId } : {}),
                 ...(hasMedia ? { mediaUrl: campaign.mediaUrl, mediaType: campaign.mediaType } : {}),
               },

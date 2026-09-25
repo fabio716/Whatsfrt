@@ -272,6 +272,13 @@ model Message {
   // Fica invisível pro agente dono (privacidade) — só o admin vê.
   adminPrivate Boolean @default(false)
 
+  // Saiu de uma transmissão (campanha), não de uma conversa. Importa pro
+  // relatório: quando mandamos comunicado em massa, muita gente responde
+  // "ok" ou tem resposta automática, e isso não é cliente esperando
+  // atendimento. Sem essa marca, uma transmissão pra 200 contatos enchia o
+  // relatório de "espera" que ninguém pediu.
+  isBroadcast Boolean @default(false)
+
   // Reações estilo WhatsApp (👍❤️😂😮😢🙏). Só existem 2 lados possíveis num
   // chat 1:1: o cliente (theirReaction, vem do webhook) e nós — o número da
   // empresa, compartilhado entre agentes (myReaction, setado por quem reage

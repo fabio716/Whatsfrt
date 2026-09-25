@@ -117,7 +117,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // gente. Janela de 7 dias pra não varrer a tabela inteira.
     prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*)::BIGINT AS count FROM (
-        SELECT DISTINCT ON (m."contactId") m."contactId", m.direction
+        SELECT DISTINCT ON (m."contactId")
+               m."contactId",
+               m.direction,
+               -- A mensagem nossa imediatamente anterior era transmissão?
+               -- Se sim, o cliente só respondeu ao comunicado e não está
+               -- esperando atendimento — senão uma transmissão pra 200
+               -- contatos enchia este número de gente que não pediu nada.
+               LAG(m."isBroadcast") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS antes_transmissao
         FROM messages m
         JOIN contacts c ON c.id = m."contactId"
         WHERE m."createdAt" >= ${seteDias}
@@ -130,6 +137,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ORDER BY m."contactId", m."createdAt" DESC
       ) ultimas
       WHERE ultimas.direction = 'INBOUND'
+        AND COALESCE(ultimas.antes_transmissao, false) = false
     `,
     // ─── Daqui pra baixo: só admin. O agente recebe 0/vazio. ───
     souAgente
