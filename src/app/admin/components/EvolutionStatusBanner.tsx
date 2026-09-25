@@ -7,6 +7,11 @@ type EvolutionState = "open" | "close" | "connecting" | "qrcode" | "unknown" | n
 
 interface HealthResponse {
   checks?: {
+    // `whatsapp` é o nome atual; `evolution` é o nome antigo do mesmo campo.
+    // Aceitamos os dois porque durante o deploy o navegador pode estar com a
+    // tela nova falando com o servidor antigo (ou o contrário) por alguns
+    // segundos — e nesse intervalo o aviso de conexão não pode sumir.
+    whatsapp?: { state?: EvolutionState }
     evolution?: { state?: EvolutionState }
   }
 }
@@ -26,7 +31,7 @@ export default function EvolutionStatusBanner() {
         .then((r) => r.json() as Promise<HealthResponse>)
         .then((data) => {
           if (cancelled) return
-          const s = data?.checks?.evolution?.state ?? null
+          const s = data?.checks?.whatsapp?.state ?? data?.checks?.evolution?.state ?? null
           setState(s)
         })
         .catch(() => { /* health falhou — silencioso */ })
