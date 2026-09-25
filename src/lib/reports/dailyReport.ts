@@ -201,16 +201,20 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
       mediana_seg: number | null
       lentas: number
     }>>`
-      WITH base AS (
-        SELECT m."agentId",
-               m.direction,
-               m."createdAt",
-               LAG(m.direction)    OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
-               LAG(m."createdAt")  OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_em,
-               -- Duas casas atrás: a mensagem NOSSA que veio antes da do
-               -- cliente. Se foi transmissão, o cliente só reagiu ao
-               -- comunicado e isso não é tempo de atendimento.
-               LAG(m."isBroadcast", 2) OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS antes_era_transmissao
+      -- A espera começa na PRIMEIRA mensagem de uma sequência do cliente e
+      -- termina na PRIMEIRA resposta nossa.
+      --
+      -- A versão anterior olhava só a mensagem imediatamente seguinte. Cliente
+      -- que manda "oi", "bom dia", "tem estoque?" em sequência gerava espera
+      -- fantasma, porque a seguinte à primeira é outra dele, não nossa. As
+      -- vendedoras mandaram print provando que tinham respondido — e estavam
+      -- certas. Mesma correção vale pro limite do período: a resposta é
+      -- procurada SEM teto de fim, senão quem escreveu 20h e foi respondido
+      -- 8h do dia seguinte virava "sem resposta".
+      WITH janela AS (
+        SELECT m."contactId", m.direction, m."createdAt",
+               LAG(m.direction)     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
+               LAG(m."isBroadcast") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao
         FROM messages m
         -- O ::timestamp é OBRIGATÓRIO. Sem ele o parâmetro chega sem tipo,
         -- o Postgres resolve "? - INTERVAL" como interval menos interval, o
@@ -219,15 +223,27 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
         WHERE m."createdAt" >= ${ini}::timestamp - INTERVAL '12 hours'
           AND m."createdAt" <  ${fim}
       ),
-      respostas AS (
-        SELECT "agentId",
-               EXTRACT(EPOCH FROM ("createdAt" - anterior_em))::DOUBLE PRECISION AS espera
-        FROM base
-        WHERE direction = 'OUTBOUND'
-          AND anterior = 'INBOUND'
-          AND "agentId" IS NOT NULL
+      inicios AS (
+        SELECT * FROM janela
+        WHERE direction = 'INBOUND'
+          AND anterior IS DISTINCT FROM 'INBOUND'
           AND "createdAt" >= ${ini}
-          AND COALESCE(antes_era_transmissao, false) = false
+          AND COALESCE(anterior_transmissao, false) = false
+      ),
+      respostas AS (
+        SELECT r."agentId",
+               EXTRACT(EPOCH FROM (r."createdAt" - i."createdAt"))::DOUBLE PRECISION AS espera
+        FROM inicios i
+        CROSS JOIN LATERAL (
+          SELECT o."agentId", o."createdAt"
+          FROM messages o
+          WHERE o."contactId" = i."contactId"
+            AND o.direction = 'OUTBOUND'
+            AND o."createdAt" > i."createdAt"
+          ORDER BY o."createdAt"
+          LIMIT 1
+        ) r
+        WHERE r."agentId" IS NOT NULL
       )
       SELECT "agentId",
              COUNT(*) FILTER (WHERE espera <= ${LIMITE_RESPOSTA_MIN} * 60)::INT AS respostas,
@@ -483,46 +499,52 @@ export async function listarRespostasLentas(
     espera_seg: number
     pergunta: string | null
   }>>`
-    WITH base AS (
+    -- Mesma definição do tempo de resposta: a espera começa na PRIMEIRA
+    -- mensagem de uma sequência do cliente e termina na PRIMEIRA resposta
+    -- nossa, procurada SEM teto de fim de período.
+    --
+    -- Antes eu olhava só a mensagem imediatamente seguinte, e isso acusava
+    -- injustamente: cliente que manda três mensagens seguidas gerava duas
+    -- "sem resposta" mesmo tendo sido atendido na hora.
+    WITH janela AS (
       SELECT m."contactId", m.direction, m."agentId", m."createdAt", m.body,
-             LEAD(m.direction)   OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima,
-             LEAD(m."createdAt") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima_em,
-             LEAD(m."agentId")   OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima_agente,
-             -- A mensagem nossa logo ANTES da do cliente. Transmissão ali
-             -- significa que ele só respondeu ao comunicado.
-             LAG(m."isBroadcast")     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao
+             LAG(m.direction)     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
+             LAG(m."isBroadcast") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao
       FROM messages m
       WHERE m."createdAt" >= ${ini}::timestamp - INTERVAL '12 hours'
         AND m."createdAt" <  ${fim}
+    ),
+    inicios AS (
+      SELECT * FROM janela
+      WHERE direction = 'INBOUND'
+        AND anterior IS DISTINCT FROM 'INBOUND'
+        AND "createdAt" >= ${ini}
+        AND COALESCE(anterior_transmissao, false) = false
     )
-    SELECT b."contactId",
+    SELECT i."contactId",
            c.name AS cliente,
-           -- Sem resposta ainda: a cobrança é de quem tem o cliente na carteira.
-           COALESCE(b.proxima_agente, ct."assignedUserId", ct."lastAgentUserId") AS "agentId",
-           b."createdAt" AS "clienteEm",
-           CASE WHEN b.proxima = 'OUTBOUND' THEN b.proxima_em END AS "respostaEm",
-           EXTRACT(EPOCH FROM (COALESCE(
-             CASE WHEN b.proxima = 'OUTBOUND' THEN b.proxima_em END,
-             ${fim}::timestamp
-           ) - b."createdAt"))::INT AS espera_seg,
-           b.body AS pergunta
-    FROM base b
-    JOIN contacts c  ON c.id = b."contactId"
-    JOIN contacts ct ON ct.id = b."contactId"
-    WHERE b.direction = 'INBOUND'
-      AND b."createdAt" >= ${ini}
-      AND c."deletedAt" IS NULL
-      -- Resposta a comunicado em massa não é cliente esperando atendimento.
-      AND COALESCE(b.anterior_transmissao, false) = false
-      -- Ou demorou demais pra responder, ou ninguém respondeu até o fim da janela.
-      AND (b.proxima IS DISTINCT FROM 'OUTBOUND'
-           OR EXTRACT(EPOCH FROM (b.proxima_em - b."createdAt")) > ${limiteSeg})
-      AND EXTRACT(EPOCH FROM (COALESCE(
-            CASE WHEN b.proxima = 'OUTBOUND' THEN b.proxima_em END,
-            ${fim}::timestamp
-          ) - b."createdAt")) > ${limiteSeg}
+           -- Quem respondeu. Sem resposta ainda: a cobrança é de quem tem o
+           -- cliente na carteira.
+           COALESCE(r."agentId", c."assignedUserId", c."lastAgentUserId") AS "agentId",
+           i."createdAt" AS "clienteEm",
+           r."createdAt" AS "respostaEm",
+           EXTRACT(EPOCH FROM (COALESCE(r."createdAt", now()) - i."createdAt"))::INT AS espera_seg,
+           i.body AS pergunta
+    FROM inicios i
+    JOIN contacts c ON c.id = i."contactId"
+    LEFT JOIN LATERAL (
+      SELECT o."agentId", o."createdAt"
+      FROM messages o
+      WHERE o."contactId" = i."contactId"
+        AND o.direction = 'OUTBOUND'
+        AND o."createdAt" > i."createdAt"
+      ORDER BY o."createdAt"
+      LIMIT 1
+    ) r ON true
+    WHERE c."deletedAt" IS NULL
+      AND EXTRACT(EPOCH FROM (COALESCE(r."createdAt", now()) - i."createdAt")) > ${limiteSeg}
       AND (${agentId ?? null}::text IS NULL
-           OR COALESCE(b.proxima_agente, ct."assignedUserId", ct."lastAgentUserId") = ${agentId ?? null})
+           OR COALESCE(r."agentId", c."assignedUserId", c."lastAgentUserId") = ${agentId ?? null})
     ORDER BY espera_seg DESC
     LIMIT 100
   `
