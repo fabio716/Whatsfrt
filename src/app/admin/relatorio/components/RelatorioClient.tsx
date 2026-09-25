@@ -158,6 +158,76 @@ function Metrica({ rotulo, valor, alerta }: Readonly<{ rotulo: string; valor: Re
   )
 }
 
+// Escapa texto que vai pro HTML do PDF. O nome do cliente e o que ele
+// escreveu vêm de fora — jogar isso cru em innerHTML seria abrir a porta.
+function esc(t: string): string {
+  return t.replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
+  ))
+}
+
+/**
+ * Abre uma janela com a versão impressa e chama a impressão do navegador.
+ * O próprio navegador oferece "Salvar como PDF" — assim não entra dependência
+ * nova no projeto nem trabalho de gerar PDF no servidor.
+ */
+function imprimirCasos(titulo: string, periodo: string, casos: CasoLento[], mostrarVendedora: boolean): void {
+  const linhas = casos.map((c) => `
+    <tr>
+      <td class="cliente">${esc(c.cliente)}${mostrarVendedora ? `<span class="vend">${esc(c.vendedora)}</span>` : ""}</td>
+      <td class="espera ${c.respostaEm ? "" : "sem"}">${c.respostaEm ? esc(duracao(c.esperaSeg)) : "sem resposta"}</td>
+      <td class="quando">
+        ${new Date(c.clienteEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+        ${c.respostaEm ? `<span class="resp">respondido ${new Date(c.respostaEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>` : `<span class="resp">ninguém respondeu</span>`}
+      </td>
+      <td class="msg">${esc(c.pergunta)}</td>
+    </tr>`).join("")
+
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>${esc(titulo)}</title>
+<style>
+  @page { margin: 16mm; }
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: #18181b; margin: 0; }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  .sub { font-size: 12px; color: #71717a; margin: 0 0 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em;
+       color: #71717a; border-bottom: 1px solid #d4d4d8; padding: 0 8px 6px 0; }
+  td { padding: 8px 8px 8px 0; border-bottom: 1px solid #f4f4f5; vertical-align: top; }
+  tr { page-break-inside: avoid; }
+  .cliente { font-weight: 600; width: 27%; }
+  .vend { display: block; font-weight: 400; font-size: 10px; color: #71717a; }
+  .espera { width: 13%; font-weight: 600; color: #b45309; white-space: nowrap; }
+  .espera.sem { color: #dc2626; }
+  .quando { width: 22%; color: #52525b; font-size: 10.5px; }
+  .resp { display: block; color: #a1a1aa; }
+  .msg { color: #3f3f46; }
+  .rodape { margin-top: 20px; font-size: 10px; color: #71717a; line-height: 1.6; border-top: 1px solid #e4e4e7; padding-top: 10px; }
+</style></head><body>
+<h1>Clientes que esperaram mais de 1 hora</h1>
+<p class="sub">${esc(titulo)} &middot; ${esc(periodo)} &middot; gerado em ${new Date().toLocaleString("pt-BR")}</p>
+<table>
+  <thead><tr><th>Cliente</th><th>Esperou</th><th>Quando</th><th>O que o cliente perguntou</th></tr></thead>
+  <tbody>${linhas}</tbody>
+</table>
+<p class="rodape">
+  O tempo conta da mensagem do cliente até a primeira resposta nossa.
+  &ldquo;Sem resposta&rdquo; é o cliente que escreveu e não foi atendido até o fim do período.<br>
+  Relatório gerado pelo WhatsFRT.
+</p>
+</body></html>`
+
+  const janela = window.open("", "_blank", "width=900,height=700")
+  if (!janela) {
+    alert("O navegador bloqueou a janela. Libere os pop-ups deste site para gerar o PDF.")
+    return
+  }
+  janela.document.write(html)
+  janela.document.close()
+  // Espera o conteúdo assentar antes de abrir a caixa de impressão.
+  janela.setTimeout(() => janela.print(), 300)
+}
+
 export default function RelatorioClient() {
   const [dia, setDia] = useState(hoje)
   const [periodo, setPeriodo] = useState<TipoPeriodo>("dia")
@@ -482,25 +552,65 @@ export default function RelatorioClient() {
             className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
-              <div>
-                <h2 className="text-[15px] font-semibold text-zinc-900">
-                  Clientes que esperaram mais de 1 hora
-                </h2>
-                <p className="mt-0.5 text-[12px] text-zinc-500">
-                  {lentas.nome} · {dados?.periodo?.rotulo}
-                </p>
+            <header className="border-b border-zinc-100 px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-[15px] font-semibold text-zinc-900">
+                    Clientes que esperaram mais de 1 hora
+                  </h2>
+                  <p className="mt-0.5 text-[12px] text-zinc-500">{dados?.periodo?.rotulo}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLentas(null)}
+                  aria-label="Fechar"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setLentas(null)}
-                aria-label="Fechar"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {/* Trocar de vendedora sem fechar o painel — é assim que se
+                    percorre a equipe procurando onde está o problema. */}
+                <select
+                  value={lentas.agentId}
+                  onChange={(e) => {
+                    const id = e.target.value
+                    const v = dados?.vendedoras.find((x) => x.id === id)
+                    abrirLentas(id, id === "" ? "toda a equipe" : (v?.nome ?? "—"))
+                  }}
+                  aria-label="Filtrar por vendedora"
+                  className="min-h-9 rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[12.5px] text-zinc-700 outline-none focus:border-zinc-400"
+                >
+                  <option value="">Toda a equipe</option>
+                  {dados?.vendedoras.map((v) => (
+                    <option key={v.id} value={v.id}>{v.nome}</option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  disabled={!casos || casos.length === 0}
+                  onClick={() => imprimirCasos(
+                    lentas.agentId === "" ? "Toda a equipe" : lentas.nome,
+                    dados?.periodo?.rotulo ?? "",
+                    casos ?? [],
+                    lentas.agentId === "",
+                  )}
+                  className="min-h-9 rounded-xl border border-zinc-200 bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                >
+                  Baixar PDF
+                </button>
+
+                {casos && casos.length > 0 && (
+                  <span className="text-[12px] text-zinc-500">
+                    {casos.length} {casos.length === 1 ? "caso" : "casos"}
+                  </span>
+                )}
+              </div>
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
