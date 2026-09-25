@@ -238,7 +238,11 @@ export default function RelatorioClient() {
 
   // Limpa a lista ao abrir: trocando de vendedora com o painel aberto, os
   // casos da anterior não podem ficar na tela por um instante.
+  // Envio do "pedir explicação": null = parado, "enviando", ou o resultado.
+  const [pedindo, setPedindo] = useState<"parado" | "enviando" | "enviado" | "erro">("parado")
+
   const abrirLentas = (agentId: string, nome: string) => {
+    setPedindo("parado")
     setCasos(null)
     setLentas({ agentId, nome })
   }
@@ -591,6 +595,33 @@ export default function RelatorioClient() {
                   ))}
                 </select>
 
+                {/* Só faz sentido com uma vendedora escolhida: "toda a
+                    equipe" mandaria a lista dos outros pra cada uma. */}
+                {lentas.agentId !== "" && (
+                  <button
+                    type="button"
+                    disabled={!casos || casos.length === 0 || pedindo === "enviando" || pedindo === "enviado"}
+                    onClick={() => void (async () => {
+                      setPedindo("enviando")
+                      try {
+                        const res = await fetch("/api/reports/slow/ask", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ agentId: lentas.agentId, dia, periodo }),
+                        })
+                        setPedindo(res.ok ? "enviado" : "erro")
+                      } catch {
+                        setPedindo("erro")
+                      }
+                    })()}
+                    className="min-h-9 rounded-xl bg-zinc-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-zinc-700 disabled:opacity-40"
+                  >
+                    {pedindo === "enviando" ? "Enviando…"
+                      : pedindo === "enviado" ? "✓ Enviado"
+                        : `Pedir explicação`}
+                  </button>
+                )}
+
                 <button
                   type="button"
                   disabled={!casos || casos.length === 0}
@@ -605,9 +636,19 @@ export default function RelatorioClient() {
                   Baixar PDF
                 </button>
 
-                {casos && casos.length > 0 && (
+                {casos && casos.length > 0 && pedindo === "parado" && (
                   <span className="text-[12px] text-zinc-500">
                     {casos.length} {casos.length === 1 ? "caso" : "casos"}
+                  </span>
+                )}
+                {pedindo === "enviado" && (
+                  <span className="text-[12px] font-medium text-emerald-700">
+                    Mandei no chat interno de {lentas.nome}.
+                  </span>
+                )}
+                {pedindo === "erro" && (
+                  <span className="text-[12px] font-medium text-amber-700">
+                    Não consegui enviar. Tente de novo.
                   </span>
                 )}
               </div>

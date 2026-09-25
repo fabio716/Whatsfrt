@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
+import { acharOuCriarDM } from "@/lib/internalChat"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -150,43 +151,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (otherId === me.id) {
       return NextResponse.json({ error: "Não é possível conversar consigo mesmo" }, { status: 400 })
     }
-    const other = await prisma.user.findFirst({
-      where: { id: otherId, isActive: true },
-      select: { id: true },
-    })
-    if (!other) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
-
-    // Procura DM já existente entre os dois.
-    const mine = await prisma.internalConversationMember.findMany({
-      where: { userId: me.id },
-      select: { conversationId: true },
-    })
-    const mineIds = mine.map((m) => m.conversationId)
-    if (mineIds.length) {
-      const shared = await prisma.internalConversationMember.findMany({
-        where: { userId: otherId, conversationId: { in: mineIds } },
-        select: { conversationId: true },
-      })
-      for (const s of shared) {
-        const conv = await prisma.internalConversation.findUnique({
-          where: { id: s.conversationId },
-          select: { id: true, isGroup: true, _count: { select: { members: true } } },
-        })
-        if (conv && !conv.isGroup && conv._count.members === 2) {
-          return NextResponse.json({ id: conv.id, isGroup: false }, { status: 200 })
-        }
-      }
-    }
-
-    const created = await prisma.internalConversation.create({
-      data: {
-        isGroup: false,
-        createdById: me.id,
-        members: { create: [{ userId: me.id, lastReadAt: new Date() }, { userId: otherId }] },
-      },
-      select: { id: true },
-    })
-    return NextResponse.json({ id: created.id, isGroup: false }, { status: 201 })
+    // A regra de achar-ou-criar a DM vive em @/lib/internalChat, porque o
+    // "pedir explicação" do relatório também precisa dela. Duas cópias da
+    // mesma regra viram duas conversas paralelas com o mesmo par no dia em
+    // que uma delas mudar.
+    const id = await acharOuCriarDM(me.id, otherId)
+    if (!id) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
+    return NextResponse.json({ id, isGroup: false }, { status: 200 })
   }
 
   // ── Grupo ──
