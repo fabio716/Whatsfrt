@@ -232,7 +232,7 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
       ),
       respostas AS (
         SELECT r."agentId",
-               EXTRACT(EPOCH FROM (r."createdAt" - i."createdAt"))::DOUBLE PRECISION AS espera
+               GREATEST(0, EXTRACT(EPOCH FROM (r."createdAt" - i."createdAt")) - al.almoco_seg)::DOUBLE PRECISION AS espera
         FROM inicios i
         JOIN contacts c ON c.id = i."contactId"
         CROSS JOIN LATERAL (
@@ -254,6 +254,23 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           ORDER BY p."createdAt" ASC
           LIMIT 1
         ) primeira ON true
+        -- Horário de almoço não conta como tempo de resposta (mesma lógica
+        -- da lista de "quem esperou", ver comentário lá embaixo).
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (
+                   LEAST(r."createdAt" - INTERVAL '3 hours', dia + bh."lunchEnd"::time)
+                   - GREATEST(i."createdAt" - INTERVAL '3 hours', dia + bh."lunchStart"::time)
+                 )))), 0) AS almoco_seg
+          FROM generate_series(
+            date_trunc('day', i."createdAt" - INTERVAL '3 hours'),
+            date_trunc('day', r."createdAt" - INTERVAL '3 hours'),
+            INTERVAL '1 day'
+          ) AS dia
+          JOIN ura_config uc ON uc."isActive" = true
+          JOIN business_hours bh ON bh."configId" = uc.id
+            AND bh."dayOfWeek" = EXTRACT(DOW FROM dia)::int
+            AND bh."hasLunchBreak" = true
+        ) al ON true
         -- Contato marcado como robô de outra empresa não entra na média de
         -- ninguém — nem pra cima nem pra baixo.
         WHERE r."agentId" IS NOT NULL
@@ -546,6 +563,17 @@ export async function listarRespostasLentas(
     --    fala com a gente primeiro. Se a PRIMEIRA mensagem de todos os tempos
     --    com esse contato foi NOSSA (OUTBOUND), não é lead — é gente que a
     --    gente abordou, então a resposta automática dela não conta.
+    --
+    -- 4. NOVO (28/09/2026, 3ª rodada): horário de almoço não conta como
+    --    espera. Ninguém está de plantão nesse intervalo — cobrar tempo de
+    --    almoço é cobrar a vendedora por não estar trabalhando num horário
+    --    em que ela não deveria estar. Descontamos, dia a dia (uma espera
+    --    pode atravessar mais de um almoço em relatório de semana/mês), a
+    --    parte do intervalo [clienteEm, fim_efetivo] que cai dentro do
+    --    horário de almoço configurado (business_hours.lunchStart/lunchEnd)
+    --    do dia da semana correspondente. Os horários salvos são os do
+    --    Brasil; createdAt é UTC, por isso o "- INTERVAL '3 hours'" (mesma
+    --    regra do resto do arquivo: Brasil não tem mais horário de verão).
     WITH janela AS (
       SELECT m."contactId", m.direction, m."agentId", m."createdAt", m.body,
              LAG(m.direction)     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
@@ -568,7 +596,7 @@ export async function listarRespostasLentas(
            COALESCE(r."agentId", c."assignedUserId", c."lastAgentUserId") AS "agentId",
            i."createdAt" AS "clienteEm",
            r."createdAt" AS "respostaEm",
-           EXTRACT(EPOCH FROM (COALESCE(r."createdAt", LEAST(now(), ${fim}::timestamp)) - i."createdAt"))::INT AS espera_seg,
+           GREATEST(0, EXTRACT(EPOCH FROM (fe.fim_efetivo - i."createdAt")) - al.almoco_seg)::INT AS espera_seg,
            i.body AS pergunta
     FROM inicios i
     JOIN contacts c ON c.id = i."contactId"
@@ -590,13 +618,36 @@ export async function listarRespostasLentas(
       ORDER BY p."createdAt" ASC
       LIMIT 1
     ) primeira ON true
+    -- Fim efetivo da espera (resposta, ou teto do período/agora — item 1).
+    -- Isolado numa LATERAL só pra não repetir o COALESCE(...) três vezes.
+    CROSS JOIN LATERAL (
+      SELECT COALESCE(r."createdAt", LEAST(now(), ${fim}::timestamp)) AS fim_efetivo
+    ) fe
+    -- Soma, dia a dia, o quanto do intervalo [clienteEm, fim_efetivo] caiu
+    -- dentro do horário de almoço configurado (item 4 acima).
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (
+               LEAST(fe.fim_efetivo - INTERVAL '3 hours', dia + bh."lunchEnd"::time)
+               - GREATEST(i."createdAt" - INTERVAL '3 hours', dia + bh."lunchStart"::time)
+             )))), 0) AS almoco_seg
+      FROM generate_series(
+        date_trunc('day', i."createdAt" - INTERVAL '3 hours'),
+        date_trunc('day', fe.fim_efetivo - INTERVAL '3 hours'),
+        INTERVAL '1 day'
+      ) AS dia
+      JOIN ura_config uc ON uc."isActive" = true
+      JOIN business_hours bh ON bh."configId" = uc.id
+        AND bh."dayOfWeek" = EXTRACT(DOW FROM dia)::int
+        AND bh."hasLunchBreak" = true
+    ) al ON true
     WHERE c."deletedAt" IS NULL
       AND c."excludeFromReports" = false
       AND primeira.direction = 'INBOUND'
       -- Mesma expressão do espera_seg acima (SELECT alias não pode ser
-      -- reaproveitado no WHERE do Postgres). Sem isso, mensagem sem resposta
-      -- há 2 minutos entrava na lista igual a uma de 3 horas.
-      AND EXTRACT(EPOCH FROM (COALESCE(r."createdAt", LEAST(now(), ${fim}::timestamp)) - i."createdAt")) > ${limiteSeg}
+      -- reaproveitado no WHERE do Postgres — mas alias de LATERAL pode,
+      -- por isso fe/al foram isoladas em cima). Sem isso, mensagem sem
+      -- resposta há 2 minutos entrava na lista igual a uma de 3 horas.
+      AND GREATEST(0, EXTRACT(EPOCH FROM (fe.fim_efetivo - i."createdAt")) - al.almoco_seg) > ${limiteSeg}
       -- Encerrado depois da mensagem = vendedora avaliou e considerou
       -- resolvido, mesmo sem uma resposta de texto formal.
       AND NOT EXISTS (
