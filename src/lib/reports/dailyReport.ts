@@ -195,7 +195,9 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
     // A janela começa 12h antes pra conseguir emparelhar a mensagem que o
     // cliente mandou na véspera com a resposta da manhã.
     prisma.$queryRaw<Array<{
-      agentId: string
+      // Null: contato nunca teve ninguém na carteira (lead esperando sem
+      // vendedora atribuída) — ver uso mais abaixo.
+      agentId: string | null
       respostas: number
       media_seg: number | null
       mediana_seg: number | null
@@ -231,11 +233,23 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           AND COALESCE(anterior_transmissao, false) = false
       ),
       respostas AS (
-        SELECT r."agentId",
-               GREATEST(0, EXTRACT(EPOCH FROM (r."createdAt" - i."createdAt")) - al.almoco_seg)::DOUBLE PRECISION AS espera
+        -- "espera_respondida" só existe quando teve resposta de verdade — é o
+        -- que entra na média/mediana. "espera_total" existe SEMPRE (usa o teto
+        -- do fim do período quando não respondeu) — é o que conta pra
+        -- "lentas". Antes "lentas" vinha só daqui filtrando espera_respondida,
+        -- e por isso EXCLUÍA todo caso "sem resposta nenhuma" — o número
+        -- "X clientes esperaram mais de 1 hora" do topo do relatório batia
+        -- bem menor que a lista "Ver quem esperou" (que já usava a mesma
+        -- definição do listarRespostasLentas, com sem-resposta incluído).
+        -- Confuso pra quem lê os dois números juntos — agora usam a mesma conta.
+        SELECT COALESCE(r."agentId", c."assignedUserId", c."lastAgentUserId") AS "agentId",
+               CASE WHEN r."createdAt" IS NOT NULL
+                 THEN GREATEST(0, EXTRACT(EPOCH FROM (r."createdAt" - i."createdAt")) - al.almoco_seg)
+               END::DOUBLE PRECISION AS espera_respondida,
+               GREATEST(0, EXTRACT(EPOCH FROM (fe.fim_efetivo - i."createdAt")) - al.almoco_seg)::DOUBLE PRECISION AS espera_total
         FROM inicios i
         JOIN contacts c ON c.id = i."contactId"
-        CROSS JOIN LATERAL (
+        LEFT JOIN LATERAL (
           SELECT o."agentId", o."createdAt"
           FROM messages o
           WHERE o."contactId" = i."contactId"
@@ -243,7 +257,7 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
             AND o."createdAt" > i."createdAt"
           ORDER BY o."createdAt"
           LIMIT 1
-        ) r
+        ) r ON true
         -- Quem começou a conversa: se a mensagem mais antiga de sempre com
         -- este contato foi NOSSA, é fornecedor/loja que a vendedora procurou
         -- (prospecção), não lead — não entra na métrica de tempo de resposta.
@@ -254,16 +268,19 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           ORDER BY p."createdAt" ASC
           LIMIT 1
         ) primeira ON true
-        -- Horário de almoço não conta como tempo de resposta (mesma lógica
+        CROSS JOIN LATERAL (
+          SELECT COALESCE(r."createdAt", LEAST(now(), ${fim}::timestamp)) AS fim_efetivo
+        ) fe
+        -- Horário de almoço não conta como tempo de espera (mesma lógica
         -- da lista de "quem esperou", ver comentário lá embaixo).
         LEFT JOIN LATERAL (
           SELECT COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (
-                   LEAST(r."createdAt" - INTERVAL '3 hours', dia + bh."lunchEnd"::time)
+                   LEAST(fe.fim_efetivo - INTERVAL '3 hours', dia + bh."lunchEnd"::time)
                    - GREATEST(i."createdAt" - INTERVAL '3 hours', dia + bh."lunchStart"::time)
                  )))), 0) AS almoco_seg
           FROM generate_series(
             date_trunc('day', i."createdAt" - INTERVAL '3 hours'),
-            date_trunc('day', r."createdAt" - INTERVAL '3 hours'),
+            date_trunc('day', fe.fim_efetivo - INTERVAL '3 hours'),
             INTERVAL '1 day'
           ) AS dia
           JOIN ura_config uc ON uc."isActive" = true
@@ -273,16 +290,23 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
         ) al ON true
         -- Contato marcado como robô de outra empresa não entra na média de
         -- ninguém — nem pra cima nem pra baixo.
-        WHERE r."agentId" IS NOT NULL
-          AND c."excludeFromReports" = false
+        WHERE c."excludeFromReports" = false
           AND primeira.direction = 'INBOUND'
+          -- Mesmo critério do listarRespostasLentas: encerrado depois da
+          -- mensagem do cliente = vendedora avaliou como resolvido.
+          AND NOT EXISTS (
+            SELECT 1 FROM service_sessions ss
+            WHERE ss."contactId" = i."contactId"
+              AND ss."endedAt" IS NOT NULL
+              AND ss."endedAt" > i."createdAt"
+          )
       )
       SELECT "agentId",
-             COUNT(*) FILTER (WHERE espera <= ${LIMITE_RESPOSTA_MIN} * 60)::INT AS respostas,
-             AVG(espera) FILTER (WHERE espera <= ${LIMITE_RESPOSTA_MIN} * 60)::DOUBLE PRECISION AS media_seg,
-             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY espera)
-               FILTER (WHERE espera <= ${LIMITE_RESPOSTA_MIN} * 60)::DOUBLE PRECISION AS mediana_seg,
-             COUNT(*) FILTER (WHERE espera > ${LIMITE_RESPOSTA_MIN} * 60)::INT AS lentas
+             COUNT(*) FILTER (WHERE espera_respondida <= ${LIMITE_RESPOSTA_MIN} * 60)::INT AS respostas,
+             AVG(espera_respondida) FILTER (WHERE espera_respondida <= ${LIMITE_RESPOSTA_MIN} * 60)::DOUBLE PRECISION AS media_seg,
+             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY espera_respondida)
+               FILTER (WHERE espera_respondida <= ${LIMITE_RESPOSTA_MIN} * 60)::DOUBLE PRECISION AS mediana_seg,
+             COUNT(*) FILTER (WHERE espera_total > ${LIMITE_RESPOSTA_MIN} * 60)::INT AS lentas
       FROM respostas
       GROUP BY "agentId"
     `,
@@ -371,6 +395,9 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
 
   for (const r of atendRows) linha(r.agentId).atendimentos = Number(r.n)
   for (const r of tempoRows) {
+    // Sem vendedora (lead nunca atribuído): não entra como linha de
+    // vendedora — só no total geral via `lentas` (ver `totais` abaixo).
+    if (!r.agentId) continue
     const l = linha(r.agentId)
     l.respostas = Number(r.respostas)
     l.mediaSeg = r.media_seg === null ? null : Math.round(r.media_seg)
@@ -421,7 +448,12 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
       mensagens: vendedoras.reduce((n, l) => n + l.mensagens, 0),
       respostas: somaRespostas,
       mediaSeg: somaRespostas > 0 ? Math.round(somaEspera / somaRespostas) : null,
-      lentas: vendedoras.reduce((n, l) => n + l.lentas, 0),
+      // Soma direto de tempoRows (não de `vendedoras`, que só tem quem
+      // "trabalhou no dia"): cliente sem ninguém na carteira (nunca
+      // atribuído) ainda conta como "esperou", mas some do filtro de
+      // vendedoras por não ter atendimento/conversa/nota. Sem isso o total
+      // do topo do relatório voltava a ficar menor que a lista completa.
+      lentas: tempoRows.reduce((n, r) => n + Number(r.lentas), 0),
       notas: somaNotasQtd,
       notaMedia: somaNotasQtd > 0 ? +(somaNotas / somaNotasQtd).toFixed(1) : null,
       notasBaixas: vendedoras.reduce((n, l) => n + l.notasBaixas, 0),
