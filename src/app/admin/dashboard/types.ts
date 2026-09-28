@@ -25,6 +25,7 @@ export interface ContactData {
   // Ficha comercial: notas internas, termômetro (HOT/WARM/COLD) e etiquetas.
   notes?: string
   temperature?: string | null
+  excludeFromReports?: boolean
   tags?: { id: string; name: string; color: string }[]
   id: string
   whatsappId: string

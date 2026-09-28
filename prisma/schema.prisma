@@ -156,6 +156,13 @@ model Contact {
   // Guardamos o horário da REABERTURA: assim quem manda cinco mensagens na
   // madrugada de sábado recebe UM aviso, não cinco. Zera sozinho ao reabrir.
   offHoursNoticeUntil DateTime?
+
+  // Não entra no relatório de espera/tempo de resposta. Serve pra números que
+  // na verdade são o CHATBOT da outra empresa (ex: assistente virtual de um
+  // banco), não um cliente de verdade — essas mensagens automáticas não
+  // precisam de resposta humana e estavam sendo cobradas da vendedora como se
+  // fossem cliente ignorado.
+  excludeFromReports Boolean @default(false)
   cooperativeId   String?
   cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id])
 

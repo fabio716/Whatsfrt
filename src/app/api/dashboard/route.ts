@@ -119,7 +119,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       SELECT COUNT(*)::BIGINT AS count FROM (
         SELECT DISTINCT ON (m."contactId")
                m."contactId",
+               m."createdAt",
                m.direction,
+               c."excludeFromReports",
                -- A mensagem nossa imediatamente anterior era transmissão?
                -- Se sim, o cliente só respondeu ao comunicado e não está
                -- esperando atendimento — senão uma transmissão pra 200
@@ -138,6 +140,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ) ultimas
       WHERE ultimas.direction = 'INBOUND'
         AND COALESCE(ultimas.antes_transmissao, false) = false
+        AND ultimas."excludeFromReports" = false
+        -- Atendimento encerrado depois dessa mensagem = a vendedora já
+        -- avaliou o caso como resolvido (ex: cliente só se despediu).
+        AND NOT EXISTS (
+          SELECT 1 FROM service_sessions ss
+          WHERE ss."contactId" = ultimas."contactId"
+            AND ss."endedAt" IS NOT NULL
+            AND ss."endedAt" > ultimas."createdAt"
+        )
     `,
     // ─── Daqui pra baixo: só admin. O agente recebe 0/vazio. ───
     souAgente

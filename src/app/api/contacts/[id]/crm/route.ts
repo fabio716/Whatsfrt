@@ -23,7 +23,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Sem permissão para este contato" }, { status: 403 })
   }
 
-  let body: { tagIds?: string[]; notes?: string; temperature?: string | null }
+  let body: { tagIds?: string[]; notes?: string; temperature?: string | null; excludeFromReports?: boolean }
   try {
     body = (await request.json()) as typeof body
   } catch {
@@ -38,12 +38,20 @@ export async function PATCH(
   if (Array.isArray(body.tagIds)) {
     data.tags = { set: body.tagIds.map((tid) => ({ id: tid })) }
   }
+  if (typeof body.excludeFromReports === "boolean") {
+    // Só admin decide isso — não é campo de atendimento do dia a dia, é
+    // decisão de "esse número não é cliente de verdade" (ex: robô de banco).
+    if (auth.role !== "ADMIN") {
+      return NextResponse.json({ error: "Só administrador pode alterar isso" }, { status: 403 })
+    }
+    data.excludeFromReports = body.excludeFromReports
+  }
 
   const updated = await prisma.contact.update({
     where: { id },
     data,
     select: {
-      id: true, notes: true, temperature: true,
+      id: true, notes: true, temperature: true, excludeFromReports: true,
       tags: { select: { id: true, name: true, color: true }, orderBy: { name: "asc" } },
     },
   })

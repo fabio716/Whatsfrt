@@ -647,12 +647,17 @@ export default function ChatsClient({
   const [newTagName, setNewTagName] = useState("")
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0])
   const [savingCrm, setSavingCrm] = useState(false)
+  // Só admin marca/desmarca — é decisão de "esse número não é cliente de
+  // verdade" (ex: robô de assistência virtual de um banco), não rotina de
+  // atendimento do dia a dia.
+  const [crmExcluir, setCrmExcluir] = useState(false)
 
   const openCrm = async () => {
     if (!activeContact) return
     setCrmTagIds(new Set((activeContact.tags ?? []).map((t) => t.id)))
     setCrmNotes(activeContact.notes ?? "")
     setCrmTemp(activeContact.temperature ?? null)
+    setCrmExcluir(activeContact.excludeFromReports ?? false)
     setNewTagName("")
     setShowCrm(true)
     const res = await fetch("/api/tags")
@@ -684,7 +689,10 @@ export default function ChatsClient({
       const res = await fetch(`/api/contacts/${activeContact.id}/crm`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tagIds: [...crmTagIds], notes: crmNotes, temperature: crmTemp }),
+        body: JSON.stringify({
+          tagIds: [...crmTagIds], notes: crmNotes, temperature: crmTemp,
+          ...(isAgent ? {} : { excludeFromReports: crmExcluir }),
+        }),
       })
       if (!res.ok) {
         if (!handleSessionExpired(res.status)) {
@@ -693,9 +701,9 @@ export default function ChatsClient({
         }
         return
       }
-      const data = await res.json() as { notes: string; temperature: string | null; tags: { id: string; name: string; color: string }[] }
+      const data = await res.json() as { notes: string; temperature: string | null; excludeFromReports?: boolean; tags: { id: string; name: string; color: string }[] }
       setContacts((prev) => prev.map((c) => (c.id === activeContact.id
-        ? { ...c, notes: data.notes, temperature: data.temperature, tags: data.tags }
+        ? { ...c, notes: data.notes, temperature: data.temperature, excludeFromReports: data.excludeFromReports ?? c.excludeFromReports, tags: data.tags }
         : c)))
       setShowCrm(false)
     } finally {
@@ -2425,6 +2433,24 @@ export default function ChatsClient({
                 Criar
               </button>
             </div>
+
+            {!isAgent && (
+              <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={crmExcluir}
+                  onChange={(e) => setCrmExcluir(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-zinc-900"
+                />
+                <span>
+                  <span className="block text-[12.5px] font-medium text-zinc-900">Este número não é cliente — não contar nos relatórios</span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-zinc-500">
+                    Use pra robô de outra empresa (ex.: assistente virtual de banco) que responde sozinho. Some das
+                    métricas de tempo de resposta e da lista de &quot;quem esperou&quot;.
+                  </span>
+                </span>
+              </label>
+            )}
 
             <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Notas internas</p>
             <textarea

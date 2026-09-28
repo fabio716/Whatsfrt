@@ -234,6 +234,7 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
         SELECT r."agentId",
                EXTRACT(EPOCH FROM (r."createdAt" - i."createdAt"))::DOUBLE PRECISION AS espera
         FROM inicios i
+        JOIN contacts c ON c.id = i."contactId"
         CROSS JOIN LATERAL (
           SELECT o."agentId", o."createdAt"
           FROM messages o
@@ -243,7 +244,9 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           ORDER BY o."createdAt"
           LIMIT 1
         ) r
-        WHERE r."agentId" IS NOT NULL
+        -- Contato marcado como robô de outra empresa não entra na média de
+        -- ninguém — nem pra cima nem pra baixo.
+        WHERE r."agentId" IS NOT NULL AND c."excludeFromReports" = false
       )
       SELECT "agentId",
              COUNT(*) FILTER (WHERE espera <= ${LIMITE_RESPOSTA_MIN} * 60)::INT AS respostas,
@@ -506,6 +509,21 @@ export async function listarRespostasLentas(
     -- Antes eu olhava só a mensagem imediatamente seguinte, e isso acusava
     -- injustamente: cliente que manda três mensagens seguidas gerava duas
     -- "sem resposta" mesmo tendo sido atendido na hora.
+    --
+    -- DUAS CORREÇÕES (28/09/2026), depois de relato real de acusação injusta:
+    --
+    -- 1. "Sem resposta" não cresce mais pra sempre. Antes usava now() (o
+    --    agora real) — cliente que mandou "obrigado, entendi" pra encerrar a
+    --    conversa (mensagem que não precisa de resposta) ficava marcado como
+    --    "esperando" havia dias, crescendo cada vez que alguém reabria o
+    --    relatório. Agora o teto é o FIM do período — a espera congela no
+    --    tamanho que tinha quando o dia/semana/mês fechou.
+    --
+    -- 2. Se a vendedora clicou "Encerrar atendimento" DEPOIS da mensagem do
+    --    cliente, isso é prova de que ela olhou o caso e decidiu que estava
+    --    resolvido — não abandono. Sem essa checagem, todo "combinado!",
+    --    "valeu", "beleza" de despedida (que não precisa resposta) virava
+    --    acusação. service_sessions."endedAt" é esse sinal.
     WITH janela AS (
       SELECT m."contactId", m.direction, m."agentId", m."createdAt", m.body,
              LAG(m.direction)     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
@@ -528,7 +546,7 @@ export async function listarRespostasLentas(
            COALESCE(r."agentId", c."assignedUserId", c."lastAgentUserId") AS "agentId",
            i."createdAt" AS "clienteEm",
            r."createdAt" AS "respostaEm",
-           EXTRACT(EPOCH FROM (COALESCE(r."createdAt", now()) - i."createdAt"))::INT AS espera_seg,
+           EXTRACT(EPOCH FROM (COALESCE(r."createdAt", LEAST(now(), ${fim}::timestamp)) - i."createdAt"))::INT AS espera_seg,
            i.body AS pergunta
     FROM inicios i
     JOIN contacts c ON c.id = i."contactId"
@@ -542,7 +560,19 @@ export async function listarRespostasLentas(
       LIMIT 1
     ) r ON true
     WHERE c."deletedAt" IS NULL
-      AND EXTRACT(EPOCH FROM (COALESCE(r."createdAt", now()) - i."createdAt")) > ${limiteSeg}
+      AND c."excludeFromReports" = false
+      -- Mesma expressão do espera_seg acima (SELECT alias não pode ser
+      -- reaproveitado no WHERE do Postgres). Sem isso, mensagem sem resposta
+      -- há 2 minutos entrava na lista igual a uma de 3 horas.
+      AND EXTRACT(EPOCH FROM (COALESCE(r."createdAt", LEAST(now(), ${fim}::timestamp)) - i."createdAt")) > ${limiteSeg}
+      -- Encerrado depois da mensagem = vendedora avaliou e considerou
+      -- resolvido, mesmo sem uma resposta de texto formal.
+      AND NOT EXISTS (
+        SELECT 1 FROM service_sessions ss
+        WHERE ss."contactId" = i."contactId"
+          AND ss."endedAt" IS NOT NULL
+          AND ss."endedAt" > i."createdAt"
+      )
       AND (${agentId ?? null}::text IS NULL
            OR COALESCE(r."agentId", c."assignedUserId", c."lastAgentUserId") = ${agentId ?? null})
     ORDER BY espera_seg DESC
