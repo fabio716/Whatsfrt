@@ -138,9 +138,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           )
         ORDER BY m."contactId", m."createdAt" DESC
       ) ultimas
+      -- Quem começou a conversa com este contato: se foi a gente (OUTBOUND),
+      -- é fornecedor/loja que a vendedora procurou e essa última mensagem é
+      -- só o robô de boas-vindas dele respondendo — não é cliente esperando.
+      LEFT JOIN LATERAL (
+        SELECT p.direction
+        FROM messages p
+        WHERE p."contactId" = ultimas."contactId"
+        ORDER BY p."createdAt" ASC
+        LIMIT 1
+      ) primeira ON true
       WHERE ultimas.direction = 'INBOUND'
         AND COALESCE(ultimas.antes_transmissao, false) = false
         AND ultimas."excludeFromReports" = false
+        AND primeira.direction = 'INBOUND'
         -- Atendimento encerrado depois dessa mensagem = a vendedora já
         -- avaliou o caso como resolvido (ex: cliente só se despediu).
         AND NOT EXISTS (

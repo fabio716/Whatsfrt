@@ -49,7 +49,10 @@ export async function findOrCreateContact(
   whatsappId: string,
   data: ContactUpsertData,
 ): Promise<Contact> {
-  const createName = data.name ?? data.fallbackName ?? whatsappId
+  // || (não ??): a Z-API às vezes manda senderName como STRING VAZIA "" (não
+  // null/undefined) — com ?? isso passava direto e criava contato com
+  // name: "", que aparecia em branco em todo lugar (inclusive nos relatórios).
+  const createName = data.name || data.fallbackName || whatsappId
 
   if (whatsappId.endsWith("@g.us")) {
     return prisma.contact.upsert({

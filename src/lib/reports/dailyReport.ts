@@ -244,9 +244,21 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           ORDER BY o."createdAt"
           LIMIT 1
         ) r
+        -- Quem começou a conversa: se a mensagem mais antiga de sempre com
+        -- este contato foi NOSSA, é fornecedor/loja que a vendedora procurou
+        -- (prospecção), não lead — não entra na métrica de tempo de resposta.
+        LEFT JOIN LATERAL (
+          SELECT p.direction
+          FROM messages p
+          WHERE p."contactId" = i."contactId"
+          ORDER BY p."createdAt" ASC
+          LIMIT 1
+        ) primeira ON true
         -- Contato marcado como robô de outra empresa não entra na média de
         -- ninguém — nem pra cima nem pra baixo.
-        WHERE r."agentId" IS NOT NULL AND c."excludeFromReports" = false
+        WHERE r."agentId" IS NOT NULL
+          AND c."excludeFromReports" = false
+          AND primeira.direction = 'INBOUND'
       )
       SELECT "agentId",
              COUNT(*) FILTER (WHERE espera <= ${LIMITE_RESPOSTA_MIN} * 60)::INT AS respostas,
@@ -524,6 +536,16 @@ export async function listarRespostasLentas(
     --    resolvido — não abandono. Sem essa checagem, todo "combinado!",
     --    "valeu", "beleza" de despedida (que não precisa resposta) virava
     --    acusação. service_sessions."endedAt" é esse sinal.
+    --
+    -- 3. NOVO (28/09/2026, 2ª rodada): fornecedor/loja que a PRÓPRIA vendedora
+    --    contatou primeiro (prospecção — ela manda mensagem pra um atacadista
+    --    perguntando preço, por exemplo) manda de volta um "Seja bem-vindo(a)
+    --    à Loja X! Horário de atendimento..." automático, e isso virava
+    --    "cliente esperando resposta" — cliente nenhum: é o robô de boas-vindas
+    --    de quem NÓS procuramos. Diferença de um lead de verdade: lead sempre
+    --    fala com a gente primeiro. Se a PRIMEIRA mensagem de todos os tempos
+    --    com esse contato foi NOSSA (OUTBOUND), não é lead — é gente que a
+    --    gente abordou, então a resposta automática dela não conta.
     WITH janela AS (
       SELECT m."contactId", m.direction, m."agentId", m."createdAt", m.body,
              LAG(m.direction)     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
@@ -559,8 +581,18 @@ export async function listarRespostasLentas(
       ORDER BY o."createdAt"
       LIMIT 1
     ) r ON true
+    -- A mensagem mais antiga de sempre com este contato, pra saber quem
+    -- começou a conversa (ver item 3 acima).
+    LEFT JOIN LATERAL (
+      SELECT p.direction
+      FROM messages p
+      WHERE p."contactId" = i."contactId"
+      ORDER BY p."createdAt" ASC
+      LIMIT 1
+    ) primeira ON true
     WHERE c."deletedAt" IS NULL
       AND c."excludeFromReports" = false
+      AND primeira.direction = 'INBOUND'
       -- Mesma expressão do espera_seg acima (SELECT alias não pode ser
       -- reaproveitado no WHERE do Postgres). Sem isso, mensagem sem resposta
       -- há 2 minutos entrava na lista igual a uma de 3 horas.
