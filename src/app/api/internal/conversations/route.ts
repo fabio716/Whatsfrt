@@ -79,16 +79,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   )
   const unreadByConv = new Map(unreadCounts)
 
-  // "Apagada" pra mim = nada aconteceu depois do clearedAt → fica fora da
-  // lista. Mensagem nova reabre a conversa automaticamente.
-  const visibleConversations = conversations.filter((c) => {
-    const clearedAt = clearedAtByConv.get(c.id)
-    if (!clearedAt) return true
-    const lm = lastByConv.get(c.id)
-    return Boolean(lm && lm.createdAt > clearedAt)
-  })
-
-  const result = visibleConversations.map((c) => {
+  // "Apagada" pra mim = nada aconteceu depois do clearedAt → some da LISTA.
+  // Mensagem nova reabre a conversa automaticamente.
+  //
+  // Antes essa conversa era removida do array inteiro devolvido pro
+  // navegador — e não só da lista visível. Isso quebrava reabrir a mesma
+  // conversa pelo "+": a tela busca a conversa ativa dentro deste mesmo
+  // array, então uma conversa apagada "sumia" mesmo depois de reaberta,
+  // travando na tela "clique em + pra iniciar". Agora ela sempre vem no
+  // array (`cleared: true`), e quem decide escondê-la da barra lateral é a
+  // TELA — sem perder a capacidade de achá-la quando é a conversa ativa.
+  const result = conversations.map((c) => {
     const memberIds = membersByConv.get(c.id) ?? []
     const otherIds = memberIds.filter((id) => id !== me.id)
     // Nome exibido: grupo usa o nome; 1:1 usa o nome do outro participante.
@@ -98,12 +99,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Foto: em 1:1, a foto do outro participante; em grupo, sem foto (ícone).
     const photoUrl = c.isGroup ? null : (photoById.get(otherIds[0] ?? "") ?? null)
     const lm = lastByConv.get(c.id)
+    const clearedAt = clearedAtByConv.get(c.id)
+    const cleared = Boolean(clearedAt && (!lm || lm.createdAt <= clearedAt))
     // Arquivada = marquei como arquivada E nada chegou depois disso —
     // mensagem nova faz a conversa reaparecer sozinha (igual WhatsApp).
     const archivedAt = archivedAtByConv.get(c.id)
     const archived = Boolean(archivedAt && (!lm || lm.createdAt <= archivedAt))
     return {
       archived,
+      cleared,
       id: c.id,
       isGroup: c.isGroup,
       name: displayName,

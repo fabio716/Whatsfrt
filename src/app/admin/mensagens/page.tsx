@@ -22,6 +22,10 @@ interface ConversationRow {
   unread: number
   lastMessage: { body: string; mediaType: string | null; createdAt: string; senderName: string; fromMe: boolean } | null
   archived?: boolean
+  // "Apagada" por mim — some da barra lateral, mas continua no array pra
+  // dar pra reabrir (achar como `active`) quando eu clicar em "+" de novo
+  // pra falar com a mesma pessoa.
+  cleared?: boolean
 }
 
 interface Msg {
@@ -725,7 +729,10 @@ export default function MensagensPage() {
 
         <div className="flex-1 overflow-y-auto">
           {(() => {
-            const archivedCount = conversations.filter((c) => c.archived).length
+            // "Apagadas" nunca entram na barra lateral (nem em arquivadas) —
+            // só continuam no array pra dar pra reabrir via "+". Ver ConversationRow.cleared.
+            const naBarra = conversations.filter((c) => !c.cleared)
+            const archivedCount = naBarra.filter((c) => c.archived).length
             return (archivedCount > 0 || showArchived) ? (
               <button
                 type="button"
@@ -736,11 +743,11 @@ export default function MensagensPage() {
               </button>
             ) : null
           })()}
-          {conversations.length === 0 ? (
+          {conversations.filter((c) => !c.cleared).length === 0 ? (
             <p className="px-4 py-8 text-center text-[12px] text-zinc-400">
               Nenhuma conversa ainda.<br />Clique em <b>+</b> para começar.
             </p>
-          ) : conversations.filter((c) => Boolean(c.archived) === showArchived).map((c) => (
+          ) : conversations.filter((c) => !c.cleared && Boolean(c.archived) === showArchived).map((c) => (
             <button
               key={c.id} type="button" onClick={() => openConversation(c.id)}
               className={`flex w-full items-center gap-3 border-b border-zinc-50 px-4 py-3 text-left transition-colors hover:bg-zinc-50 ${activeId === c.id ? "bg-zinc-100" : ""}`}
