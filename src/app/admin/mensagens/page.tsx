@@ -331,6 +331,25 @@ export default function MensagensPage() {
     setMessages([])
   }, [])
 
+  // Exclusão DE VERDADE, sem volta — apaga do banco pra todo mundo, não só
+  // esconde pra mim. Diferente de "apagar conversa" (clearConversation)
+  // acima. Confirmação reforçada (precisa digitar EXCLUIR) porque não tem
+  // como desfazer nem recuperar depois.
+  const excluirDeVerdade = useCallback(async (convId: string, nome: string) => {
+    const digitado = prompt(
+      `Excluir esta conversa com ${nome} PRA SEMPRE?\n\nIsso apaga TODAS as mensagens do banco, pra você e pra ${nome}. Não tem como desfazer nem recuperar depois.\n\nDigite EXCLUIR para confirmar:`,
+    )
+    if (digitado?.trim().toUpperCase() !== "EXCLUIR") return
+    const res = await fetch(`/api/internal/conversations/${convId}`, { method: "DELETE" })
+    if (!res.ok) {
+      if (!handleSessionExpired(res.status)) alert("Não foi possível excluir a conversa")
+      return
+    }
+    setConversations((prev) => prev.filter((c) => c.id !== convId))
+    setActiveId(null)
+    setMessages([])
+  }, [])
+
   const openConversation = useCallback((convId: string) => {
     setActiveId(convId)
     setReplyingTo(null) // resposta pendente não atravessa pra outra conversa
@@ -349,9 +368,21 @@ export default function MensagensPage() {
           | (Msg & { conversationId: string })
           | { id: string; conversationId: string; body: string; mediaUrl?: string | null; mediaType?: string | null }
           | { messageId: string; conversationId: string; reactions: { userId: string; userName: string; emoji: string }[] }
+          | { conversationId: string; byName: string }
       }
       try { p = JSON.parse(e.data) } catch { return }
       if (!p.data) return
+
+      if (p.type === "internal_conversation_deleted") {
+        const del = p.data as { conversationId: string; byName: string }
+        setConversations((prev) => prev.filter((c) => c.id !== del.conversationId))
+        if (activeIdRef.current === del.conversationId) {
+          setActiveId(null)
+          setMessages([])
+          alert(`${del.byName} excluiu esta conversa pra sempre.`)
+        }
+        return
+      }
 
       if (p.type === "internal_reaction") {
         const rx = p.data as { messageId: string; conversationId: string; reactions: { userId: string; userName: string; emoji: string }[] }
@@ -832,6 +863,17 @@ export default function MensagensPage() {
               >
                 <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a2 2 0 01-2 2H8a2 2 0 01-2-2V7h12z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => void excluirDeVerdade(active.id, active.name)}
+                title="Excluir conversa pra sempre (sem volta, pra todo mundo)"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-red-500 hover:bg-red-100"
+              >
+                <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={2.2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v13a2 2 0 01-2 2H8a2 2 0 01-2-2V7h12z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 11v6M14.5 11v6" />
                 </svg>
               </button>
               <button

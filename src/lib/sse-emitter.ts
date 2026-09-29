@@ -114,6 +114,14 @@ export interface SSEContactTransferPayload {
   }
 }
 
+// Conversa do chat interno excluída DE VERDADE (sem volta) por um membro —
+// entregue aos OUTROS membros, pra sumir da tela deles na hora em vez de só
+// no próximo F5, e pra fechar a conversa se estiverem com ela aberta.
+export interface SSEInternalConversationDeletedPayload {
+  type: "internal_conversation_deleted"
+  data: { conversationId: string; byName: string }
+}
+
 export type SSEPayload =
   | SSENewMessagePayload
   | SSEMessageUpdatePayload
@@ -124,6 +132,7 @@ export type SSEPayload =
   | SSETransferRequestPayload
   | SSETransferDecisionPayload
   | SSEContactTransferPayload
+  | SSEInternalConversationDeletedPayload
 
 // ─── Singleton client registry ────────────────────────────────────────────────
 // O Set é compartilhado entre bundles via globalThis + Symbol.for. Em Next.js
@@ -207,7 +216,8 @@ export function broadcastToUsers(
     | SSEInternalReactionPayload
     | SSETransferRequestPayload
     | SSETransferDecisionPayload
-    | SSEContactTransferPayload,
+    | SSEContactTransferPayload
+    | SSEInternalConversationDeletedPayload,
 ): void {
   const targets = new Set(userIds)
   const chunk = `data: ${JSON.stringify(payload)}\n\n`
