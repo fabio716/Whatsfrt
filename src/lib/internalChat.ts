@@ -40,7 +40,20 @@ export async function acharOuCriarDM(meId: string, outroId: string): Promise<str
         select: { id: true, isGroup: true, _count: { select: { members: true } } },
       })
       // Só serve a conversa que é DM mesmo: grupo de 2 pessoas não conta.
-      if (conv && !conv.isGroup && conv._count.members === 2) return conv.id
+      if (conv && !conv.isGroup && conv._count.members === 2) {
+        // Se eu tinha "apagado" essa conversa (clearedAt), ela some da MINHA
+        // lista até chegar mensagem nova — e GET /api/internal/conversations
+        // não devolve o que não está na lista. Resultado: clicar em "+" pra
+        // falar de novo com a mesma pessoa reaproveitava essa conversa (não
+        // cria outra), mas a tela não achava ela e ficava presa na tela
+        // vazia "clique em + pra iniciar", mesmo já tendo clicado. Reabrir
+        // pra mim aqui, já que fui eu quem pediu essa conversa de volta.
+        await prisma.internalConversationMember.updateMany({
+          where: { conversationId: conv.id, userId: meId, clearedAt: { not: null } },
+          data: { clearedAt: null },
+        })
+        return conv.id
+      }
     }
   }
 
