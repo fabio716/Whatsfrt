@@ -394,6 +394,49 @@ export async function getZapiQrCode(): Promise<{ base64: string | null; connecte
   }
 }
 
+// ─── Reiniciar (reconecta SEM QR) ────────────────────────────────────────────
+// Segundo a doc da Z-API, restart refaz a sessão sem ler o QR de novo — resolve
+// a queda comum ("You need to restore the session"). Não resolve quando o
+// WhatsApp desvinculou o aparelho ("You are not connected"): aí só QR ou
+// código de telefone.
+
+export async function restartZapi(): Promise<boolean> {
+  const url = buildUrl("restart")
+  if (!url) return false
+  const res = await evolutionFetch(url, {
+    label: "zapi:restart",
+    method: "GET",
+    headers: commonHeaders(),
+    timeoutMs: 15_000,
+    maxAttempts: 1,
+  })
+  return res.ok
+}
+
+// ─── Código de telefone (alternativa ao QR) ──────────────────────────────────
+// Gera um código que se digita no WhatsApp do celular em "Conectar com número
+// de telefone". Ainda exige o celular, mas não a câmera — dá pra fazer por
+// acesso remoto (AnyDesk/TeamViewer) ao celular que fica na empresa.
+
+export async function getZapiPhoneCode(phone: string): Promise<{ code: string | null; error: string | null }> {
+  const digits = phone.replace(/\D/g, "")
+  const url = buildUrl(`phone-code/${digits}`)
+  if (!url) return { code: null, error: "ZAPI_INSTANCE_ID/ZAPI_TOKEN ausente" }
+  const res = await evolutionFetch(url, {
+    label: "zapi:phone-code",
+    method: "GET",
+    headers: commonHeaders(),
+    timeoutMs: 15_000,
+    maxAttempts: 1,
+  })
+  const data = res.responseJson as { code?: string; value?: string; error?: string; message?: string } | null
+  const code = data?.code ?? data?.value ?? null
+  if (!res.ok || !code) {
+    return { code: null, error: data?.error ?? data?.message ?? `Z-API respondeu ${res.status}` }
+  }
+  return { code, error: null }
+}
+
 // ─── Desconectar (logout) ────────────────────────────────────────────────────
 
 export async function disconnectZapi(): Promise<boolean> {

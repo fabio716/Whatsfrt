@@ -8,10 +8,17 @@ import { QRCodeSVG } from "qrcode.react"
 
 type ConnectionStatus = "loading" | "qr" | "connecting" | "connected" | "error"
 
+// Evolution devolve `code` (texto do QR); Z-API devolve `base64` (imagem
+// pronta). Antes a tela só aceitava `code`, então com a Z-API caía direto em
+// "QR code não disponível".
 interface QRResponse {
-  code?: string
+  code?: string | null
+  base64?: string
+  connected?: boolean
   error?: string
 }
+
+const CHAVE_TELEFONE = "whatsfrt.connect.telefone"
 
 interface StatusResponse {
   instance?: { state: "open" | "close" | "connecting" | "qrcode" }
@@ -67,7 +74,49 @@ export default function ConnectPage() {
   const router = useRouter()
   const [status, setStatus] = useState<ConnectionStatus>("loading")
   const [qrCode, setQrCode] = useState<string | null>(null)
+  const [qrImage, setQrImage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Código de telefone (alternativa ao QR, Z-API)
+  const [telefone, setTelefone] = useState("")
+  const [codigo, setCodigo] = useState<string | null>(null)
+  const [gerando, setGerando] = useState(false)
+  const [erroCodigo, setErroCodigo] = useState<string | null>(null)
+
+  // Lê no efeito (e não no useState inicial) porque no servidor não existe
+  // localStorage — ler no estado inicial dava diferença servidor/navegador.
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem(CHAVE_TELEFONE)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza com armazenamento externo uma vez ao montar
+      if (salvo) setTelefone(salvo)
+    } catch { /* sem localStorage: só não lembra o número */ }
+  }, [])
+
+  const gerarCodigo = async () => {
+    setGerando(true)
+    setErroCodigo(null)
+    setCodigo(null)
+    try {
+      const res = await fetch("/api/whatsapp/phone-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: telefone }),
+      })
+      const data = (await res.json()) as { code?: string; error?: string }
+      if (!res.ok || !data.code) throw new Error(data.error ?? "Não foi possível gerar o código")
+      // Gerar QR novo pode invalidar o código — para de renovar o QR enquanto
+      // o código está na tela. A checagem de status continua rodando.
+      if (qrTimerRef.current) clearInterval(qrTimerRef.current)
+      qrTimerRef.current = null
+      setCodigo(data.code)
+      try { localStorage.setItem(CHAVE_TELEFONE, telefone) } catch { /* ok */ }
+    } catch (e) {
+      setErroCodigo(e instanceof Error ? e.message : "Erro desconhecido")
+    } finally {
+      setGerando(false)
+    }
+  }
 
   const mountedRef = useRef(true)
   const statusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -85,8 +134,17 @@ export default function ConnectPage() {
       try {
         const res = await fetch("/api/whatsapp/qrcode")
         const data: QRResponse = await res.json()
-        if (!res.ok || !data.code) throw new Error(data.error ?? "QR code não disponível")
-        if (mountedRef.current) { setQrCode(data.code); setStatus("qr") }
+        if (!mountedRef.current) return
+        if (res.ok && data.connected) {
+          if (statusTimerRef.current) clearInterval(statusTimerRef.current)
+          if (qrTimerRef.current) clearInterval(qrTimerRef.current)
+          setStatus("connected")
+          setTimeout(() => router.push("/admin/dashboard"), 1_200)
+          return
+        }
+        if (res.ok && data.base64) { setQrImage(data.base64); setQrCode(null); setStatus("qr"); return }
+        if (res.ok && data.code) { setQrCode(data.code); setQrImage(null); setStatus("qr"); return }
+        throw new Error(data.error ?? "QR code não disponível")
       } catch (e) {
         if (mountedRef.current) {
           setError(e instanceof Error ? e.message : "Erro desconhecido")
@@ -150,7 +208,7 @@ export default function ConnectPage() {
                     Conectar WhatsApp
                   </h1>
                   <p className="mt-0.5 text-xs text-zinc-400">
-                    Acesso via Evolution API
+                    Número da empresa no sistema
                   </p>
                 </div>
               </div>
@@ -196,7 +254,12 @@ export default function ConnectPage() {
                 </div>
               )}
 
-              {(status === "qr" || status === "connecting") && qrCode && (
+              {(status === "qr" || status === "connecting") && qrImage && (
+                // eslint-disable-next-line @next/next/no-img-element -- data: URL, next/image não otimiza
+                <img src={qrImage} alt="QR code para conectar o WhatsApp" className="h-[216px] w-[216px] rounded-xl" />
+              )}
+
+              {(status === "qr" || status === "connecting") && !qrImage && qrCode && (
                 <div className="rounded-xl p-3 opacity-100 blur-0 scale-100 transition-all duration-500">
                   <QRCodeSVG
                     value={qrCode}
@@ -225,6 +288,48 @@ export default function ConnectPage() {
                 </li>
               ))}
             </ol>
+
+            {/* ── Alternativa: código de telefone ── */}
+            {status !== "connected" && (
+              <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+                <div>
+                  <p className="text-[13px] font-semibold text-zinc-800">Sem câmera? Conecte com código</p>
+                  <p className="mt-1 text-[11.5px] leading-relaxed text-zinc-500">
+                    Serve pra conectar de longe, usando um app de acesso remoto (AnyDesk, TeamViewer) no celular da empresa.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={telefone}
+                    onChange={(e) => setTelefone(e.target.value)}
+                    placeholder="Número da empresa: 5543999998888"
+                    className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[13px] text-zinc-900 outline-none focus:border-zinc-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void gerarCodigo()}
+                    disabled={gerando || telefone.replace(/\D/g, "").length < 12}
+                    className="flex-shrink-0 rounded-xl bg-zinc-900 px-4 py-2 text-[12px] font-semibold text-white hover:bg-zinc-700 disabled:opacity-40"
+                  >
+                    {gerando ? "Gerando…" : "Gerar código"}
+                  </button>
+                </div>
+                {erroCodigo && <p className="text-[12px] text-red-600">{erroCodigo}</p>}
+                {codigo && (
+                  <div className="space-y-2">
+                    <p className="select-all rounded-xl bg-white py-3 text-center font-mono text-[22px] font-bold tracking-[0.25em] text-zinc-900">
+                      {codigo}
+                    </p>
+                    <p className="text-[11.5px] leading-relaxed text-zinc-500">
+                      No celular: WhatsApp → <b>Dispositivos conectados</b> → <b>Conectar dispositivo</b> →{" "}
+                      <b>Conectar com número de telefone</b> → digite o código. Ele vale por pouco tempo; se expirar, gere outro.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Card footer */}
