@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { chaveEmpresa } from "@/lib/broadcastScope"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -132,9 +133,37 @@ export default function BroadcastPage() {
 
   const selectSuggested = () => setSelected(new Set(suggestedIds))
 
+  // Empresas tiradas do campo Empresa dos próprios contatos. Antes "Por
+  // empresa" só listava a tabela de cooperativas, que quase nenhum contato tem
+  // vinculada — a lista vinha sempre vazia. Nome exibido = grafia mais comum.
+  const empresas = useMemo(() => {
+    const grupos = new Map<string, { total: number; grafias: Map<string, number> }>()
+    for (const c of contacts) {
+      const chave = chaveEmpresa(c.empresa)
+      if (!chave) continue
+      const g = grupos.get(chave) ?? { total: 0, grafias: new Map<string, number>() }
+      g.total++
+      const grafia = (c.empresa ?? "").trim().replace(/\s+/g, " ")
+      g.grafias.set(grafia, (g.grafias.get(grafia) ?? 0) + 1)
+      grupos.set(chave, g)
+    }
+    return [...grupos.entries()]
+      .map(([chave, g]) => ({
+        chave,
+        nome: [...g.grafias.entries()].sort((a, b) => b[1] - a[1])[0][0],
+        total: g.total,
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+  }, [contacts])
+
+  // coopId guarda "emp:<chave>" ou "coop:<id da cooperativa>".
   const recipientCount = useMemo(() => {
     if (mode === "all") return contacts.length
-    if (mode === "cooperative") return coopId ? contacts.filter((c) => c.cooperativeId === coopId).length : 0
+    if (mode === "cooperative") {
+      if (coopId.startsWith("emp:")) return contacts.filter((c) => chaveEmpresa(c.empresa) === coopId.slice(4)).length
+      if (coopId.startsWith("coop:")) return contacts.filter((c) => c.cooperativeId === coopId.slice(5)).length
+      return 0
+    }
     return selected.size
   }, [mode, contacts, coopId, selected])
 
@@ -197,7 +226,9 @@ export default function BroadcastPage() {
       if (mode === "all") {
         filter = { type: "all" }
       } else if (mode === "cooperative") {
-        filter = { type: "cooperative", value: coopId }
+        filter = coopId.startsWith("emp:")
+          ? { type: "empresa", value: coopId.slice(4) }
+          : { type: "cooperative", value: coopId.slice(5) }
       } else {
         filter = { type: "manual", contactIds: [...selected] }
       }
@@ -308,14 +339,27 @@ export default function BroadcastPage() {
 
           {mode === "cooperative" && (
             <div>
-              <label htmlFor="b-coop" className="mb-1.5 block text-[12px] font-medium text-zinc-500">Empresa (cooperativa)</label>
+              <label htmlFor="b-coop" className="mb-1.5 block text-[12px] font-medium text-zinc-500">Empresa</label>
               <select id="b-coop" value={coopId} onChange={(e) => setCoopId(e.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white">
                 <option value="">Selecione uma empresa…</option>
-                {cooperatives.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {empresas.length > 0 && (
+                  <optgroup label="Empresa do contato">
+                    {empresas.map((e) => (
+                      <option key={e.chave} value={`emp:${e.chave}`}>{e.nome} ({e.total})</option>
+                    ))}
+                  </optgroup>
+                )}
+                {cooperatives.length > 0 && (
+                  <optgroup label="Cooperativas">
+                    {cooperatives.map((c) => <option key={c.id} value={`coop:${c.id}`}>{c.name}</option>)}
+                  </optgroup>
+                )}
               </select>
-              {cooperatives.length === 0 && (
-                <p className="mt-1 text-[11px] text-amber-600">Nenhuma cooperativa cadastrada ainda.</p>
+              {empresas.length === 0 && cooperatives.length === 0 && (
+                <p className="mt-1 text-[11px] text-amber-600">
+                  Nenhum dos seus contatos tem o campo Empresa preenchido. Preencha na ficha do cliente ou use a Seleção manual.
+                </p>
               )}
             </div>
           )}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getSessionFromRequest } from "@/lib/auth"
+import { carteiraDoAgente } from "@/lib/broadcastScope"
+import type { Prisma } from "@/generated/prisma/client"
 
 // GET /api/broadcast/audience?cooperativeId=<id>
 // Returns the cooperatives available for filtering and the contacts the current
@@ -13,11 +15,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const isAgent = session.role === "AGENT"
   const cooperativeId = request.nextUrl.searchParams.get("cooperativeId")
 
-  const contactWhere: Record<string, unknown> = {
+  const contactWhere: Prisma.ContactWhereInput = {
     deletedAt: null,
     // Cannot broadcast to internal @lid ids (not real phone numbers)
     whatsappId: { not: { contains: "@lid" } },
-    ...(isAgent ? { assignedUserId: session.id } : {}),
+    ...(isAgent ? carteiraDoAgente(session.id) : {}),
     ...(cooperativeId ? { cooperativeId } : {}),
   }
 

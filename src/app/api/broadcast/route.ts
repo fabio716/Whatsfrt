@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getSessionFromRequest } from "@/lib/auth"
 import { processCampaign } from "@/lib/campaignQueue"
+import { carteiraDoAgente, chaveEmpresa } from "@/lib/broadcastScope"
+import type { Prisma } from "@/generated/prisma/client"
 
 // ── GET /api/broadcast — list broadcasts (agents see only their own) ──────────
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -62,6 +64,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 type AudienceFilter =
   | { type: "all" }
   | { type: "cooperative"; value: string }
+  // value = chaveEmpresa() do campo Empresa do contato
+  | { type: "empresa"; value: string }
   | { type: "agent"; value: string }
   | { type: "manual"; contactIds: string[] }
 
@@ -85,19 +89,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Build contact query (agents are always scoped to their own contacts) ────
-  const baseWhere: Record<string, unknown> = {
+  const baseWhere: Prisma.ContactWhereInput = {
     deletedAt: null,
     whatsappId: { not: { contains: "@lid" } },
-    ...(isAgent ? { assignedUserId: session.id } : {}),
+    ...(isAgent ? carteiraDoAgente(session.id) : {}),
   }
 
-  let contactWhere: Record<string, unknown> = baseWhere
+  let contactWhere: Prisma.ContactWhereInput = baseWhere
   if (filter.type === "cooperative") {
     contactWhere = { ...baseWhere, cooperativeId: filter.value }
+  } else if (filter.type === "empresa") {
+    // Empresa é texto digitado à mão (espaços, maiúsculas variam) — compara
+    // pela mesma chave normalizada que a tela usou pra montar a lista.
+    const chave = chaveEmpresa(filter.value)
+    if (!chave) return NextResponse.json({ error: "Selecione uma empresa" }, { status: 400 })
+    const daEmpresa = await prisma.contact.findMany({
+      where: { ...baseWhere, empresa: { not: null } },
+      select: { id: true, empresa: true },
+    })
+    contactWhere = { ...baseWhere, id: { in: daEmpresa.filter((c) => chaveEmpresa(c.empresa) === chave).map((c) => c.id) } }
   } else if (filter.type === "agent") {
     // Only admins may target an arbitrary agent's contacts.
     if (isAgent) return NextResponse.json({ error: "Sem permissão para este filtro" }, { status: 403 })
-    contactWhere = { ...baseWhere, assignedUserId: filter.value }
+    contactWhere = { ...baseWhere, ...carteiraDoAgente(filter.value) }
   } else if (filter.type === "manual") {
     if (!Array.isArray(filter.contactIds) || filter.contactIds.length === 0) {
       return NextResponse.json({ error: "Selecione ao menos um contato" }, { status: 400 })
