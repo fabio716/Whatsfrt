@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { idsOnline } from "@/lib/presence"
+import { REGEX_DESPEDIDA } from "@/lib/reports/dailyReport"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -121,6 +122,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
                m."contactId",
                m."createdAt",
                m.direction,
+               m.body,
                c."excludeFromReports",
                -- A mensagem nossa imediatamente anterior era transmissão?
                -- Se sim, o cliente só respondeu ao comunicado e não está
@@ -152,6 +154,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         AND COALESCE(ultimas.antes_transmissao, false) = false
         AND ultimas."excludeFromReports" = false
         AND primeira.direction = 'INBOUND'
+        -- Despedida/agradecimento puro não precisa de resposta. Como
+        -- "ultimas" já é a mensagem mais recente, não tem risco de esconder
+        -- uma pergunta real que viria depois (não existe "depois" aqui).
+        AND NOT (lower(trim(ultimas.body)) ~ ${REGEX_DESPEDIDA})
         -- Atendimento encerrado depois dessa mensagem = a vendedora já
         -- avaliou o caso como resolvido (ex: cliente só se despediu).
         AND NOT EXISTS (

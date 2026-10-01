@@ -15,6 +15,30 @@ import { prisma } from "@/lib/prisma"
 /** Resposta considerada "no atendimento". Acima disso entra em `lentas`. */
 const LIMITE_RESPOSTA_MIN = 60
 
+// Mensagem que é só despedida/agradecimento, sem pergunta nenhuma, não
+// precisa de resposta humana — e não devia contar como "cliente esperando".
+// Relato real (01/10/2026): quando a ÚLTIMA palavra da conversa é do
+// cliente (ex: "obrigado", "valeu", "👍"), o sistema cobrava a vendedora
+// como se fosse pergunta ignorada — mas se a última palavra fosse dela, o
+// atendimento fechava normal. A exigência de clicar "Encerrar atendimento"
+// pra cada despedida não é realista no dia a dia; melhor reconhecer direto
+// as despedidas mais comuns.
+//
+// `^(token)[\s!.,emoji]*$` exige que a mensagem INTEIRA seja só isso — uma
+// mensagem real que começa com "obrigado, mas..." não bate aqui, porque
+// depois do token vem texto que não é só pontuação/emoji de fechamento.
+// Não é (nem tenta ser) um classificador perfeito de "não precisa resposta"
+// — é deliberadamente conservador: só pega despedida inequívoca e curta,
+// pra nunca esconder uma pergunta de verdade da vendedora.
+// `(token[\s!.,emoji]*)+` em vez de um token só: cobre combinações comuns
+// de mais de uma despedida numa frase só ("Valeu, até mais!").
+const TOKEN_DESPEDIDA =
+  "(obrigad[ao]s?|vlw+|obg|valeu|blz|beleza+|ok(ay)?|certo|entendido|entendi|combinado|fechado|" +
+  "at[ée] mais|at[ée] logo|tchau|de nada|por nada|show|[óo]timo|perfeito|isso( mesmo)?|" +
+  "tranquilo|maravilha|bom demais|👍|🙏|❤️|✅)"
+export const REGEX_DESPEDIDA =
+  `^(${TOKEN_DESPEDIDA}[\\s!.,👍🙏❤️😊🙂✅]*)+$`
+
 export interface LinhaVendedora {
   id: string
   nome: string
@@ -214,9 +238,15 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
       -- procurada SEM teto de fim, senão quem escreveu 20h e foi respondido
       -- 8h do dia seguinte virava "sem resposta".
       WITH janela AS (
-        SELECT m."contactId", m.direction, m."createdAt",
+        SELECT m."contactId", m.direction, m."createdAt", m.body,
                LAG(m.direction)     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
-               LAG(m."isBroadcast") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao
+               LAG(m."isBroadcast") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao,
+               -- Só ignora despedida quando ela é mesmo a ÚLTIMA palavra do
+               -- cliente (ninguém escreveu de novo logo depois). Sem isso,
+               -- "obrigado" seguido de uma pergunta de verdade na sequência
+               -- (duas mensagens seguidas) fazia a pergunta real ficar sem
+               -- nenhum controle de espera — pior que o problema original.
+               LEAD(m.direction) OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima
         FROM messages m
         -- O ::timestamp é OBRIGATÓRIO. Sem ele o parâmetro chega sem tipo,
         -- o Postgres resolve "? - INTERVAL" como interval menos interval, o
@@ -231,6 +261,9 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           AND anterior IS DISTINCT FROM 'INBOUND'
           AND "createdAt" >= ${ini}
           AND COALESCE(anterior_transmissao, false) = false
+          -- Despedida/agradecimento puro não precisa de resposta — ver
+          -- REGEX_DESPEDIDA lá em cima.
+          AND NOT (lower(trim(body)) ~ ${REGEX_DESPEDIDA} AND proxima IS DISTINCT FROM 'INBOUND')
       ),
       respostas AS (
         -- "espera_respondida" só existe quando teve resposta de verdade — é o
@@ -609,7 +642,11 @@ export async function listarRespostasLentas(
     WITH janela AS (
       SELECT m."contactId", m.direction, m."agentId", m."createdAt", m.body,
              LAG(m.direction)     OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior,
-             LAG(m."isBroadcast") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao
+             LAG(m."isBroadcast") OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS anterior_transmissao,
+             -- Só ignora despedida quando ela é mesmo a ÚLTIMA palavra do
+             -- cliente (ninguém escreveu de novo logo depois) — mesma regra
+             -- da query de cima.
+             LEAD(m.direction) OVER (PARTITION BY m."contactId" ORDER BY m."createdAt") AS proxima
       FROM messages m
       WHERE m."createdAt" >= ${ini}::timestamp - INTERVAL '12 hours'
         AND m."createdAt" <  ${fim}
@@ -620,6 +657,9 @@ export async function listarRespostasLentas(
         AND anterior IS DISTINCT FROM 'INBOUND'
         AND "createdAt" >= ${ini}
         AND COALESCE(anterior_transmissao, false) = false
+        -- Despedida/agradecimento puro não precisa de resposta — ver
+        -- REGEX_DESPEDIDA lá em cima.
+        AND NOT (lower(trim(body)) ~ ${REGEX_DESPEDIDA} AND proxima IS DISTINCT FROM 'INBOUND')
     )
     SELECT i."contactId",
            c.name AS cliente,
