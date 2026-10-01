@@ -64,8 +64,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 type AudienceFilter =
   | { type: "all" }
   | { type: "cooperative"; value: string }
-  // value = chaveEmpresa() do campo Empresa do contato
-  | { type: "empresa"; value: string }
+  // Várias empresas (chaveEmpresa() do campo Empresa) e/ou cooperativas de
+  // uma vez — recebe quem estiver em qualquer uma delas.
+  | { type: "grupos"; empresas?: string[]; cooperativas?: string[] }
   | { type: "agent"; value: string }
   | { type: "manual"; contactIds: string[] }
 
@@ -98,16 +99,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let contactWhere: Prisma.ContactWhereInput = baseWhere
   if (filter.type === "cooperative") {
     contactWhere = { ...baseWhere, cooperativeId: filter.value }
-  } else if (filter.type === "empresa") {
+  } else if (filter.type === "grupos") {
     // Empresa é texto digitado à mão (espaços, maiúsculas variam) — compara
     // pela mesma chave normalizada que a tela usou pra montar a lista.
-    const chave = chaveEmpresa(filter.value)
-    if (!chave) return NextResponse.json({ error: "Selecione uma empresa" }, { status: 400 })
-    const daEmpresa = await prisma.contact.findMany({
-      where: { ...baseWhere, empresa: { not: null } },
-      select: { id: true, empresa: true },
+    const empresas = new Set((Array.isArray(filter.empresas) ? filter.empresas : []).map(chaveEmpresa).filter(Boolean))
+    const cooperativas = (Array.isArray(filter.cooperativas) ? filter.cooperativas : []).filter((id) => typeof id === "string" && id)
+    if (empresas.size === 0 && cooperativas.length === 0) {
+      return NextResponse.json({ error: "Marque ao menos uma empresa ou cooperativa" }, { status: 400 })
+    }
+    const candidatos = await prisma.contact.findMany({
+      where: {
+        AND: [
+          baseWhere,
+          { OR: [{ empresa: { not: null } }, ...(cooperativas.length ? [{ cooperativeId: { in: cooperativas } }] : [])] },
+        ],
+      },
+      select: { id: true, empresa: true, cooperativeId: true },
     })
-    contactWhere = { ...baseWhere, id: { in: daEmpresa.filter((c) => chaveEmpresa(c.empresa) === chave).map((c) => c.id) } }
+    const ids = candidatos
+      .filter((c) => empresas.has(chaveEmpresa(c.empresa)) || (c.cooperativeId !== null && cooperativas.includes(c.cooperativeId)))
+      .map((c) => c.id)
+    contactWhere = { ...baseWhere, id: { in: ids } }
   } else if (filter.type === "agent") {
     // Only admins may target an arbitrary agent's contacts.
     if (isAgent) return NextResponse.json({ error: "Sem permissão para este filtro" }, { status: 403 })

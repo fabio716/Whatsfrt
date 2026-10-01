@@ -71,7 +71,9 @@ export default function BroadcastPage() {
   const [media, setMedia]             = useState<{ mediaUrl: string; mediaType: string; fileName: string } | null>(null)
   const [uploading, setUploading]     = useState(false)
   const [mode, setMode]               = useState<Mode>("all")
-  const [coopId, setCoopId]           = useState("")
+  // Grupos marcados no modo "Por empresa": "emp:<chave>" ou "coop:<id>".
+  const [grupos, setGrupos]           = useState<Set<string>>(new Set())
+  const [buscaGrupo, setBuscaGrupo]   = useState("")
   const [selected, setSelected]       = useState<Set<string>>(new Set())
   const [search, setSearch]           = useState("")
 
@@ -156,16 +158,46 @@ export default function BroadcastPage() {
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
   }, [contacts])
 
-  // coopId guarda "emp:<chave>" ou "coop:<id da cooperativa>".
+  // Empresas e cooperativas numa lista só, pra marcar várias de uma vez
+  // (ex.: buscar "sicoob" e marcar todas as cooperativas Sicoob).
+  const opcoesGrupo = useMemo(() => {
+    const porCoop = new Map<string, number>()
+    for (const c of contacts) if (c.cooperativeId) porCoop.set(c.cooperativeId, (porCoop.get(c.cooperativeId) ?? 0) + 1)
+    return [
+      ...empresas.map((e) => ({ id: `emp:${e.chave}`, nome: e.nome, total: e.total, tipo: "Empresa" })),
+      ...cooperatives
+        .filter((c) => porCoop.has(c.id))
+        .map((c) => ({ id: `coop:${c.id}`, nome: c.name, total: porCoop.get(c.id) ?? 0, tipo: "Cooperativa" })),
+    ].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+  }, [empresas, cooperatives, contacts])
+
+  const gruposVisiveis = useMemo(() => {
+    const q = buscaGrupo.trim().toLowerCase()
+    return q ? opcoesGrupo.filter((g) => g.nome.toLowerCase().includes(q)) : opcoesGrupo
+  }, [opcoesGrupo, buscaGrupo])
+
+  const toggleGrupo = (id: string) =>
+    setGrupos((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+
+  // Contatos de qualquer grupo marcado, sem repetir quem está em dois.
+  const idsDosGrupos = useMemo(() => {
+    const ids = new Set<string>()
+    if (grupos.size === 0) return ids
+    for (const c of contacts) {
+      if (grupos.has(`emp:${chaveEmpresa(c.empresa)}`) || (c.cooperativeId && grupos.has(`coop:${c.cooperativeId}`))) ids.add(c.id)
+    }
+    return ids
+  }, [contacts, grupos])
+
   const recipientCount = useMemo(() => {
     if (mode === "all") return contacts.length
-    if (mode === "cooperative") {
-      if (coopId.startsWith("emp:")) return contacts.filter((c) => chaveEmpresa(c.empresa) === coopId.slice(4)).length
-      if (coopId.startsWith("coop:")) return contacts.filter((c) => c.cooperativeId === coopId.slice(5)).length
-      return 0
-    }
+    if (mode === "cooperative") return idsDosGrupos.size
     return selected.size
-  }, [mode, contacts, coopId, selected])
+  }, [mode, contacts, idsDosGrupos, selected])
 
   const toggleContact = (id: string) =>
     setSelected((prev) => {
@@ -202,7 +234,7 @@ export default function BroadcastPage() {
 
   // ── Submit ──────────────────────────────────────────────────────────────────
   const canSend = Boolean(name.trim() && (messageText.trim() || media) && recipientCount > 0 && !sending && !uploading &&
-    (mode !== "cooperative" || coopId))
+    (mode !== "cooperative" || grupos.size > 0))
 
   // Estimativa de duração: delay médio entre mensagens vezes quantidade,
   // mais o tempo parado esperando o limite por hora liberar (se aplicável).
@@ -226,9 +258,12 @@ export default function BroadcastPage() {
       if (mode === "all") {
         filter = { type: "all" }
       } else if (mode === "cooperative") {
-        filter = coopId.startsWith("emp:")
-          ? { type: "empresa", value: coopId.slice(4) }
-          : { type: "cooperative", value: coopId.slice(5) }
+        const marcados = [...grupos]
+        filter = {
+          type: "grupos",
+          empresas: marcados.filter((g) => g.startsWith("emp:")).map((g) => g.slice(4)),
+          cooperativas: marcados.filter((g) => g.startsWith("coop:")).map((g) => g.slice(5)),
+        }
       } else {
         filter = { type: "manual", contactIds: [...selected] }
       }
@@ -244,7 +279,7 @@ export default function BroadcastPage() {
       const data = await res.json() as { total?: number; error?: string }
       if (!res.ok) throw new Error(data.error ?? "Erro ao criar transmissão")
       setOkMsg(`Transmissão criada para ${data.total} contato(s). O envio começou — você pode pausar ou cancelar a qualquer momento no histórico abaixo.`)
-      setName(""); setMessageText(""); setMedia(null); setSelected(new Set()); setCoopId(""); setMode("all")
+      setName(""); setMessageText(""); setMedia(null); setSelected(new Set()); setGrupos(new Set()); setBuscaGrupo(""); setMode("all")
       void loadBroadcasts()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
@@ -338,29 +373,43 @@ export default function BroadcastPage() {
           </div>
 
           {mode === "cooperative" && (
-            <div>
-              <label htmlFor="b-coop" className="mb-1.5 block text-[12px] font-medium text-zinc-500">Empresa</label>
-              <select id="b-coop" value={coopId} onChange={(e) => setCoopId(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white">
-                <option value="">Selecione uma empresa…</option>
-                {empresas.length > 0 && (
-                  <optgroup label="Empresa do contato">
-                    {empresas.map((e) => (
-                      <option key={e.chave} value={`emp:${e.chave}`}>{e.nome} ({e.total})</option>
-                    ))}
-                  </optgroup>
+            <div className="rounded-xl border border-zinc-100">
+              <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 p-2">
+                <input value={buscaGrupo} onChange={(e) => setBuscaGrupo(e.target.value)} placeholder="Buscar empresa ou cooperativa… (ex.: sicoob)"
+                  className="min-w-[140px] flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[13px] text-zinc-900 outline-none focus:border-zinc-400 focus:bg-white" />
+                <button type="button" onClick={() => setGrupos((prev) => new Set([...prev, ...gruposVisiveis.map((g) => g.id)]))}
+                  disabled={gruposVisiveis.length === 0}
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50 disabled:opacity-40">
+                  Marcar {buscaGrupo.trim() ? "as encontradas" : "todas"}
+                </button>
+                <button type="button" onClick={() => setGrupos(new Set())} disabled={grupos.size === 0}
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-zinc-500 hover:bg-zinc-50 disabled:opacity-40">
+                  Limpar
+                </button>
+              </div>
+              <ul className="max-h-72 overflow-y-auto">
+                {gruposVisiveis.map((g) => (
+                  <li key={g.id}>
+                    <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-zinc-50">
+                      <input type="checkbox" checked={grupos.has(g.id)} onChange={() => toggleGrupo(g.id)} className="h-4 w-4 accent-zinc-900" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] text-zinc-900">{g.nome}</span>
+                        <span className="block text-[11px] text-zinc-400">{g.tipo} · {g.total} contato{g.total === 1 ? "" : "s"}</span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+                {gruposVisiveis.length === 0 && (
+                  <li className="px-3 py-4 text-center text-[12px] text-zinc-400">
+                    {opcoesGrupo.length === 0
+                      ? "Nenhum dos seus contatos tem Empresa ou cooperativa preenchida. Preencha na ficha do cliente ou use a Seleção manual."
+                      : "Nada encontrado com essa busca."}
+                  </li>
                 )}
-                {cooperatives.length > 0 && (
-                  <optgroup label="Cooperativas">
-                    {cooperatives.map((c) => <option key={c.id} value={`coop:${c.id}`}>{c.name}</option>)}
-                  </optgroup>
-                )}
-              </select>
-              {empresas.length === 0 && cooperatives.length === 0 && (
-                <p className="mt-1 text-[11px] text-amber-600">
-                  Nenhum dos seus contatos tem o campo Empresa preenchido. Preencha na ficha do cliente ou use a Seleção manual.
-                </p>
-              )}
+              </ul>
+              <p className="border-t border-zinc-100 px-3 py-2 text-[11px] text-zinc-500">
+                {grupos.size} marcada{grupos.size === 1 ? "" : "s"} · {idsDosGrupos.size} contato{idsDosGrupos.size === 1 ? "" : "s"} (quem está em mais de uma conta uma vez só)
+              </p>
             </div>
           )}
 
