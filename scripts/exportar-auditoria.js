@@ -12,10 +12,14 @@
 // impresso no fim) — copiar com `docker cp`.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// require (CommonJS) e não import: o script é enviado ao Node pela entrada
+// padrão (`node - < arquivo`), modo em que só CommonJS funciona sem flags.
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require("fs")
 const path = require("path")
 const crypto = require("crypto")
 const { Client, types } = require("pg")
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 // Prisma grava DateTime como "timestamp without time zone" em UTC. Sem isso o
 // driver interpretaria no fuso do container.
