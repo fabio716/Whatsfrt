@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@/generated/prisma/client"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Relatório do dia — atendimento por vendedora.
@@ -32,12 +33,35 @@ const LIMITE_RESPOSTA_MIN = 60
 // pra nunca esconder uma pergunta de verdade da vendedora.
 // `(token[\s!.,emoji]*)+` em vez de um token só: cobre combinações comuns
 // de mais de uma despedida numa frase só ("Valeu, até mais!").
-const TOKEN_DESPEDIDA =
-  "(obrigad[ao]s?|vlw+|obg|valeu|blz|beleza+|ok(ay)?|certo|entendido|entendi|combinado|fechado|" +
+//
+// 2ª rodada (02/10/2026), print real: "Boa tarde! Obrigada.", "Ta bom!!
+// Obrigada!" e "Sim" ainda eram cobrados. Entraram confirmações curtas
+// ("sim", "tá bom", "tudo certo"...) e saudações ("bom dia", "boa tarde").
+// Saudação SOZINHA continua contando — "Bom dia!" abre conversa e precisa
+// de resposta; só vale como despedida acompanhada de um fechamento.
+const TOKEN_FECHAMENTO =
+  "(obrigad[ao]s?|obg|vlw+|valeu|blz|beleza+|ok(ay)?|certo|entendido|entendi|combinado|fechado|" +
   "at[ée] mais|at[ée] logo|tchau|de nada|por nada|show|[óo]timo|perfeito|isso( mesmo)?|" +
-  "tranquilo|maravilha|bom demais|👍|🙏|❤️|✅)"
-export const REGEX_DESPEDIDA =
-  `^(${TOKEN_DESPEDIDA}[\\s!.,👍🙏❤️😊🙂✅]*)+$`
+  "tranquilo|maravilha|bom demais|sim|t[áa] bom|t[áa] [óo]timo|t[áa] certo|t[áa] bem|tudo bem|tudo certo|" +
+  "pode deixar|kk+|rs+|(ha)+|👍|🙏|❤️|✅)"
+const TOKEN_SAUDACAO = "(bom dia|boa tarde|boa noite|ol[áa]|oi+)"
+const SEPARADOR = "[\\s!.,:;)(👍🙏❤️😊🙂✅]*"
+const REGEX_SO_TOKENS = `^((${TOKEN_FECHAMENTO}|${TOKEN_SAUDACAO})${SEPARADOR})+$`
+const REGEX_SO_SAUDACAO = `^(${TOKEN_SAUDACAO}${SEPARADOR})+$`
+
+// Aviso que o webhook grava quando chega algo que o sistema não sabe exibir
+// (localização, enquete, cartão de contato...). Não dá pra saber o que era —
+// cobrar a vendedora por isso é injusto (Fabiana, midiapost.com, 02/10).
+const PREFIXO_NAO_EXIBIDA = "⚠️ O cliente enviou um tipo de mensagem que o sistema ainda não mostra%"
+
+/**
+ * Condição SQL: a mensagem (coluna `body` do alias dado) não pede resposta
+ * humana — despedida/confirmação curta ou tipo que o sistema não exibe.
+ */
+export function naoPedeResposta(coluna: string): Prisma.Sql {
+  const c = Prisma.raw(coluna)
+  return Prisma.sql`((lower(trim(${c})) ~ ${REGEX_SO_TOKENS} AND NOT lower(trim(${c})) ~ ${REGEX_SO_SAUDACAO}) OR ${c} LIKE ${PREFIXO_NAO_EXIBIDA})`
+}
 
 export interface LinhaVendedora {
   id: string
@@ -262,8 +286,8 @@ export async function gerarRelatorio(rotuloDia: string, ini: Date, fim: Date): P
           AND "createdAt" >= ${ini}
           AND COALESCE(anterior_transmissao, false) = false
           -- Despedida/agradecimento puro não precisa de resposta — ver
-          -- REGEX_DESPEDIDA lá em cima.
-          AND NOT (lower(trim(body)) ~ ${REGEX_DESPEDIDA} AND proxima IS DISTINCT FROM 'INBOUND')
+          -- naoPedeResposta() lá em cima.
+          AND NOT (${naoPedeResposta("body")} AND proxima IS DISTINCT FROM 'INBOUND')
       ),
       respostas AS (
         -- "espera_respondida" só existe quando teve resposta de verdade — é o
@@ -658,8 +682,8 @@ export async function listarRespostasLentas(
         AND "createdAt" >= ${ini}
         AND COALESCE(anterior_transmissao, false) = false
         -- Despedida/agradecimento puro não precisa de resposta — ver
-        -- REGEX_DESPEDIDA lá em cima.
-        AND NOT (lower(trim(body)) ~ ${REGEX_DESPEDIDA} AND proxima IS DISTINCT FROM 'INBOUND')
+        -- naoPedeResposta() lá em cima.
+        AND NOT (${naoPedeResposta("body")} AND proxima IS DISTINCT FROM 'INBOUND')
     )
     SELECT i."contactId",
            c.name AS cliente,
