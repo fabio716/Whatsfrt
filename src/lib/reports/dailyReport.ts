@@ -35,14 +35,16 @@ const LIMITE_RESPOSTA_MIN = 60
 // de mais de uma despedida numa frase só ("Valeu, até mais!").
 //
 // 2ª rodada (02/10/2026), print real: "Boa tarde! Obrigada.", "Ta bom!!
-// Obrigada!" e "Sim" ainda eram cobrados. Entraram confirmações curtas
-// ("sim", "tá bom", "tudo certo"...) e saudações ("bom dia", "boa tarde").
+// Obrigada!" ainda eram cobrados. Entraram confirmações de fechamento
+// ("tá bom", "tudo certo"...) e saudações ("bom dia", "boa tarde").
+// "Sim" fica DE FORA de propósito (decisão do Fabio, 02/10): costuma
+// responder uma pergunta da vendedora, e aí ela precisa seguir a conversa.
 // Saudação SOZINHA continua contando — "Bom dia!" abre conversa e precisa
 // de resposta; só vale como despedida acompanhada de um fechamento.
 const TOKEN_FECHAMENTO =
   "(obrigad[ao]s?|obg|vlw+|valeu|blz|beleza+|ok(ay)?|certo|entendido|entendi|combinado|fechado|" +
   "at[ée] mais|at[ée] logo|tchau|de nada|por nada|show|[óo]timo|perfeito|isso( mesmo)?|" +
-  "tranquilo|maravilha|bom demais|sim|t[áa] bom|t[áa] [óo]timo|t[áa] certo|t[áa] bem|tudo bem|tudo certo|" +
+  "tranquilo|maravilha|bom demais|t[áa] bom|t[áa] [óo]timo|t[áa] certo|t[áa] bem|tudo bem|tudo certo|" +
   "pode deixar|kk+|rs+|(ha)+|👍|🙏|❤️|✅)"
 const TOKEN_SAUDACAO = "(bom dia|boa tarde|boa noite|ol[áa]|oi+)"
 const SEPARADOR = "[\\s!.,:;)(👍🙏❤️😊🙂✅]*"
