@@ -67,6 +67,21 @@ interface ZapiTextPayload {
     value?: string
     referencedMessage?: { messageId?: string }
   }
+  // Tipos que antes caíam no aviso "o sistema ainda não mostra". Formatos
+  // conforme a doc da Z-API; todos opcionais e lidos com cuidado, porque a
+  // Z-API varia os campos entre versões.
+  location?: { latitude?: number; longitude?: number; name?: string; address?: string; url?: string }
+  poll?: { question?: string; name?: string; options?: Array<{ name?: string; optionName?: string } | string> }
+  pollVote?: { options?: Array<{ name?: string; optionName?: string } | string> }
+  buttonsResponseMessage?: { buttonId?: string; message?: string }
+  listResponseMessage?: { message?: string; title?: string; selectedRowId?: string }
+  templateButtonReplyMessage?: { selectedDisplayText?: string; selectedId?: string }
+  // Evento de sistema (ligação, mensagem apagada, mudança de configuração...)
+  // — não é texto do cliente.
+  notification?: string
+  // A Z-API avisa que chegou uma mensagem que o WhatsApp ainda não liberou
+  // (a famosa "Aguardando mensagem").
+  waitingMessage?: boolean
 }
 
 interface ZapiStatusPayload {
@@ -208,12 +223,64 @@ function extractContactsText(p: ZapiTextPayload): string | null {
   return null
 }
 
+const nomeDaOpcao = (o: { name?: string; optionName?: string } | string): string =>
+  (typeof o === "string" ? o : o.name ?? o.optionName ?? "").trim()
+
+// Texto legível pros tipos que não são texto/mídia comuns. null = não é
+// nenhum deles.
+function extractSpecialText(p: ZapiTextPayload): string | null {
+  if (p.location) {
+    const l = p.location
+    const lugar = [l.name, l.address].filter((s) => s?.trim()).join(" — ")
+    const mapa = l.url?.trim()
+      || (typeof l.latitude === "number" && typeof l.longitude === "number"
+        ? `https://maps.google.com/?q=${l.latitude},${l.longitude}` : "")
+    return ["📍 Localização", lugar, mapa].filter(Boolean).join("\n")
+  }
+  if (p.poll) {
+    const opcoes = (p.poll.options ?? []).map(nomeDaOpcao).filter(Boolean)
+    const pergunta = (p.poll.question ?? p.poll.name ?? "").trim()
+    return [`📊 Enquete${pergunta ? `: ${pergunta}` : ""}`, ...opcoes.map((o) => `• ${o}`)].join("\n")
+  }
+  if (p.pollVote) {
+    const opcoes = (p.pollVote.options ?? []).map(nomeDaOpcao).filter(Boolean)
+    return opcoes.length ? `📊 Votou na enquete: ${opcoes.join(", ")}` : "📊 Votou na enquete"
+  }
+  if (p.buttonsResponseMessage?.message) return p.buttonsResponseMessage.message
+  if (p.listResponseMessage) {
+    return p.listResponseMessage.message?.trim() || p.listResponseMessage.title?.trim() || null
+  }
+  if (p.templateButtonReplyMessage?.selectedDisplayText) return p.templateButtonReplyMessage.selectedDisplayText
+  if (p.waitingMessage) {
+    return "⏳ O WhatsApp ainda não liberou o conteúdo desta mensagem (\"Aguardando mensagem\"). Veja no celular da empresa."
+  }
+  return null
+}
+
+// Ligação é o único evento de sistema que vira mensagem no chat: o cliente
+// tentou falar com a gente e merece retorno.
+function ehLigacao(notification: string | undefined): boolean {
+  return !!notification && /CALL/i.test(notification)
+}
+
+// "558422268945@s.whatsapp.net" → "+55 84 2226-8945". Usado como nome
+// quando o WhatsApp não manda o nome do contato — antes aparecia o id cru.
+function telefoneLegivel(whatsappId: string): string {
+  const d = whatsappId.replace(/@.*$/, "").replace(/\D/g, "")
+  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) {
+    const num = d.slice(4)
+    return `+55 ${d.slice(2, 4)} ${num.slice(0, num.length - 4)}-${num.slice(-4)}`
+  }
+  return d ? `+${d}` : whatsappId
+}
+
 function extractText(p: ZapiTextPayload): string {
   return p.text?.message
     ?? p.image?.caption
     ?? p.video?.caption
     ?? p.document?.caption
     ?? extractContactsText(p)
+    ?? extractSpecialText(p)
     ?? ""
 }
 
@@ -364,8 +431,19 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
   }
 
   const whatsappId = toWhatsappId(p.phone, !!p.isGroup)
-  const messageText = extractText(p)
-  const pushName = p.senderName ?? p.chatName ?? whatsappId
+
+  // Evento de sistema que não é mensagem do cliente (mensagem apagada,
+  // mudança de configuração, etc.): antes virava o aviso "tipo que o sistema
+  // não mostra" e ainda jogava o contato na fila de espera. Só registra.
+  if (p.notification && !ehLigacao(p.notification)) {
+    console.log(`[zapi-webhook] evento de sistema ignorado notification=${p.notification} phone=${p.phone}`)
+    return
+  }
+
+  const messageText = ehLigacao(p.notification)
+    ? `📞 O cliente tentou ligar (${/MISSED/i.test(p.notification ?? "") ? "ligação perdida" : "ligação"}${/VIDEO/i.test(p.notification ?? "") ? " de vídeo" : ""}). Retorne o contato.`
+    : extractText(p)
+  const pushName = p.senderName || p.chatName || telefoneLegivel(whatsappId)
 
   // 1 — Acha (considerando variante com/sem 9º dígito) ou cria contato
   let contact = await findOrCreateContact(whatsappId, {
@@ -478,14 +556,21 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     : rawMedia?.mimetype.startsWith("video/") ? "um vídeo"
     : rawMedia?.mimetype.startsWith("audio/") ? "um áudio"
     : "um arquivo"
+  const naoLida = !messageText && !media && !rawMedia
+  if (naoLida) {
+    // Só os NOMES dos campos (nunca o conteúdo) — é o que basta pra saber
+    // qual tipo ainda falta tratar, sem gravar dado do cliente no log.
+    console.warn(`[zapi-webhook] tipo de mensagem não reconhecido messageId=${p.messageId} campos=${Object.keys(p).join(",")}`)
+  }
   const finalText = mediaLost && !messageText
     ? `⚠️ O cliente enviou ${mediaKind}, mas não foi possível baixar. Peça para reenviar.`
     // Sem texto, sem mídia e sem falha de download = tipo de mensagem que ainda
-    // não sabemos ler (foi o caso da figurinha até 18/09/2026: localização,
-    // enquete e afins caem aqui). Antes a vendedora via uma bolha VAZIA, sem
-    // pista de que o cliente tinha mandado algo. Melhor dizer o que houve.
-    : (!messageText && !media && !rawMedia)
-      ? "⚠️ O cliente enviou um tipo de mensagem que o sistema ainda não mostra (figurinha, localização, enquete…). Veja no celular da empresa se precisar."
+    // não sabemos ler. Antes a vendedora via uma bolha VAZIA, sem pista de
+    // que o cliente tinha mandado algo. Melhor dizer o que houve.
+    // ATENÇÃO: o começo deste texto é usado pelo relatório pra não cobrar a
+    // vendedora (PREFIXO_NAO_EXIBIDA em src/lib/reports/dailyReport.ts).
+    : naoLida
+      ? "⚠️ O cliente enviou um tipo de mensagem que o sistema ainda não mostra. Veja no celular da empresa se precisar."
       : messageText
 
   // 3 — Cria Message com dedupe por messageId (whatsappKeyId)

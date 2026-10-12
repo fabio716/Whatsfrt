@@ -76,10 +76,15 @@ export async function findOrCreateContact(
     where: { whatsappId: { in: variants } },
   })
   if (existing) {
+    // Contato criado antes sem nome ficou com o id cru ("5584...@s.whatsapp.net")
+    // ou vazio como nome. Sem nome novo do WhatsApp, troca ao menos pelo
+    // fallback (telefone formatado) — nunca mexe num nome de verdade.
+    const nomeQuebrado = !existing.name.trim() || existing.name.includes("@")
+    const nomeNovo = data.name || (nomeQuebrado ? data.fallbackName : undefined)
     return prisma.contact.update({
       where: { id: existing.id },
       data: {
-        ...(data.name ? { name: data.name } : {}),
+        ...(nomeNovo ? { name: nomeNovo } : {}),
         ...(data.profilePhotoUrl ? { profilePhotoUrl: data.profilePhotoUrl } : {}),
       },
     })
