@@ -29,6 +29,8 @@ async function getMyClearedAt(conversationId: string, userId: string): Promise<D
 
 // ─── GET /api/internal/conversations/[id]/messages?before=<iso> ────────────────
 // Últimas 50 mensagens (mais antigas → mais novas). `before` pagina p/ trás.
+// `desde=<iso>` traz TUDO a partir daquele instante — usado pela busca pra
+// levar até uma mensagem antiga que ainda não estava carregada na tela.
 // Abrir a conversa marca como lida (atualiza lastReadAt do usuário).
 export async function GET(
   request: NextRequest,
@@ -43,15 +45,28 @@ export async function GET(
   if (!memberIds) return NextResponse.json({ error: "Sem acesso a esta conversa" }, { status: 403 })
 
   const before = request.nextUrl.searchParams.get("before")
+  const desdeBruto = request.nextUrl.searchParams.get("desde")
+  const desde = desdeBruto ? new Date(desdeBruto) : null
+  if (desde && Number.isNaN(desde.getTime())) {
+    return NextResponse.json({ error: "Data inválida" }, { status: 400 })
+  }
   const clearedAt = await getMyClearedAt(id, me.id)
+  // Filtros de data num objeto só. Antes eram dois spreads com a mesma chave
+  // createdAt — com a conversa "apagada" (clearedAt), o segundo descartava o
+  // `before` e "Carregar anteriores" trazia as mesmas 50 mensagens de novo.
+  const createdAt: { lt?: Date; gt?: Date; gte?: Date } = {}
+  if (desde) createdAt.gte = desde
+  else if (before) createdAt.lt = new Date(before)
+  if (clearedAt) createdAt.gt = clearedAt
+  // Com `desde`, limite alto mas finito (é uma conversa só).
+  const limite = desde ? 2000 : 50
   const rows = await prisma.internalMessage.findMany({
     where: {
       conversationId: id,
-      ...(before ? { createdAt: { lt: new Date(before) } } : {}),
-      ...(clearedAt ? { createdAt: { gt: clearedAt } } : {}),
+      ...(Object.keys(createdAt).length ? { createdAt } : {}),
     },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: limite,
     select: {
       id: true, senderId: true, body: true, mediaUrl: true, mediaType: true, createdAt: true,
       quotedMsgId: true, quotedBody: true, quotedSender: true,
@@ -95,7 +110,13 @@ export async function GET(
       reactions: r.reactions.map((rx) => ({ userId: rx.userId, userName: nameById.get(rx.userId) ?? "?", emoji: rx.emoji })),
     }))
 
-  return NextResponse.json({ messages, hasMore: rows.length === 50 })
+  // Com `desde`, "tem mais" = existe mensagem visível antes do ponto pedido.
+  const hasMore = desde
+    ? (await prisma.internalMessage.count({
+        where: { conversationId: id, createdAt: { lt: desde, ...(clearedAt ? { gt: clearedAt } : {}) } },
+      })) > 0
+    : rows.length === limite
+  return NextResponse.json({ messages, hasMore })
 }
 
 // ─── POST /api/internal/conversations/[id]/messages ───────────────────────────

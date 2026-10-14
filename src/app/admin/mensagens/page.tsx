@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Avatar from "@/app/admin/components/Avatar"
+import { normalizarTermo, TextoRealcado } from "@/app/admin/components/buscaTexto"
 import { notifyDesktop } from "@/lib/notify"
 import { handleSessionExpired } from "@/lib/sessionGuard"
 
@@ -207,6 +208,20 @@ export default function MensagensPage() {
     setFlashMsgId(msgId)
     setTimeout(() => setFlashMsgId((cur) => (cur === msgId ? null : cur)), 1600)
   }
+  // Lupa da conversa (igual WhatsApp). A busca roda no servidor, na conversa
+  // inteira — a tela só tem as últimas 50 mensagens carregadas.
+  const [buscaAberta, setBuscaAberta] = useState(false)
+  const [termoBusca, setTermoBusca] = useState("")
+  const [achados, setAchados] = useState<{ id: string; createdAt: string }[]>([])
+  const [indiceBusca, setIndiceBusca] = useState(0)
+  const [jaNavegou, setJaNavegou] = useState(false)
+  const [buscando, setBuscando] = useState(false)
+  const buscaInputRef = useRef<HTMLInputElement | null>(null)
+  // Achado esperando o trecho antigo carregar pra poder rolar até ele.
+  const achadoPendenteRef = useRef<string | null>(null)
+  const fecharBusca = () => {
+    setBuscaAberta(false); setTermoBusca(""); setAchados([]); setIndiceBusca(0); setJaNavegou(false)
+  }
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -247,6 +262,32 @@ export default function MensagensPage() {
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
 
   const active = conversations.find((c) => c.id === activeId) ?? null
+
+  // Trocar de conversa fecha a busca — o termo era da conversa anterior.
+  const [buscaDaConversa, setBuscaDaConversa] = useState(activeId)
+  if (buscaDaConversa !== activeId) {
+    setBuscaDaConversa(activeId)
+    fecharBusca()
+  }
+
+  // Busca com pequena espera pra não consultar a cada letra digitada.
+  useEffect(() => {
+    const termo = normalizarTermo(termoBusca)
+    if (!buscaAberta || !activeId || !termo) return
+    let cancelado = false
+    const t = setTimeout(async () => {
+      setBuscando(true)
+      try {
+        const res = await fetch(`/api/internal/conversations/${activeId}/search?q=${encodeURIComponent(termoBusca)}`)
+        if (!res.ok) { if (!handleSessionExpired(res.status) && !cancelado) setAchados([]); return }
+        const data = (await res.json()) as { achados: { id: string; createdAt: string }[] }
+        if (!cancelado) { setAchados(data.achados); setIndiceBusca(0); setJaNavegou(false) }
+      } finally {
+        if (!cancelado) setBuscando(false)
+      }
+    }, 300)
+    return () => { cancelado = true; clearTimeout(t) }
+  }, [termoBusca, buscaAberta, activeId])
 
   // ── Carrega lista de conversas ──
   const loadConversations = useCallback(async () => {
@@ -302,6 +343,33 @@ export default function MensagensPage() {
       setLoadingOlder(false)
     }
   }, [messages, loadingOlder])
+
+  const rolarAte = (id: string) => {
+    document.getElementById(`imsg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    setFlashMsgId(id)
+    setTimeout(() => setFlashMsgId((cur) => (cur === id ? null : cur)), 1600)
+  }
+
+  const irParaAchado = async (indice: number) => {
+    const convId = activeIdRef.current
+    if (!convId || achados.length === 0) return
+    const i = (indice + achados.length) % achados.length
+    setIndiceBusca(i)
+    setJaNavegou(true)
+    const alvo = achados[i]
+    if (messages.some((m) => m.id === alvo.id)) { rolarAte(alvo.id); return }
+    // Mensagem antiga ainda não carregada: traz da data dela até agora.
+    const res = await fetch(`/api/internal/conversations/${convId}/messages?desde=${encodeURIComponent(new Date(alvo.createdAt).toISOString())}`)
+    if (!res.ok) {
+      if (!handleSessionExpired(res.status)) alert("Não foi possível carregar essa parte da conversa")
+      return
+    }
+    const data = (await res.json()) as { messages: Msg[]; hasMore?: boolean }
+    if (activeIdRef.current !== convId) return
+    achadoPendenteRef.current = alvo.id
+    setMessages(data.messages)
+    setHasMoreMsgs(Boolean(data.hasMore))
+  }
 
   // Arquiva/desarquiva a conversa só pra mim (igual WhatsApp). Mensagem nova
   // faz a conversa voltar pra lista sozinha (lógica no GET /conversations).
@@ -431,6 +499,15 @@ export default function MensagensPage() {
 
   // ── Auto-scroll pro fim ──
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
+
+  // Depois de carregar o trecho antigo pra busca, rola até o achado. Vem
+  // DEPOIS do efeito acima de propósito: ele rola pro fim, este corrige.
+  useEffect(() => {
+    const id = achadoPendenteRef.current
+    if (!id || !messages.some((m) => m.id === id)) return
+    achadoPendenteRef.current = null
+    requestAnimationFrame(() => rolarAte(id))
+  }, [messages]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Enviar mensagem (texto ou mídia) ──
   const sendMessage = useCallback(async (payload: { body?: string; mediaUrl?: string; mediaType?: string; quotedMsgId?: string }) => {
@@ -857,6 +934,23 @@ export default function MensagensPage() {
               )}
               <button
                 type="button"
+                onClick={() => {
+                  if (buscaAberta) { fecharBusca(); return }
+                  setBuscaAberta(true)
+                  setTimeout(() => buscaInputRef.current?.focus(), 0)
+                }}
+                title="Buscar nesta conversa"
+                aria-label="Buscar nesta conversa"
+                aria-pressed={buscaAberta}
+                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${buscaAberta ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100"}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="11" cy="11" r="7" />
+                  <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 onClick={() => void clearConversation(active.id)}
                 title="Apagar conversa (só pra você)"
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-red-50 hover:text-red-600"
@@ -893,6 +987,58 @@ export default function MensagensPage() {
                 )}
               </button>
             </header>
+
+            {buscaAberta && (
+              <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-2 md:px-6">
+                <input
+                  ref={buscaInputRef}
+                  value={termoBusca}
+                  onChange={(e) => { setTermoBusca(e.target.value); if (!normalizarTermo(e.target.value)) setAchados([]) }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { fecharBusca(); return }
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      // Enter = próximo achado (mais antigo); Shift+Enter volta.
+                      void irParaAchado(e.shiftKey ? indiceBusca - 1 : (jaNavegou ? indiceBusca + 1 : indiceBusca))
+                    }
+                  }}
+                  placeholder="Buscar nesta conversa…"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                />
+                <span className="flex-shrink-0 text-[12px] tabular-nums text-zinc-500">
+                  {!normalizarTermo(termoBusca) ? "" : buscando ? "Buscando…" : achados.length === 0 ? "Nada encontrado" : `${indiceBusca + 1} de ${achados.length}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void irParaAchado(jaNavegou ? indiceBusca + 1 : indiceBusca)}
+                  disabled={achados.length === 0}
+                  title="Mais antiga (Enter)"
+                  aria-label="Achado mais antigo"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200 disabled:opacity-30"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void irParaAchado(indiceBusca - 1)}
+                  disabled={achados.length === 0}
+                  title="Mais recente (Shift+Enter)"
+                  aria-label="Achado mais recente"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200 disabled:opacity-30"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={fecharBusca}
+                  title="Fechar busca (Esc)"
+                  aria-label="Fechar busca"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+              </div>
+            )}
 
             {/* Mensagens */}
             <div ref={msgsBoxRef} className="flex-1 space-y-1 overflow-y-auto bg-zinc-50 px-6 py-4">
@@ -1077,7 +1223,9 @@ export default function MensagensPage() {
                           ) : null}
                           {m.body && (
                             <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">
-                              {active.isGroup ? renderWithMentions(m.body, active.members) : m.body}
+                              {buscaAberta && normalizarTermo(termoBusca)
+                                ? <TextoRealcado texto={m.body} termo={termoBusca} />
+                                : active.isGroup ? renderWithMentions(m.body, active.members) : m.body}
                             </p>
                           )}
                           <div className="mt-1 flex items-center justify-end gap-1 px-1">
