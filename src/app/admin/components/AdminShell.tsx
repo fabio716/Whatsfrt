@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import AdminNav from "./AdminNav"
 import EvolutionStatusBanner from "./EvolutionStatusBanner"
 import NotificationsPrompt from "./NotificationsPrompt"
+import Novidades from "./Novidades"
 import GlobalNotifier, { type NotifyCounts, type NotifyPrefs, NOTIFY_PREFS_KEY, defaultPrefs } from "./GlobalNotifier"
 
 type Role = "ADMIN" | "AGENT"
@@ -55,6 +56,8 @@ export default function AdminShell({
       )}
 
       {prefs && <GlobalNotifier onCounts={handleCounts} prefs={prefs} />}
+
+      <Novidades />
 
       <AdminNav
         userRole={userRole}
