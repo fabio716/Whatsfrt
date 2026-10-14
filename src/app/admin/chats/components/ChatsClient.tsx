@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
 import type { SSEPayload } from "@/lib/sse-emitter"
 import type { ContactData, MessageData } from "@/app/admin/dashboard/types"
@@ -36,6 +36,43 @@ function formatDateLabel(iso: string): string {
   if (d.toDateString() === today.toDateString()) return "Hoje"
   if (d.toDateString() === yesterday.toDateString()) return "Ontem"
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
+}
+
+// ─── Busca dentro da conversa ────────────────────────────────────────────────
+// Sem acento e sem maiúscula: "orcamento" acha "Orçamento". Feito letra a
+// letra pra saber, no texto ORIGINAL, onde está cada achado (pro realce).
+function normalizarLetras(texto: string): { norm: string; origem: number[] } {
+  let norm = ""
+  const origem: number[] = []
+  for (let i = 0; i < texto.length; i++) {
+    const n = texto[i].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    for (const ch of n) { norm += ch; origem.push(i) }
+  }
+  return { norm, origem }
+}
+
+function normalizarTermo(termo: string): string {
+  return termo.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+}
+
+// Texto com os trechos que batem com a busca marcados em amarelo.
+function TextoRealcado({ texto, termo }: Readonly<{ texto: string; termo: string }>) {
+  const t = normalizarTermo(termo)
+  if (!t) return <>{texto}</>
+  const { norm, origem } = normalizarLetras(texto)
+  const partes: ReactNode[] = []
+  let ultimo = 0
+  let i = norm.indexOf(t)
+  while (i !== -1) {
+    const ini = origem[i]
+    const fim = origem[i + t.length - 1] + 1
+    if (ini > ultimo) partes.push(texto.slice(ultimo, ini))
+    partes.push(<mark key={ini} className="rounded bg-amber-200 px-0.5 text-inherit">{texto.slice(ini, fim)}</mark>)
+    ultimo = fim
+    i = norm.indexOf(t, i + t.length)
+  }
+  if (ultimo < texto.length) partes.push(texto.slice(ultimo))
+  return <>{partes}</>
 }
 
 function groupByDate(messages: MessageData[]) {
@@ -717,6 +754,16 @@ export default function ChatsClient({
     setFlashMsgId(msgId)
     setTimeout(() => setFlashMsgId((cur) => (cur === msgId ? null : cur)), 1600)
   }
+  // Lupa da conversa aberta (igual WhatsApp). Achados do mais recente pro
+  // mais antigo; a seta "pra cima" vai pra mensagens mais antigas.
+  const [buscaAberta, setBuscaAberta] = useState(false)
+  const [termoBusca, setTermoBusca] = useState("")
+  const [indiceBusca, setIndiceBusca] = useState(0)
+  // Já pulou pra algum achado deste termo? O 1º Enter vai pro achado atual;
+  // os seguintes avançam.
+  const [jaNavegou, setJaNavegou] = useState(false)
+  const buscaInputRef = useRef<HTMLInputElement>(null)
+  const fecharBusca = () => { setBuscaAberta(false); setTermoBusca(""); setIndiceBusca(0); setJaNavegou(false) }
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef    = useRef<HTMLInputElement>(null)
@@ -726,6 +773,29 @@ export default function ChatsClient({
   const prevActiveRef   = useRef<string | null>(null)
 
   const activeContact = contacts.find((c) => c.id === activeId) ?? null
+
+  const achadosBusca = useMemo(() => {
+    const t = normalizarTermo(termoBusca)
+    if (!buscaAberta || !t || !activeContact) return []
+    return activeContact.messages
+      .filter((m) => m.body && normalizarLetras(m.body).norm.includes(t))
+      .map((m) => m.id)
+      .reverse()
+  }, [buscaAberta, termoBusca, activeContact])
+
+  const irParaAchado = (indice: number) => {
+    if (achadosBusca.length === 0) return
+    const i = (indice + achadosBusca.length) % achadosBusca.length
+    setIndiceBusca(i)
+    setJaNavegou(true)
+    const id = achadosBusca[i]
+    // Foto dentro de álbum não tem elemento próprio — vai pro álbum.
+    const el = document.getElementById(`msg-${id}`)
+      ?? document.querySelector(`[data-album-ids~="${id}"]`)
+    el?.scrollIntoView({ behavior: "smooth", block: "center" })
+    setFlashMsgId(id)
+    setTimeout(() => setFlashMsgId((cur) => (cur === id ? null : cur)), 1600)
+  }
   // Chat privado: só o dono do atendimento (assignedUserId === currentUserId)
   // pode responder. Para assumir um cliente de outro, usa-se "Requisitar".
   const isOwner = activeContact?.assignedUserId === currentUserId
@@ -759,6 +829,13 @@ export default function ChatsClient({
   })
 
   const archivedCount = contacts.filter((c) => c.archived).length
+
+  // Trocar de conversa fecha a busca — o termo era da conversa anterior.
+  const [buscaDoContato, setBuscaDoContato] = useState(activeId)
+  if (buscaDoContato !== activeId) {
+    setBuscaDoContato(activeId)
+    fecharBusca()
+  }
 
   // Scroll
   useEffect(() => {
@@ -1702,6 +1779,24 @@ export default function ChatsClient({
                   <StatusBadge status={activeContact.chatStatus} />
                 </span>
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (buscaAberta) { fecharBusca(); return }
+                    setBuscaAberta(true)
+                    setTimeout(() => buscaInputRef.current?.focus(), 0)
+                  }}
+                  title="Buscar nesta conversa"
+                  aria-label="Buscar nesta conversa"
+                  aria-pressed={buscaAberta}
+                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border transition-colors ${buscaAberta ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700"}`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <circle cx="11" cy="11" r="7" />
+                    <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+                  </svg>
+                </button>
+
                 {/* Ação primária — uma só, depende do contexto.
                     isOwner + IN_SERVICE → Encerrar (verde, ação mais comum)
                     !isOwner + AGENT     → Assumir (preto, alto contraste)
@@ -1823,6 +1918,58 @@ export default function ChatsClient({
               </div>
             </header>
 
+            {buscaAberta && (
+              <div className="flex items-center gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-2 md:px-6">
+                <input
+                  ref={buscaInputRef}
+                  value={termoBusca}
+                  onChange={(e) => { setTermoBusca(e.target.value); setIndiceBusca(0); setJaNavegou(false) }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { fecharBusca(); return }
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      // Enter = próximo achado (mais antigo); Shift+Enter volta.
+                      irParaAchado(e.shiftKey ? indiceBusca - 1 : (jaNavegou ? indiceBusca + 1 : indiceBusca))
+                    }
+                  }}
+                  placeholder="Buscar nesta conversa… (ex.: boleto, orçamento)"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[13px] text-zinc-800 outline-none focus:border-zinc-400"
+                />
+                <span className="flex-shrink-0 text-[12px] tabular-nums text-zinc-500">
+                  {!normalizarTermo(termoBusca) ? "" : achadosBusca.length === 0 ? "Nada encontrado" : `${indiceBusca + 1} de ${achadosBusca.length}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => irParaAchado(indiceBusca + 1)}
+                  disabled={achadosBusca.length === 0}
+                  title="Mais antiga (Enter)"
+                  aria-label="Achado mais antigo"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200 disabled:opacity-30"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => irParaAchado(indiceBusca - 1)}
+                  disabled={achadosBusca.length === 0}
+                  title="Mais recente (Shift+Enter)"
+                  aria-label="Achado mais recente"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200 disabled:opacity-30"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={fecharBusca}
+                  title="Fechar busca (Esc)"
+                  aria-label="Fechar busca"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+              </div>
+            )}
+
             {/* Banner janela de 24h — avisa quando cliente não responde há tempo.
                 Fora dessa janela, o Meta dropa silenciosamente envios de iniciativa
                 do agente como spam. Não bloqueia o envio, só alerta. */}
@@ -1858,7 +2005,15 @@ export default function ChatsClient({
                   </div>
                   {groupChatAlbums(group.messages).map((item) => {
                     if (item.kind === "album") {
-                      return <AlbumBubble key={item.msgs[0].id} msgs={item.msgs} isOut={item.msgs[0].direction === "OUTBOUND"} />
+                      return (
+                        <div
+                          key={item.msgs[0].id}
+                          data-album-ids={item.msgs.map((m) => m.id).join(" ")}
+                          className={`rounded-2xl ${item.msgs.some((m) => m.id === flashMsgId) ? "ring-2 ring-amber-400" : ""}`}
+                        >
+                          <AlbumBubble msgs={item.msgs} isOut={item.msgs[0].direction === "OUTBOUND"} />
+                        </div>
+                      )
                     }
                     const msg = item.msg
                     const isOut = msg.direction === "OUTBOUND"
@@ -1946,7 +2101,9 @@ export default function ChatsClient({
                               ) : msg.body.startsWith("👤") ? (
                                 <SharedContactBody body={msg.body} />
                               ) : (
-                                <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">{msg.body}</p>
+                                <p translate="no" className="whitespace-pre-wrap break-words px-1 text-[13px] leading-relaxed">
+                                  {buscaAberta ? <TextoRealcado texto={msg.body} termo={termoBusca} /> : msg.body}
+                                </p>
                               )}
                             </>
                           )}
