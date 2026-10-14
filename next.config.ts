@@ -35,6 +35,12 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Marca de cada build, gravada no código do navegador E do servidor. Depois
+  // de um deploy, a aba que ficou aberta continua com a marca antiga — é
+  // assim que ela percebe que saiu versão nova (ver VersaoNova.tsx).
+  env: {
+    NEXT_PUBLIC_VERSAO_BUILD: String(Date.now()),
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "100mb",

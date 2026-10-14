@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import AdminNav from "./AdminNav"
 import EvolutionStatusBanner from "./EvolutionStatusBanner"
 import NotificationsPrompt from "./NotificationsPrompt"
+import VersaoNova from "./VersaoNova"
 import Novidades from "./Novidades"
 import GlobalNotifier, { type NotifyCounts, type NotifyPrefs, NOTIFY_PREFS_KEY, defaultPrefs } from "./GlobalNotifier"
 
@@ -91,6 +92,7 @@ export default function AdminShell({
           </div>
         </div>
 
+        <VersaoNova />
         <EvolutionStatusBanner />
         <NotificationsPrompt />
         <div className="flex-1 overflow-y-auto">{children}</div>
