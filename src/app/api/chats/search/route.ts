@@ -49,6 +49,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       whatsappId: true,
       updatedAt: true,
       messages: {
+        // Prévia nunca mostra mensagem privada do admin pro agente.
+        where: me.role === "AGENT" ? { adminPrivate: false } : {},
         orderBy: { createdAt: "desc" },
         take: 1,
         select: { body: true, mediaType: true, createdAt: true },

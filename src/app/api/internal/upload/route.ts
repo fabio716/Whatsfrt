@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { isMimeAllowed, MAX_UPLOAD_BYTES, saveMediaBuffer } from "@/lib/mediaStorage"
+import { gerarComprovante } from "@/lib/comprovanteUpload"
 
 export const dynamic = "force-dynamic"
 
@@ -40,5 +41,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const bytes = await file.arrayBuffer()
   const saved = await saveMediaBuffer(Buffer.from(bytes), mediaType, file.name)
 
-  return NextResponse.json({ mediaUrl: saved.mediaUrl, mediaType, fileName: file.name }, { status: 201 })
+  return NextResponse.json({
+    mediaUrl: saved.mediaUrl, mediaType, fileName: file.name,
+    // A mensagem interna só aceita arquivo com este comprovante (ver comprovanteUpload.ts).
+    comprovante: gerarComprovante(auth.id, saved.mediaUrl),
+  }, { status: 201 })
 }

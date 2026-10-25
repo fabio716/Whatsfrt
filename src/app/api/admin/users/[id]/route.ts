@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { requireAdmin } from "@/app/api/admin/users/route"
+import { esquecerUsuario } from "@/lib/auth"
 
 export async function PUT(
   request: NextRequest,
@@ -32,7 +33,12 @@ export async function PUT(
   const data: Record<string, unknown> = {}
   if (body.name)       data.name       = body.name.trim()
   if (body.email)      data.email      = body.email.toLowerCase().trim()
-  if (body.role)       data.role       = body.role
+  if (body.role) {
+    if (body.role !== "ADMIN" && body.role !== "AGENT") {
+      return NextResponse.json({ error: "Perfil inválido" }, { status: 400 })
+    }
+    data.role = body.role
+  }
   if ("department" in body) data.department = body.department ?? null
   if (typeof body.uraMenuVisible === "boolean") data.uraMenuVisible = body.uraMenuVisible
   if (body.password)   data.passwordHash = await bcrypt.hash(body.password, 10)
@@ -45,6 +51,8 @@ export async function PUT(
     data,
     select: { id: true, name: true, email: true, role: true, department: true, isActive: true, dailyMessageLimit: true, uraMenuVisible: true, createdAt: true },
   })
+  // Perfil/nome novos valem na hora, sem esperar o cache da sessão expirar.
+  await esquecerUsuario(id)
 
   return NextResponse.json(updated)
 }
@@ -100,6 +108,7 @@ export async function DELETE(
 
   try {
     await prisma.user.delete({ where: { id } })
+    await esquecerUsuario(id)
   } catch {
     return NextResponse.json(
       { error: "Não foi possível excluir: usuário ainda tem vínculos no sistema. Use \"Desativar\" para ocultar sem perder histórico." },
@@ -127,6 +136,8 @@ export async function PATCH(
     data: { isActive: !user.isActive },
     select: { id: true, isActive: true },
   })
+  // Desativado sai na hora: a próxima requisição dele já não tem sessão.
+  await esquecerUsuario(id)
 
   return NextResponse.json(updated)
 }

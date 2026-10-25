@@ -30,7 +30,12 @@ export async function GET(
         : {}),
     },
     include: {
-      messages: { orderBy: { createdAt: "asc" } },
+      // adminPrivate: resposta do admin direto no cliente de um agente —
+      // invisível pro agente (mesma regra da tela de Chats).
+      messages: {
+        where: me.role === "AGENT" ? { adminPrivate: false } : {},
+        orderBy: { createdAt: "asc" },
+      },
       tags: { select: { id: true, name: true, color: true }, orderBy: { name: "asc" } },
     },
   })

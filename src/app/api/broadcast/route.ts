@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { getSessionFromRequest } from "@/lib/auth"
 import { processCampaign } from "@/lib/campaignQueue"
 import { carteiraDoAgente, chaveEmpresa } from "@/lib/broadcastScope"
+import { comprovanteValido } from "@/lib/comprovanteUpload"
 import type { Prisma } from "@/generated/prisma/client"
 
 // ── GET /api/broadcast — list broadcasts (agents see only their own) ──────────
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const isAgent = session.role === "AGENT"
 
-  let body: { name?: string; messageText?: string; filter?: AudienceFilter; mediaUrl?: string; mediaType?: string }
+  let body: { name?: string; messageText?: string; filter?: AudienceFilter; mediaUrl?: string; mediaType?: string; comprovante?: string }
   try {
     body = (await request.json()) as typeof body
   } catch {
@@ -85,6 +86,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { name, messageText, filter, mediaUrl, mediaType } = body
   const hasMedia = Boolean(mediaUrl && mediaType)
+  // Arquivo só se foi esta pessoa que enviou (comprovante do upload). Sem
+  // isso, dava pra apontar pra qualquer arquivo do servidor — anexo de outro
+  // cliente, do chat interno — e o sistema o mandava pelo WhatsApp.
+  if (hasMedia && !comprovanteValido(session.id, mediaUrl as string, body.comprovante)) {
+    return NextResponse.json({ error: "Arquivo inválido. Anexe o arquivo de novo." }, { status: 400 })
+  }
   if (!name?.trim() || !filter || (!messageText?.trim() && !hasMedia)) {
     return NextResponse.json({ error: "Nome, destinatários e mensagem (ou imagem) são obrigatórios" }, { status: 400 })
   }

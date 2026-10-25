@@ -34,6 +34,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       assignedUserId: true,
       tags: { select: { name: true } },
       messages: {
+        // Resposta privada do admin não pode chegar ao agente nem pela
+        // sugestão da IA.
+        where: auth.role === "AGENT" ? { adminPrivate: false } : {},
         orderBy: { createdAt: "desc" },
         take: 30,
         select: { body: true, direction: true, mediaType: true },

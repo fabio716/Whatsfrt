@@ -61,10 +61,13 @@ export async function PATCH(
     data: { body: text },
   })
 
+  // Mensagem privada do admin: o evento vai só pros admins (owner null),
+  // senão o agente dono do contato recebia o texto em tempo real.
+  const donoDoEvento = message.adminPrivate ? null : message.contact.assignedUserId
   broadcast({
     type: "message_update",
     data: { id: updated.id, status: updated.status, contactId: updated.contactId, body: updated.body },
-  }, message.contact.assignedUserId)
+  }, donoDoEvento)
 
   return NextResponse.json({ id: updated.id, body: updated.body })
 }

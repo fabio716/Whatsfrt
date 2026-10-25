@@ -47,6 +47,19 @@ export async function PATCH(
       return NextResponse.json({ error: "Telefone inválido. Use DDD + número (ex: 11 99999-9999)" }, { status: 422 })
     }
     if (whatsappId !== contact.whatsappId) {
+      // Trocar o número desvia as próximas mensagens do dono do cliente pro
+      // número novo — agente só faz isso em cliente dele (ou que ainda não é
+      // de ninguém). Nome/empresa/cidade continuam abertos, como a tela de
+      // Contatos sempre foi.
+      if (auth.role === "AGENT") {
+        const dono = contact.assignedUserId ?? contact.lastAgentUserId
+        if (dono && dono !== auth.id) {
+          return NextResponse.json(
+            { error: "Só o vendedor responsável (ou um administrador) pode trocar o telefone deste cliente." },
+            { status: 403 },
+          )
+        }
+      }
       const conflict = await prisma.contact.findUnique({ where: { whatsappId }, select: { id: true, name: true } })
       if (conflict && conflict.id !== id) {
         return NextResponse.json({ error: `Esse telefone já está cadastrado em outro contato: ${conflict.name}` }, { status: 409 })

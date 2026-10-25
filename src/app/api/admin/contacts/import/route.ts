@@ -17,7 +17,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const file   = formData.get("file")   as File   | null
-  const userId = (formData.get("userId") as string | null) || null
+  // Agente só importa pra própria carteira (igual /api/contacts/import);
+  // antes podia empurrar contatos novos na carteira de outro vendedor.
+  const userId = auth.role === "AGENT"
+    ? auth.id
+    : ((formData.get("userId") as string | null) || null)
   const cooperativeId = (formData.get("cooperativeId") as string | null) || null
 
   if (!file) {

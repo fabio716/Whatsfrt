@@ -47,6 +47,9 @@ export async function DELETE(
     data: { body: DELETED_PLACEHOLDER, mediaUrl: null, mediaType: null },
   })
 
+  // Mensagem privada do admin: o evento vai só pros admins (owner null),
+  // senão o agente dono do contato recebia o texto em tempo real.
+  const donoDoEvento = message.adminPrivate ? null : message.contact.assignedUserId
   broadcast({
     type: "message_update",
     data: {
@@ -57,7 +60,7 @@ export async function DELETE(
       mediaUrl: null,
       mediaType: null,
     },
-  }, message.contact.assignedUserId)
+  }, donoDoEvento)
 
   return NextResponse.json({ id: updated.id, body: updated.body })
 }

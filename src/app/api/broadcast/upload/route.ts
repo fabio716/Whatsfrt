@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth"
 import { isMimeAllowed, MAX_UPLOAD_BYTES, saveMediaBuffer } from "@/lib/mediaStorage"
+import { gerarComprovante } from "@/lib/comprovanteUpload"
 
 // POST /api/broadcast/upload — armazena uma mídia e retorna a URL privada.
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -36,5 +37,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     mediaUrl: saved.mediaUrl,
     mediaType,
     fileName: file.name,
+    // A transmissão só aceita arquivo com este comprovante (ver comprovanteUpload.ts).
+    comprovante: gerarComprovante(session.id, saved.mediaUrl),
   }, { status: 201 })
 }

@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin } from "@/app/api/admin/users/route"
 
+// O nome do contato vem do WhatsApp do cliente. Célula começando com = + - @
+// vira FÓRMULA quando abre no Excel (pode até mandar dados pra fora). O
+// apóstrofo na frente faz o Excel tratar como texto.
+function semFormula(v: string): string {
+  return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const session = await requireAdmin(request)
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
@@ -25,7 +32,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const agent = c.assignedUser?.name ?? ""
     const date  = c.createdAt.toLocaleDateString("pt-BR")
     const cols  = [c.name, phone, c.chatStatus, agent, date].map((v) =>
-      `"${String(v).replace(/"/g, '""')}"`)
+      `"${semFormula(String(v)).replace(/"/g, '""')}"`)
     return cols.join(",")
   })
 

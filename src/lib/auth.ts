@@ -31,12 +31,56 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
 }
 
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
+  let payload: SessionPayload
   try {
-    const { payload } = await jwtVerify(token, getSecret())
-    return payload as unknown as SessionPayload
+    payload = (await jwtVerify(token, getSecret())).payload as unknown as SessionPayload
   } catch {
     return null
   }
+  // O token sozinho não basta: ele se renova a cada 30 min (proxy.ts) sem
+  // olhar o banco, então quem fosse desativado — ou rebaixado de admin pra
+  // agente — continuava entrando enquanto usasse o sistema. Aqui vale o que
+  // está no banco AGORA: inativo = sem sessão; perfil e nome vêm do banco.
+  const atual = await usuarioAtual(payload.id)
+  if (!atual || !atual.isActive) return null
+  return { id: payload.id, name: atual.name, role: atual.role }
+}
+
+// ─── Estado atual do usuário (com cache curto) ───────────────────────────────
+// Toda requisição autenticada passa aqui; o cache de 60s evita uma consulta
+// ao banco por request. Mudança de perfil/ativação vale em até 60s — ou na
+// hora, porque a edição de usuário chama esquecerUsuario().
+const CACHE_SEG = 60
+const chaveCache = (id: string) => `sess:usuario:${id}`
+
+interface UsuarioAtual { name: string; role: "ADMIN" | "AGENT"; isActive: boolean }
+
+async function usuarioAtual(id: string): Promise<UsuarioAtual | null> {
+  // Imports dinâmicos: este arquivo também é usado pelo proxy.ts (só as
+  // constantes), que não precisa carregar Prisma/Redis.
+  const { redis } = await import("@/lib/redis")
+  try {
+    const cache = await redis.get(chaveCache(id))
+    if (cache) return JSON.parse(cache) as UsuarioAtual
+  } catch { /* Redis fora: cai no banco */ }
+
+  const { prisma } = await import("@/lib/prisma")
+  const u = await prisma.user.findUnique({
+    where: { id },
+    select: { name: true, role: true, isActive: true },
+  })
+  if (!u) return null
+  const atual: UsuarioAtual = { name: u.name, role: u.role, isActive: u.isActive }
+  try { await redis.setex(chaveCache(id), CACHE_SEG, JSON.stringify(atual)) } catch { /* ok */ }
+  return atual
+}
+
+/** Chamar depois de editar/desativar um usuário, pra valer na hora. */
+export async function esquecerUsuario(id: string): Promise<void> {
+  try {
+    const { redis } = await import("@/lib/redis")
+    await redis.del(chaveCache(id))
+  } catch { /* expira sozinho em 60s */ }
 }
 
 export const SESSION_COOKIE_OPTS = {

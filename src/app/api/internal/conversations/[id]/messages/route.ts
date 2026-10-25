@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { broadcastToUsers } from "@/lib/sse-emitter"
 import { sendPushToUsers } from "@/lib/push"
+import { comprovanteValido } from "@/lib/comprovanteUpload"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -133,7 +134,7 @@ export async function POST(
   const memberIds = await assertMember(id, me.id)
   if (!memberIds) return NextResponse.json({ error: "Sem acesso a esta conversa" }, { status: 403 })
 
-  let body: { body?: string; mediaUrl?: string; mediaType?: string; quotedMsgId?: string }
+  let body: { body?: string; mediaUrl?: string; mediaType?: string; quotedMsgId?: string; comprovante?: string }
   try {
     body = (await request.json()) as typeof body
   } catch {
@@ -144,6 +145,13 @@ export async function POST(
   const hasMedia = Boolean(body.mediaUrl && body.mediaType)
   if (!text && !hasMedia) {
     return NextResponse.json({ error: "Mensagem vazia" }, { status: 400 })
+  }
+  // Arquivo só se foi esta pessoa que enviou (comprovante do upload). A
+  // liberação de download (/api/media) confia em "existe mensagem interna
+  // com este arquivo numa conversa minha" — sem esta checagem, bastava postar
+  // o nome do anexo de OUTRA conversa numa conversa própria pra baixá-lo.
+  if (hasMedia && !comprovanteValido(me.id, body.mediaUrl as string, body.comprovante)) {
+    return NextResponse.json({ error: "Arquivo inválido. Anexe o arquivo de novo." }, { status: 400 })
   }
 
   const sender = await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } })

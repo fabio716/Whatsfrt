@@ -510,7 +510,7 @@ export default function MensagensPage() {
   }, [messages]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Enviar mensagem (texto ou mídia) ──
-  const sendMessage = useCallback(async (payload: { body?: string; mediaUrl?: string; mediaType?: string; quotedMsgId?: string }) => {
+  const sendMessage = useCallback(async (payload: { body?: string; mediaUrl?: string; mediaType?: string; quotedMsgId?: string; comprovante?: string }) => {
     const convId = activeIdRef.current
     if (!convId || sendingRef.current) return
     sendingRef.current = true
@@ -696,9 +696,9 @@ export default function MensagensPage() {
       const fd = new FormData()
       fd.append("file", file, fileName)
       const res = await fetch("/api/internal/upload", { method: "POST", body: fd })
-      const data = (await res.json()) as { mediaUrl?: string; mediaType?: string; error?: string }
+      const data = (await res.json()) as { mediaUrl?: string; mediaType?: string; comprovante?: string; error?: string }
       if (res.ok && data.mediaUrl) {
-        await sendMessage({ mediaUrl: data.mediaUrl, mediaType: data.mediaType })
+        await sendMessage({ mediaUrl: data.mediaUrl, mediaType: data.mediaType, comprovante: data.comprovante })
       } else {
         alert(data.error ?? "Falha no upload")
       }

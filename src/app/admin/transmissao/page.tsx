@@ -68,7 +68,7 @@ export default function BroadcastPage() {
 
   const [name, setName]               = useState("")
   const [messageText, setMessageText] = useState("")
-  const [media, setMedia]             = useState<{ mediaUrl: string; mediaType: string; fileName: string } | null>(null)
+  const [media, setMedia]             = useState<{ mediaUrl: string; mediaType: string; fileName: string; comprovante: string } | null>(null)
   const [uploading, setUploading]     = useState(false)
   const [mode, setMode]               = useState<Mode>("all")
   // Grupos marcados no modo "Por empresa": "emp:<chave>" ou "coop:<id>".
@@ -222,9 +222,9 @@ export default function BroadcastPage() {
       const fd = new FormData()
       fd.append("file", file)
       const res = await fetch("/api/broadcast/upload", { method: "POST", body: fd })
-      const data = await res.json() as { mediaUrl?: string; mediaType?: string; fileName?: string; error?: string }
+      const data = await res.json() as { mediaUrl?: string; mediaType?: string; fileName?: string; comprovante?: string; error?: string }
       if (!res.ok || !data.mediaUrl) throw new Error(data.error ?? "Falha no upload")
-      setMedia({ mediaUrl: data.mediaUrl, mediaType: data.mediaType ?? "application/octet-stream", fileName: data.fileName ?? file.name })
+      setMedia({ mediaUrl: data.mediaUrl, mediaType: data.mediaType ?? "application/octet-stream", fileName: data.fileName ?? file.name, comprovante: data.comprovante ?? "" })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro no upload")
     } finally {
@@ -273,7 +273,7 @@ export default function BroadcastPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(), messageText: messageText.trim(), filter,
-          mediaUrl: media?.mediaUrl, mediaType: media?.mediaType,
+          mediaUrl: media?.mediaUrl, mediaType: media?.mediaType, comprovante: media?.comprovante,
         }),
       })
       const data = await res.json() as { total?: number; error?: string }

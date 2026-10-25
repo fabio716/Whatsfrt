@@ -114,7 +114,10 @@ function textoDaMensagem(m, tipo) {
 // ─── CSV ─────────────────────────────────────────────────────────────────────
 
 function celula(v) {
-  const s = v === null || v === undefined ? "" : String(v)
+  let s = v === null || v === undefined ? "" : String(v)
+  // Texto vindo do cliente (nome, mensagem) começando com = + - @ vira
+  // fórmula no Excel. O apóstrofo faz o Excel tratar como texto.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
   return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
