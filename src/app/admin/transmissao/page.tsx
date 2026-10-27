@@ -82,12 +82,12 @@ export default function BroadcastPage() {
   const [okMsg, setOkMsg]     = useState<string | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [actioningId, setActioningId] = useState<string | null>(null)
-  // Modo cautela (pós-bloqueio do WhatsApp): limites menores até uma data.
-  const [cautela, setCautela] = useState<{ ate: string; maxPorTransmissao: number; maxPorDia: number; diasConversa: number; delayMin: number; delayMax: number } | null>(null)
+  // Limites seguros (sempre ligados) — mostrados no aviso da tela.
+  const [cautela, setCautela] = useState<{ maxPorTransmissao: number; maxPorDia: number; diasConversa: number; delayMin: number; delayMax: number } | null>(null)
   useEffect(() => {
     fetch("/api/broadcast/bloqueio")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setCautela(d?.cautela ? d : null))
+      .then((d) => setCautela(d?.maxPorTransmissao ? d : null))
       .catch(() => { /* sem aviso; o servidor aplica os limites mesmo assim */ })
   }, [])
 
@@ -331,9 +331,9 @@ export default function BroadcastPage() {
 
         {cautela && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
-            <p className="font-semibold">Modo cautela até {cautela.ate}</p>
+            <p className="font-semibold">Limites de segurança</p>
             <p className="mt-1 text-[12px] leading-relaxed">
-              O WhatsApp bloqueou o número por 24h depois de muitas ofertas num dia só. Até {cautela.ate}, para evitar um bloqueio maior:
+              Para o WhatsApp não bloquear o número por envio em massa, as transmissões seguem sempre estas regras:
             </p>
             <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed">
               <li>no máximo <strong>{cautela.maxPorTransmissao} destinatários</strong> por transmissão;</li>

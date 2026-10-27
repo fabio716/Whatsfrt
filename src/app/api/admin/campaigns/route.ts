@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
-import { processCampaign } from "@/lib/campaignQueue"
-import { cautelaAte, dataBr } from "@/lib/bloqueioTransmissao"
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value
@@ -42,70 +40,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json(result)
 }
 
-// ── POST /api/admin/campaigns — create & fire ─────────────────────────────────
-
-type AudienceFilter =
-  | { type: "all" }
-  | { type: "department"; value: string }
-  | { type: "agent"; value: string }
-
+// ── POST /api/admin/campaigns ───────────────────────────────────────────────
+// Rota antiga: mandava pra todos os contatos, sem filtro nem limite. Desligada
+// de vez — só a tela de Transmissão (/api/broadcast), que aplica os limites
+// seguros contra bloqueio do WhatsApp (src/lib/bloqueioTransmissao.ts).
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await requireAdmin(req)
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-  // Rota antiga (manda pra todos os contatos, sem filtro). No modo cautela
-  // só vale a tela de Transmissão, que aplica os limites.
-  const travaAte = cautelaAte()
-  if (travaAte) return NextResponse.json({ error: `Envio para todos suspenso até ${dataBr(travaAte)}. Use a tela de Transmissão.` }, { status: 423 })
-
-  const body = (await req.json()) as {
-    name: string
-    messageText: string
-    filter: AudienceFilter
-  }
-
-  if (!body.name?.trim() || !body.messageText?.trim()) {
-    return NextResponse.json({ error: "Nome e mensagem são obrigatórios" }, { status: 400 })
-  }
-
-  // ── Build contact query ───────────────────────────────────────────────────
-  const baseWhere = { deletedAt: null }
-
-  let contactWhere: Record<string, unknown> = baseWhere
-  if (body.filter.type === "department") {
-    contactWhere = {
-      ...baseWhere,
-      assignedUser: { department: body.filter.value },
-    }
-  } else if (body.filter.type === "agent") {
-    contactWhere = { ...baseWhere, assignedUserId: body.filter.value }
-  }
-
-  const contacts = await prisma.contact.findMany({
-    where: contactWhere,
-    select: { id: true },
-  })
-
-  if (contacts.length === 0) {
-    return NextResponse.json({ error: "Nenhum contato encontrado para o filtro selecionado" }, { status: 400 })
-  }
-
-  // ── Create campaign + logs ────────────────────────────────────────────────
-  const campaign = await prisma.campaign.create({
-    data: {
-      name: body.name.trim(),
-      messageText: body.messageText.trim(),
-      status: "PENDING",
-      logs: {
-        createMany: {
-          data: contacts.map((c) => ({ contactId: c.id, status: "PENDING" })),
-        },
-      },
-    },
-    select: { id: true, name: true, status: true, createdAt: true },
-  })
-
-  // ── Fire-and-forget (no await) ────────────────────────────────────────────
-  processCampaign(campaign.id).catch((e: unknown) => console.error("[campaign fire]", e))
-
-  return NextResponse.json({ ...campaign, total: contacts.length, sent: 0 }, { status: 201 })
+  return NextResponse.json({ error: "Envio para todos desativado. Use a tela de Transmissão." }, { status: 410 })
 }

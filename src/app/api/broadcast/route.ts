@@ -4,7 +4,7 @@ import { getSessionFromRequest } from "@/lib/auth"
 import { processCampaign } from "@/lib/campaignQueue"
 import { carteiraDoAgente, chaveEmpresa } from "@/lib/broadcastScope"
 import { comprovanteValido } from "@/lib/comprovanteUpload"
-import { CAUTELA, cautelaAte, dataBr, inicioDoDiaBr } from "@/lib/bloqueioTransmissao"
+import { LIMITES_SEGUROS as L, inicioDoDiaBr } from "@/lib/bloqueioTransmissao"
 import type { Prisma } from "@/generated/prisma/client"
 
 // ── GET /api/broadcast — list broadcasts (agents see only their own) ──────────
@@ -150,34 +150,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Nenhum contato encontrado para o filtro selecionado" }, { status: 400 })
   }
 
-  // ── Modo cautela (pós-bloqueio do WhatsApp) ─────────────────────────────────
-  const cautela = cautelaAte()
-  if (cautela) {
-    const ate = dataBr(cautela)
-    // Só quem mandou mensagem nos últimos 30 dias: número existe e o cliente
-    // conhece a empresa — menos falha e menos denúncia.
-    const desde = new Date(Date.now() - CAUTELA.diasConversa * 86_400_000)
-    const ativos = await prisma.message.findMany({
-      where: { contactId: { in: contacts.map((c) => c.id) }, direction: "INBOUND", createdAt: { gte: desde } },
-      distinct: ["contactId"],
-      select: { contactId: true },
-    })
-    const idsAtivos = new Set(ativos.map((m) => m.contactId))
-    const antes = contacts.length
-    contacts = contacts.filter((c) => idsAtivos.has(c.id))
-    if (contacts.length === 0) {
-      return NextResponse.json({ error: `Até ${ate} as transmissões só vão para clientes que conversaram nos últimos ${CAUTELA.diasConversa} dias, e nenhum dos ${antes} selecionados se encaixa.` }, { status: 400 })
-    }
-    if (contacts.length > CAUTELA.maxPorTransmissao) {
-      return NextResponse.json({ error: `Até ${ate} cada transmissão pode ter no máximo ${CAUTELA.maxPorTransmissao} destinatários (proteção contra novo bloqueio do WhatsApp). Esta teria ${contacts.length} clientes que conversaram nos últimos ${CAUTELA.diasConversa} dias${antes > contacts.length ? ` — os outros ${antes - contacts.length} já ficam de fora` : ""}. Divida em partes menores ou escolha menos contatos.` }, { status: 400 })
-    }
-    const jaHoje = await prisma.campaignLog.count({ where: { campaign: { createdAt: { gte: inicioDoDiaBr() } } } })
-    const resta = Math.max(0, CAUTELA.maxPorDia - jaHoje)
-    if (contacts.length > resta) {
-      return NextResponse.json({ error: resta === 0
-        ? `O limite de ${CAUTELA.maxPorDia} envios de transmissão por dia já foi atingido. Tente amanhã (vale até ${ate}).`
-        : `Hoje ainda cabem só ${resta} envios de transmissão (limite de ${CAUTELA.maxPorDia} por dia até ${ate}). Esta teria ${contacts.length}.` }, { status: 400 })
-    }
+  // ── Limites seguros (sempre) — evitar novo bloqueio do WhatsApp ───────────
+  // Só quem mandou mensagem nos últimos 30 dias: número existe e o cliente
+  // conhece a empresa — menos falha e menos denúncia.
+  const desde = new Date(Date.now() - L.diasConversa * 86_400_000)
+  const ativos = await prisma.message.findMany({
+    where: { contactId: { in: contacts.map((c) => c.id) }, direction: "INBOUND", createdAt: { gte: desde } },
+    distinct: ["contactId"],
+    select: { contactId: true },
+  })
+  const idsAtivos = new Set(ativos.map((m) => m.contactId))
+  const antes = contacts.length
+  contacts = contacts.filter((c) => idsAtivos.has(c.id))
+  if (contacts.length === 0) {
+    return NextResponse.json({ error: `As transmissões só vão para clientes que conversaram nos últimos ${L.diasConversa} dias, e nenhum dos ${antes} selecionados se encaixa.` }, { status: 400 })
+  }
+  if (contacts.length > L.maxPorTransmissao) {
+    return NextResponse.json({ error: `Cada transmissão pode ter no máximo ${L.maxPorTransmissao} destinatários (proteção contra bloqueio do WhatsApp). Esta teria ${contacts.length} clientes que conversaram nos últimos ${L.diasConversa} dias${antes > contacts.length ? ` — os outros ${antes - contacts.length} já ficam de fora` : ""}. Divida em partes menores ou escolha menos contatos.` }, { status: 400 })
+  }
+  const jaHoje = await prisma.campaignLog.count({ where: { campaign: { createdAt: { gte: inicioDoDiaBr() } } } })
+  const resta = Math.max(0, L.maxPorDia - jaHoje)
+  if (contacts.length > resta) {
+    return NextResponse.json({ error: resta === 0
+      ? `O limite de ${L.maxPorDia} envios de transmissão por dia já foi atingido. Tente amanhã.`
+      : `Hoje ainda cabem só ${resta} envios de transmissão (limite de ${L.maxPorDia} por dia). Esta teria ${contacts.length}.` }, { status: 400 })
   }
 
   const campaign = await prisma.campaign.create({
@@ -188,7 +184,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       mediaType: hasMedia ? mediaType : null,
       status: "PENDING",
       createdById: session.id,
-      ...(cautela ? { delayMin: CAUTELA.delayMin, delayMax: CAUTELA.delayMax } : {}),
+      delayMin: L.delayMin,
+      delayMax: L.delayMax,
       logs: {
         createMany: { data: contacts.map((c) => ({ contactId: c.id, status: "PENDING" })) },
       },
