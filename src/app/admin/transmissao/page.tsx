@@ -82,6 +82,14 @@ export default function BroadcastPage() {
   const [okMsg, setOkMsg]     = useState<string | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [actioningId, setActioningId] = useState<string | null>(null)
+  // Modo cautela (pós-bloqueio do WhatsApp): limites menores até uma data.
+  const [cautela, setCautela] = useState<{ ate: string; maxPorTransmissao: number; maxPorDia: number; diasConversa: number; delayMin: number; delayMax: number } | null>(null)
+  useEffect(() => {
+    fetch("/api/broadcast/bloqueio")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setCautela(d?.cautela ? d : null))
+      .catch(() => { /* sem aviso; o servidor aplica os limites mesmo assim */ })
+  }, [])
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const loadAudience = useCallback(async () => {
@@ -320,6 +328,21 @@ export default function BroadcastPage() {
           <h1 className="text-xl font-bold tracking-tight text-zinc-900">Lista de Transmissão</h1>
           <p className="mt-0.5 text-[13px] text-zinc-500">Envie uma mensagem para vários contatos com segurança e limites anti-bloqueio.</p>
         </div>
+
+        {cautela && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+            <p className="font-semibold">Modo cautela até {cautela.ate}</p>
+            <p className="mt-1 text-[12px] leading-relaxed">
+              O WhatsApp bloqueou o número por 24h depois de muitas ofertas num dia só. Até {cautela.ate}, para evitar um bloqueio maior:
+            </p>
+            <ul className="mt-1 list-disc pl-5 text-[12px] leading-relaxed">
+              <li>no máximo <strong>{cautela.maxPorTransmissao} destinatários</strong> por transmissão;</li>
+              <li>no máximo <strong>{cautela.maxPorDia} envios por dia</strong>, somando todas as transmissões;</li>
+              <li>só recebem clientes que <strong>mandaram mensagem nos últimos {cautela.diasConversa} dias</strong> (os outros ficam de fora sozinhos);</li>
+              <li>intervalo de {cautela.delayMin} a {cautela.delayMax} segundos entre um envio e outro.</li>
+            </ul>
+          </div>
+        )}
 
         {/* ── New broadcast ── */}
         <div className="space-y-5 rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">

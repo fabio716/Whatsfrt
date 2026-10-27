@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { verifySessionToken, COOKIE_NAME } from "@/lib/auth"
 import { processCampaign } from "@/lib/campaignQueue"
+import { cautelaAte, dataBr } from "@/lib/bloqueioTransmissao"
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value
@@ -51,6 +52,10 @@ type AudienceFilter =
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const session = await requireAdmin(req)
   if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
+  // Rota antiga (manda pra todos os contatos, sem filtro). No modo cautela
+  // só vale a tela de Transmissão, que aplica os limites.
+  const travaAte = cautelaAte()
+  if (travaAte) return NextResponse.json({ error: `Envio para todos suspenso até ${dataBr(travaAte)}. Use a tela de Transmissão.` }, { status: 423 })
 
   const body = (await req.json()) as {
     name: string
