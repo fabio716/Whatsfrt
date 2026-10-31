@@ -97,8 +97,10 @@ export default async function ChatsPage(
   if (
     requestedContact &&
     !rawContacts.some((c) => c.id === requestedContact.id) &&
-    // Chat privado: AGENT só abre contato da própria carteira.
-    (!isAgent || requestedContact.assignedUserId === session.id)
+    // Chat privado: AGENT só abre contato da própria carteira — ou o que ela
+    // mesma atendeu por último (encerrado), pra poder reassumir pelo link
+    // da busca ou do lembrete de retorno.
+    (!isAgent || requestedContact.assignedUserId === session.id || requestedContact.lastAgentUserId === session.id)
   ) {
     rawContacts.unshift(requestedContact)
   }
@@ -120,6 +122,7 @@ export default async function ChatsPage(
     empresa: c.empresa,
     notes: c.notes,
     temperature: c.temperature,
+    optOutAt: c.optOutAt?.toISOString() ?? null,
     tags: c.tags,
     id: c.id,
     whatsappId: c.whatsappId,

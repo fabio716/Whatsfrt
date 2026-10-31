@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
-import { aiConfigured, suggestReply } from "@/lib/ai"
+import { aiConfigured, suggestReply, suggestNextStep } from "@/lib/ai"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
 // POST /api/ai/suggest { contactId } → { suggestion }
+// POST /api/ai/suggest { contactId, modo: "passo" } → { passo, retornoDias }
+//   (próximo passo da venda, só pra vendedora — vira atalho de lembrete)
 // Copiloto: gera um RASCUNHO de resposta pro atendimento. Nunca envia nada.
 // AGENT só para contato da própria carteira; ADMIN qualquer um.
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -19,7 +21,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }, { status: 503 })
   }
 
-  let body: { contactId?: string }
+  let body: { contactId?: string; modo?: string }
   try {
     body = (await request.json()) as typeof body
   } catch {
@@ -62,17 +64,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return `${who}: ${texto}`
   }).join("\n")
 
+  const entrada = {
+    knowledge: knowledge?.content ?? "",
+    contactName: contact.name,
+    empresa: contact.empresa,
+    temperature: contact.temperature,
+    tags: contact.tags.map((t) => t.name),
+    notes: contact.notes,
+    transcript,
+    agentName: agent?.name ?? "Vendedora",
+  }
+
   try {
-    const suggestion = await suggestReply({
-      knowledge: knowledge?.content ?? "",
-      contactName: contact.name,
-      empresa: contact.empresa,
-      temperature: contact.temperature,
-      tags: contact.tags.map((t) => t.name),
-      notes: contact.notes,
-      transcript,
-      agentName: agent?.name ?? "Vendedora",
-    })
+    if (body.modo === "passo") {
+      return NextResponse.json(await suggestNextStep(entrada))
+    }
+    const suggestion = await suggestReply(entrada)
     return NextResponse.json({ suggestion })
   } catch (err) {
     console.error("[copiloto] falha ao gerar sugestão:", err instanceof Error ? err.message : err)

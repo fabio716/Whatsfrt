@@ -79,3 +79,52 @@ export async function suggestReply(input: SuggestInput): Promise<string> {
   if (!text) throw new Error("A IA devolveu resposta vazia — tente de novo.")
   return text
 }
+
+// ─── Próximo passo da venda ───────────────────────────────────────────────────
+// Recomendação INTERNA pra vendedora (não é mensagem pro cliente): qual o
+// próximo passo comercial e, se fizer sentido, em quantos dias retornar.
+// Vira um atalho pra criar lembrete — nunca dispara nada sozinho.
+export interface ProximoPasso {
+  passo: string
+  retornoDias: number | null
+}
+
+export async function suggestNextStep(input: SuggestInput): Promise<ProximoPasso> {
+  const client = new Anthropic()
+  const fichaParts = [
+    `Nome: ${input.contactName}`,
+    input.empresa ? `Empresa: ${input.empresa}` : null,
+    input.temperature ? `Termômetro: ${input.temperature}` : null,
+    input.tags.length ? `Etiquetas: ${input.tags.join(", ")}` : null,
+    input.notes?.trim() ? `Notas da equipe: ${input.notes.trim()}` : null,
+  ].filter(Boolean).join("\n")
+
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: 200,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    system: `Você orienta vendedoras da FRT Automação Comercial e Bancária. Leia a conversa de WhatsApp e diga, para a VENDEDORA (não para o cliente), qual o próximo passo comercial concreto.
+Responda EXATAMENTE em duas linhas, sem mais nada:
+PASSO: <uma frase curta, até 110 caracteres, verbo no infinitivo — ex: "Enviar orçamento da HT 880 com frete para Londrina">
+RETORNO: <número de dias até retomar o contato (0 = hoje), ou "nenhum" se o cliente está respondendo agora ou a venda foi encerrada>
+Nunca sugira mandar mensagem em massa, insistir com quem pediu para parar, ou contatar quem não respondeu várias vezes seguidas — nesse caso sugira outro canal (ligação) ou aguardar.`,
+    messages: [
+      {
+        role: "user",
+        content: `FICHA DO CLIENTE:\n${fichaParts}\n\nCONVERSA (mais antiga → mais recente):\n${input.transcript}`,
+      },
+    ],
+  })
+  if (response.stop_reason === "refusal") throw new Error("A IA não pôde analisar esta conversa.")
+
+  const text = response.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+  const passo = text.match(/PASSO:\s*(.+)/i)?.[1]?.trim().slice(0, 160) ?? ""
+  if (!passo) throw new Error("A IA devolveu resposta vazia — tente de novo.")
+  const ret = text.match(/RETORNO:\s*(\d+)/i)
+  const retornoDias = ret ? Math.min(60, Math.max(0, Number(ret[1]))) : null
+  return { passo, retornoDias }
+}

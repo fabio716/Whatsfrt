@@ -16,6 +16,7 @@ import { startWatchdog } from "./watchdog"
 import { startReaper } from "./reaper"
 import { startServiceReaper } from "./serviceReaper"
 import { startCampaignResumer } from "./campaignResumer"
+import { startReminderNotifier } from "./reminderNotifier"
 import { handleInboundJob } from "./inboundHandler"
 
 let started = false
@@ -36,6 +37,7 @@ export async function startReliabilityWorkers(): Promise<void> {
   startWatchdog()
   startReaper()
   startCampaignResumer()
+  startReminderNotifier()
 
   // Service reaper (auto-encerrar atendimentos e pedidos de nota) esta
   // DESLIGADO por default. Motivo: em 2026-07-06 varias agentes reportaram

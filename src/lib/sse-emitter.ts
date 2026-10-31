@@ -122,7 +122,14 @@ export interface SSEInternalConversationDeletedPayload {
   data: { conversationId: string; byName: string }
 }
 
+// Lembrete de retorno venceu — vai só pra dona do lembrete.
+export interface SSEReminderDuePayload {
+  type: "reminder_due"
+  data: { id: string; contactId: string; contactName: string; note: string; dueAt: string }
+}
+
 export type SSEPayload =
+  | SSEReminderDuePayload
   | SSENewMessagePayload
   | SSEMessageUpdatePayload
   | SSESystemEventPayload
@@ -217,7 +224,8 @@ export function broadcastToUsers(
     | SSETransferRequestPayload
     | SSETransferDecisionPayload
     | SSEContactTransferPayload
-    | SSEInternalConversationDeletedPayload,
+    | SSEInternalConversationDeletedPayload
+    | SSEReminderDuePayload,
 ): void {
   const targets = new Set(userIds)
   const chunk = `data: ${JSON.stringify(payload)}\n\n`

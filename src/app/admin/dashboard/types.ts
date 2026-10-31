@@ -26,6 +26,8 @@ export interface ContactData {
   notes?: string
   temperature?: string | null
   excludeFromReports?: boolean
+  // Pediu "SAIR" — não recebe transmissões (ISO ou null).
+  optOutAt?: string | null
   tags?: { id: string; name: string; color: string }[]
   id: string
   whatsappId: string

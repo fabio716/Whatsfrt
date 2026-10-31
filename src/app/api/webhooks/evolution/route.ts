@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { timingSafeEqual } from "node:crypto"
+import { registrarOptOutSePedido } from "@/lib/optOut"
 import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
@@ -186,6 +187,9 @@ async function handleMessagesUpsert(messageData: EvolutionMessageData): Promise<
     }
     throw err
   }
+
+  // Cliente pediu "SAIR"/"parar": sai das próximas transmissões.
+  await registrarOptOutSePedido(contact.id, messageText)
 
   broadcast({
     type: "new_message",

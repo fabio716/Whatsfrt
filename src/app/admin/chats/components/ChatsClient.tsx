@@ -8,6 +8,7 @@ import Avatar from "@/app/admin/components/Avatar"
 import { normalizarLetras, normalizarTermo, TextoRealcado } from "@/app/admin/components/buscaTexto"
 import { notifyDesktop } from "@/lib/notify"
 import { handleSessionExpired } from "@/lib/sessionGuard"
+import { LembreteModal, PainelRetornos, venceAteHoje, adiarParaAmanha, type Lembrete } from "./Lembretes"
 
 type Agent = { id: string; name: string }
 
@@ -519,6 +520,39 @@ export default function ChatsClient({
     })
   }, [activeId])
   const [agentFilter, setAgentFilter] = useState<string>("all")
+
+  // ── Produtividade: relógio, lembretes de retorno e filtros rápidos ──────
+  // Relógio da tela (1 min) pra "esperando há X min" andar sozinho.
+  const [agora, setAgora] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setAgora(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const [lembretes, setLembretes] = useState<Lembrete[]>([])
+  const carregarLembretes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/reminders", { cache: "no-store" })
+      if (res.ok) setLembretes(await res.json() as Lembrete[])
+    } catch { /* sem rede: tenta de novo na próxima ação */ }
+  }, [])
+  useEffect(() => {
+    let vivo = true
+    fetch("/api/reminders", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: Lembrete[] | null) => { if (vivo && d) setLembretes(d) })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [])
+  // Lembrete que acabou de vencer — aviso no topo da tela.
+  const [avisoLembrete, setAvisoLembrete] = useState<{ contactId: string; contactName: string; note: string } | null>(null)
+  // Filtro rápido da lista ("Meu dia").
+  type FiltroRapido = "todos" | "esperando" | "retornos" | "quentes"
+  const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>("todos")
+  // Modal "Lembrar de retornar".
+  const [lembreteModal, setLembreteModal] = useState<{ nota?: string; dias?: number | null } | null>(null)
+  const [salvandoLembrete, setSalvandoLembrete] = useState(false)
+  const [erroLembrete, setErroLembrete] = useState<string | null>(null)
+  const [okLembrete, setOkLembrete] = useState<string | null>(null)
   const [taking, setTaking] = useState(false)
   const [ending, setEnding] = useState(false)
   const [inputValue, setInputValue] = useState("")
@@ -541,6 +575,16 @@ export default function ChatsClient({
       .then((data: QuickReplyTemplateData[]) => setTemplates(data))
       .catch(() => {})
   }, [])
+  // Atalho "/" no campo: "/preço" mostra as respostas rápidas que batem.
+  const [slashIndice, setSlashIndice] = useState(0)
+  const slashTermo = inputValue.startsWith("/") && !inputValue.includes("\n") ? normalizarTermo(inputValue.slice(1)) : null
+  const slashAtivo = slashTermo !== null && inputValue.length <= 40
+  const slashResultados = useMemo(() => {
+    if (slashTermo === null) return []
+    return templates
+      .filter((t) => !slashTermo || normalizarLetras(`${t.name} ${t.category} ${t.text}`).norm.includes(slashTermo))
+      .slice(0, 8)
+  }, [templates, slashTermo])
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferring, setTransferring] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -605,7 +649,9 @@ export default function ChatsClient({
   const [aiLoading, setAiLoading] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState("")
   const [aiError, setAiError] = useState<string | null>(null)
-  useEffect(() => { setAiOpen(false); setAiSuggestion(""); setAiError(null) }, [activeId])
+  // Próximo passo da venda (só pra vendedora) — vira atalho de lembrete.
+  const [aiPasso, setAiPasso] = useState<{ passo: string; retornoDias: number | null } | null>(null)
+  useEffect(() => { setAiOpen(false); setAiSuggestion(""); setAiError(null); setAiPasso(null) }, [activeId])
 
   const askCopilot = async () => {
     if (!activeId || aiLoading) return
@@ -613,6 +659,19 @@ export default function ChatsClient({
     setAiOpen(true)
     setAiLoading(true)
     setAiError(null)
+    setAiPasso(null)
+    // Em paralelo, sem travar a sugestão: se falhar, só não mostra o passo.
+    const contatoDoPasso = activeId
+    void fetch("/api/ai/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId: contatoDoPasso, modo: "passo" }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { passo?: string; retornoDias?: number | null } | null) => {
+        if (d?.passo && activeIdRef.current === contatoDoPasso) setAiPasso({ passo: d.passo, retornoDias: d.retornoDias ?? null })
+      })
+      .catch(() => {})
     try {
       const res = await fetch("/api/ai/suggest", {
         method: "POST",
@@ -645,6 +704,8 @@ export default function ChatsClient({
   // verdade" (ex: robô de assistência virtual de um banco), não rotina de
   // atendimento do dia a dia.
   const [crmExcluir, setCrmExcluir] = useState(false)
+  // Cliente pediu pra não receber ofertas (transmissões).
+  const [crmSemOfertas, setCrmSemOfertas] = useState(false)
 
   const openCrm = async () => {
     if (!activeContact) return
@@ -652,6 +713,7 @@ export default function ChatsClient({
     setCrmNotes(activeContact.notes ?? "")
     setCrmTemp(activeContact.temperature ?? null)
     setCrmExcluir(activeContact.excludeFromReports ?? false)
+    setCrmSemOfertas(Boolean(activeContact.optOutAt))
     setNewTagName("")
     setShowCrm(true)
     const res = await fetch("/api/tags")
@@ -685,6 +747,7 @@ export default function ChatsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tagIds: [...crmTagIds], notes: crmNotes, temperature: crmTemp,
+          naoRecebeOfertas: crmSemOfertas,
           ...(isAgent ? {} : { excludeFromReports: crmExcluir }),
         }),
       })
@@ -695,9 +758,9 @@ export default function ChatsClient({
         }
         return
       }
-      const data = await res.json() as { notes: string; temperature: string | null; excludeFromReports?: boolean; tags: { id: string; name: string; color: string }[] }
+      const data = await res.json() as { notes: string; temperature: string | null; excludeFromReports?: boolean; optOutAt?: string | null; tags: { id: string; name: string; color: string }[] }
       setContacts((prev) => prev.map((c) => (c.id === activeContact.id
-        ? { ...c, notes: data.notes, temperature: data.temperature, excludeFromReports: data.excludeFromReports ?? c.excludeFromReports, tags: data.tags }
+        ? { ...c, notes: data.notes, temperature: data.temperature, excludeFromReports: data.excludeFromReports ?? c.excludeFromReports, optOutAt: data.optOutAt ?? null, tags: data.tags }
         : c)))
       setShowCrm(false)
     } finally {
@@ -787,6 +850,94 @@ export default function ChatsClient({
 
   const archivedCount = contacts.filter((c) => c.archived).length
 
+  // ── "Meu dia": quem está esperando, retornos de hoje, quentes ──────────
+  // Esperando = a última mensagem é do cliente (vem do banco, então não se
+  // perde com F5 nem trocando de computador). Só conta conversa que é da
+  // pessoa logada (admin: as que ele vê no filtro atual).
+  const esperandoDesde = (c: ContactData): number | null => {
+    const last = c.messages.at(-1)
+    if (!last || last.direction !== "INBOUND") return null
+    if (c.chatStatus === "IDLE" && !c.assignedUserId) return null
+    return new Date(last.createdAt).getTime()
+  }
+  const retornoPorContato = useMemo(() => {
+    const m = new Map<string, Lembrete>()
+    for (const l of lembretes) if (!m.has(l.contact.id)) m.set(l.contact.id, l) // já vem em ordem de vencimento
+    return m
+  }, [lembretes])
+  const visiveis = filteredContacts
+  const contagem = {
+    esperando: visiveis.filter((c) => esperandoDesde(c) !== null && (!isAgent || c.assignedUserId === currentUserId)).length,
+    retornos: lembretes.filter((l) => venceAteHoje(l.dueAt, agora)).length,
+    quentes: visiveis.filter((c) => c.temperature === "HOT").length,
+  }
+  const listaFinal = (() => {
+    if (filtroRapido === "esperando") {
+      return filteredContacts
+        .filter((c) => esperandoDesde(c) !== null && (!isAgent || c.assignedUserId === currentUserId))
+        .sort((a, b) => (esperandoDesde(a) ?? 0) - (esperandoDesde(b) ?? 0)) // quem espera há mais tempo primeiro
+    }
+    if (filtroRapido === "quentes") return filteredContacts.filter((c) => c.temperature === "HOT")
+    return filteredContacts
+  })()
+
+  const abrirContato = (contactId: string) => {
+    if (contacts.some((c) => c.id === contactId)) {
+      setActiveId(contactId)
+      return
+    }
+    // Conversa encerrada (fora da lista): o servidor monta com o histórico.
+    window.location.href = `/admin/chats?contact=${contactId}`
+  }
+  // O SSE é montado uma vez só; pela ref ele usa sempre a versão atual.
+  const abrirContatoRef = useRef(abrirContato)
+  useEffect(() => { abrirContatoRef.current = abrirContato })
+
+  const salvarLembrete = async (quando: Date, nota: string) => {
+    if (!activeContact) return
+    setSalvandoLembrete(true)
+    setErroLembrete(null)
+    try {
+      const res = await fetch("/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: activeContact.id, dueAt: quando.toISOString(), note: nota }),
+      })
+      if (!res.ok) {
+        if (handleSessionExpired(res.status)) return
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setErroLembrete(data.error ?? "Não foi possível salvar o lembrete. Tente de novo.")
+        return
+      }
+      setLembreteModal(null)
+      const quandoTxt = quando.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      setOkLembrete(`Lembrete salvo: ${quandoTxt}`)
+      setTimeout(() => setOkLembrete(null), 3500)
+      await carregarLembretes()
+    } catch {
+      setErroLembrete("Sem conexão. Confira a internet e tente de novo.")
+    } finally {
+      setSalvandoLembrete(false)
+    }
+  }
+
+  const mexerLembrete = async (id: string, acao: "concluir" | "adiar" | "apagar") => {
+    // Otimista: some da lista na hora; se falhar, recarrega do servidor.
+    if (acao !== "adiar") setLembretes((prev) => prev.filter((l) => l.id !== id))
+    try {
+      const res = acao === "apagar"
+        ? await fetch(`/api/reminders/${id}`, { method: "DELETE" })
+        : await fetch(`/api/reminders/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(acao === "concluir" ? { done: true } : { dueAt: adiarParaAmanha().toISOString() }),
+          })
+      if (!res.ok && !handleSessionExpired(res.status)) alert("Não foi possível atualizar o lembrete. Tente de novo.")
+    } finally {
+      await carregarLembretes()
+    }
+  }
+
   // Trocar de conversa fecha a busca — o termo era da conversa anterior.
   const [buscaDoContato, setBuscaDoContato] = useState(activeId)
   if (buscaDoContato !== activeId) {
@@ -839,6 +990,18 @@ export default function ChatsClient({
       source.onmessage = (e) => {
         let p: SSEPayload
         try { p = JSON.parse(e.data as string) as SSEPayload } catch { return }
+
+        if (p.type === "reminder_due") {
+          const d = p.data
+          setAvisoLembrete({ contactId: d.contactId, contactName: d.contactName, note: d.note })
+          notifyDesktop(`⏰ Retornar: ${d.contactName}`, d.note || "Hora de falar com este cliente.", {
+            tag: `lembrete-${d.id}`,
+            force: true,
+            onClick: () => abrirContatoRef.current(d.contactId),
+          })
+          void carregarLembretes()
+          return
+        }
 
         if (p.type === "new_message") {
           const { contact, ...msg } = p.data
@@ -1372,6 +1535,19 @@ export default function ChatsClient({
     }
   }
 
+  // Escolheu uma resposta pelo atalho "/": só texto → vai pro campo (com o
+  // nome do cliente no lugar de {nome}) pra revisar antes de enviar; com
+  // arquivo ou áudio → envia direto, igual ao painel de respostas rápidas.
+  const usarResposta = (t: QuickReplyTemplateData) => {
+    setSlashIndice(0)
+    if (t.mediaUrl || t.audioUrl) {
+      setInputValue("")
+      void sendTemplate(t.id)
+      return
+    }
+    setInputValue(t.text.replace(/\{nome\}/gi, activeContact?.name ?? ""))
+  }
+
   const startEdit = (msg: MessageData) => {
     setEditingMsgId(msg.id)
     setEditingText(msg.body)
@@ -1538,6 +1714,39 @@ export default function ChatsClient({
           </div>
         </div>
 
+        {/* "Meu dia" — filtros rápidos com contagem */}
+        <div className="flex flex-wrap gap-1.5 border-b border-zinc-100 px-4 py-2" role="tablist" aria-label="Filtro rápido">
+          {([
+            ["todos", "Todos", null, ""],
+            ["esperando", "⏳ Esperando", contagem.esperando, "Clientes que mandaram a última mensagem — quem espera há mais tempo aparece primeiro"],
+            ["retornos", "⏰ Retornos", contagem.retornos, "Lembretes de retorno de hoje e atrasados"],
+            ["quentes", "🔥 Quentes", contagem.quentes, "Clientes marcados como quentes na ficha"],
+          ] as const).map(([valor, rotulo, n, dica]) => {
+            const ativo = filtroRapido === valor
+            const alerta = valor !== "todos" && valor !== "quentes" && (n ?? 0) > 0
+            return (
+              <button
+                key={valor}
+                type="button"
+                role="tab"
+                aria-selected={ativo}
+                title={dica || undefined}
+                onClick={() => setFiltroRapido(valor)}
+                className={`flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors ${
+                  ativo ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                {rotulo}
+                {n !== null && (
+                  <span className={`rounded-full px-1.5 text-[10px] font-bold ${
+                    ativo ? "bg-white/20 text-white" : alerta ? "bg-red-500 text-white" : "bg-zinc-100 text-zinc-500"
+                  }`}>{n}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
         {/* Agent filter (admins only) */}
         {!isAgent && (
           <div className="border-b border-zinc-100 px-4 py-2.5">
@@ -1569,12 +1778,29 @@ export default function ChatsClient({
               <span>📁</span> {showArchivedChats ? "Voltar às conversas" : `Arquivadas (${archivedCount})`}
             </button>
           )}
-          {filteredContacts.length === 0 && (
-            <p className="px-4 py-6 text-center text-[12px] text-zinc-400">Nenhum contato</p>
+          {filtroRapido === "retornos" && (
+            <PainelRetornos
+              lembretes={lembretes}
+              agora={agora}
+              onAbrir={abrirContato}
+              onConcluir={(id) => void mexerLembrete(id, "concluir")}
+              onAdiar={(id) => void mexerLembrete(id, "adiar")}
+            />
           )}
-          {filteredContacts.map((c) => {
+          {filtroRapido !== "retornos" && listaFinal.length === 0 && (
+            <p className="px-4 py-6 text-center text-[12px] text-zinc-400">
+              {filtroRapido === "esperando" ? "Ninguém esperando resposta. 🎉"
+                : filtroRapido === "quentes" ? "Nenhum cliente marcado como quente. Marque na Ficha (🏷️)."
+                : "Nenhum contato"}
+            </p>
+          )}
+          {filtroRapido !== "retornos" && listaFinal.map((c) => {
             const last = c.messages.at(-1)
             const isUnread = unreadIds.has(c.id)
+            const desde = esperandoDesde(c)
+            const minEsperando = desde !== null ? Math.max(0, Math.floor((agora - desde) / 60_000)) : null
+            const retorno = retornoPorContato.get(c.id)
+            const retornoHoje = retorno ? venceAteHoje(retorno.dueAt, agora) : false
             return (
               <button
                 key={c.id}
@@ -1593,9 +1819,28 @@ export default function ChatsClient({
                     ))}
                     <StatusBadge status={c.chatStatus} />
                   </div>
-                  <p className={`mt-0.5 truncate text-[11px] ${isUnread ? "font-semibold text-zinc-700" : "text-zinc-400"}`}>
-                    {last ? (last.mediaType && !last.body ? "📎 Mídia" : last.body.slice(0, 40)) : "Sem mensagens"}
-                  </p>
+                  {/* Última mensagem + tempo esperando + ⏰ na MESMA linha — o nome
+                      do cliente fica inteiro na linha de cima. */}
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <p className={`min-w-0 flex-1 truncate text-[11px] ${isUnread ? "font-semibold text-zinc-700" : "text-zinc-400"}`}>
+                      {last ? (last.mediaType && !last.body ? "📎 Mídia" : last.body.slice(0, 40)) : "Sem mensagens"}
+                    </p>
+                    {retornoHoje && (
+                      <span className="flex-shrink-0 text-[11px]" title={`Retorno marcado${retorno?.note ? `: ${retorno.note}` : ""}`}>⏰</span>
+                    )}
+                    {minEsperando !== null && (!isAgent || c.assignedUserId === currentUserId) && (
+                      <span
+                        className={`flex-shrink-0 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                          minEsperando >= 60 ? "bg-red-50 text-red-600"
+                          : minEsperando >= 15 ? "bg-amber-50 text-amber-700"
+                          : "bg-zinc-100 text-zinc-500"
+                        }`}
+                        title="Tempo desde a última mensagem do cliente sem resposta"
+                      >
+                        ⏳ {minEsperando < 60 ? `${minEsperando} min` : minEsperando < 1440 ? `${Math.floor(minEsperando / 60)} h` : `${Math.floor(minEsperando / 1440)} d`}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {isUnread && (
                   <span className="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-emerald-500" title="Mensagem não lida" />
@@ -1675,6 +1920,11 @@ export default function ChatsClient({
                       <span title={`Cliente ${TEMP_META[activeContact.temperature].label.toLowerCase()}`}>{TEMP_META[activeContact.temperature].icon}</span>
                     )}
                     <span className="truncate">{activeContact.name}</span>
+                    {activeContact.optOutAt && (
+                      <span className="flex-shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[9.5px] font-bold text-zinc-500" title="O cliente pediu para não receber ofertas — fica fora das transmissões. A conversa normal continua.">
+                        🚫 Sem ofertas
+                      </span>
+                    )}
                     {(activeContact.tags ?? []).map((t) => (
                       <span
                         key={t.id}
@@ -1707,6 +1957,20 @@ export default function ChatsClient({
                 >
                   🏷️ <span className="hidden sm:inline">Ficha</span>
                 </button>
+                {(isOwner || !isAgent) && (
+                  <button
+                    type="button"
+                    onClick={() => { setErroLembrete(null); setLembreteModal({}) }}
+                    title="Lembrar de retornar para este cliente"
+                    aria-label="Lembrar de retornar"
+                    className="relative flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 text-[12px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50"
+                  >
+                    ⏰ <span className="hidden lg:inline">Retorno</span>
+                    {lembretes.some((l) => l.contact.id === activeContact.id) && (
+                      <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
+                    )}
+                  </button>
+                )}
                 {/* A etiqueta de status some no celular: ela é informativa e
                     estava roubando o espaço de botão que a pessoa precisa
                     tocar. O status já aparece na lista de conversas. */}
@@ -2111,6 +2375,21 @@ export default function ChatsClient({
                       </svg>
                     </button>
                   </div>
+                  {aiPasso && (
+                    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[12px] text-zinc-700">
+                      <span className="font-bold text-violet-800">🧭 Próximo passo:</span>
+                      <span className="min-w-0 flex-1">{aiPasso.passo}</span>
+                      {(isOwner || !isAgent) && (
+                        <button
+                          type="button"
+                          onClick={() => { setErroLembrete(null); setLembreteModal({ nota: aiPasso.passo, dias: aiPasso.retornoDias }) }}
+                          className="shrink-0 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11.5px] font-semibold text-violet-700 hover:bg-violet-100"
+                        >
+                          ⏰ {aiPasso.retornoDias === null ? "Criar lembrete" : aiPasso.retornoDias === 0 ? "Lembrar hoje" : `Lembrar em ${aiPasso.retornoDias} dia${aiPasso.retornoDias === 1 ? "" : "s"}`}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {aiLoading ? (
                     <p className="rounded-xl border border-violet-200 bg-white px-3 py-3 text-[12.5px] text-violet-600">
                       ✨ Analisando a conversa e escrevendo uma sugestão…
@@ -2327,6 +2606,35 @@ export default function ChatsClient({
                       "✨"
                     )}
                   </button>
+                  {slashAtivo && (
+                    <div className="absolute bottom-14 left-2 right-2 z-50 max-h-72 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-2xl sm:right-auto sm:w-96" role="listbox" aria-label="Respostas rápidas">
+                      <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                        Respostas rápidas · ↑↓ escolher · Enter usar · Esc fechar
+                      </p>
+                      {slashResultados.length === 0 ? (
+                        <p className="px-2 py-3 text-center text-[12px] text-zinc-400">
+                          {templates.length === 0 ? "Nenhuma resposta rápida cadastrada ainda." : "Nenhuma resposta com esse nome."}
+                        </p>
+                      ) : slashResultados.map((t, i) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          role="option"
+                          aria-selected={i === slashIndice}
+                          onMouseDown={(e) => { e.preventDefault(); usarResposta(t) }}
+                          onMouseEnter={() => setSlashIndice(i)}
+                          className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left ${i === slashIndice ? "bg-zinc-100" : "hover:bg-zinc-50"}`}
+                        >
+                          <span className="flex-shrink-0 text-[12px]">{t.mediaUrl ? "📎" : t.audioUrl ? "🎤" : "💬"}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[12.5px] font-medium text-zinc-800">{t.name}</span>
+                            {t.text && <span className="block truncate text-[11px] text-zinc-400">{t.text}</span>}
+                          </span>
+                          {(t.mediaUrl || t.audioUrl) && <span className="flex-shrink-0 text-[10px] font-semibold text-emerald-600">envia direto</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {showTemplates && (
                     <QuickReplyPanel
                       templates={templates}
@@ -2338,8 +2646,22 @@ export default function ChatsClient({
                   <input
                     type="text"
                     value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) void handleSend() }}
+                    onChange={(e) => { setInputValue(e.target.value); setSlashIndice(0) }}
+                    onKeyDown={(e) => {
+                      // Atalho "/" das respostas rápidas: setas escolhem, Enter usa.
+                      if (slashAtivo) {
+                        if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndice((i) => Math.min(i + 1, Math.max(0, slashResultados.length - 1))); return }
+                        if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndice((i) => Math.max(0, i - 1)); return }
+                        if (e.key === "Escape") { e.preventDefault(); setInputValue(""); return }
+                        if (e.key === "Enter" || e.key === "Tab") {
+                          e.preventDefault()
+                          const t = slashResultados[slashIndice]
+                          if (t) usarResposta(t)
+                          return
+                        }
+                      }
+                      if (e.key === "Enter" && !e.shiftKey) void handleSend()
+                    }}
                     onPaste={(e) => {
                       const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"))
                       const file = item?.getAsFile()
@@ -2348,7 +2670,7 @@ export default function ChatsClient({
                         void sendFile(file)
                       }
                     }}
-                    placeholder={isUploading ? "Enviando arquivo..." : "Digite uma mensagem..."}
+                    placeholder={isUploading ? "Enviando arquivo..." : "Mensagem… (digite / para respostas rápidas)"}
                     disabled={isUploading}
                     className="flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 outline-none focus:border-zinc-300 focus:bg-white disabled:opacity-60"
                   />
@@ -2506,8 +2828,27 @@ export default function ChatsClient({
               </button>
             </div>
 
+            <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={crmSemOfertas}
+                onChange={(e) => setCrmSemOfertas(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-zinc-900"
+              />
+              <span>
+                <span className="block text-[12.5px] font-medium text-zinc-900">🚫 Não recebe ofertas (fora das transmissões)</span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed text-zinc-500">
+                  {activeContact.optOutAt
+                    ? `Marcado em ${new Date(activeContact.optOutAt).toLocaleDateString("pt-BR")}. `
+                    : ""}
+                  Marca sozinho quando o cliente responde &quot;SAIR&quot; ou &quot;parar&quot;. A conversa normal continua.
+                  Só desmarque se o próprio cliente pedir para voltar a receber.
+                </span>
+              </span>
+            </label>
+
             {!isAgent && (
-              <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
                 <input
                   type="checkbox"
                   checked={crmExcluir}
@@ -2546,6 +2887,51 @@ export default function ChatsClient({
                 {savingCrm ? "Salvando…" : "Salvar ficha"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Lembrar de retornar ─────────────────────────────────────────── */}
+      {lembreteModal && activeContact && (
+        <LembreteModal
+          key={activeContact.id}
+          contactName={activeContact.name}
+          notaInicial={lembreteModal.nota}
+          diasInicial={lembreteModal.dias}
+          doContato={lembretes.filter((l) => l.contact.id === activeContact.id)}
+          agora={agora}
+          salvando={salvandoLembrete}
+          erro={erroLembrete}
+          onSalvar={(quando, nota) => void salvarLembrete(quando, nota)}
+          onConcluir={(id) => void mexerLembrete(id, "concluir")}
+          onApagar={(id) => void mexerLembrete(id, "apagar")}
+          onClose={() => setLembreteModal(null)}
+        />
+      )}
+
+      {/* Confirmação de lembrete salvo */}
+      {okLembrete && (
+        <div role="status" className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-zinc-900 px-4 py-2 text-[12.5px] font-medium text-white shadow-lg">
+          ✓ {okLembrete}
+        </div>
+      )}
+
+      {/* Lembrete venceu agora */}
+      {avisoLembrete && (
+        <div role="alert" className="fixed right-4 top-4 z-50 w-80 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-xl">
+          <p className="text-[13px] font-semibold text-amber-900">⏰ Hora de retornar: {avisoLembrete.contactName}</p>
+          {avisoLembrete.note && <p className="mt-1 text-[12px] text-amber-800">{avisoLembrete.note}</p>}
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => { const id = avisoLembrete.contactId; setAvisoLembrete(null); abrirContato(id) }}
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-amber-700"
+            >
+              Abrir conversa
+            </button>
+            <button type="button" onClick={() => setAvisoLembrete(null)} className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-amber-800 hover:bg-amber-100">
+              Depois
+            </button>
           </div>
         </div>
       )}

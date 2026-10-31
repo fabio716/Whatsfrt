@@ -12,7 +12,7 @@ import { useEffect, useState } from "react"
 // de exemplo — nunca use print com cliente de verdade).
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const VERSAO_NOVIDADES = "2026-10-14"
+export const VERSAO_NOVIDADES = "2026-10-31"
 const CHAVE = "whatsfrt.novidades.visto"
 export const EVENTO_ABRIR_NOVIDADES = "whatsfrt:abrir-novidades"
 
@@ -25,33 +25,41 @@ interface Passo {
 
 const PASSOS: Passo[] = [
   {
-    titulo: "🔍 Busque dentro da conversa",
+    titulo: "⏳ Veja quem está esperando resposta",
     texto:
-      "Na conversa com o cliente, clique na lupa ao lado de \"Encerrar\" e digite uma palavra — orçamento, boleto, o código de um produto. " +
-      "O sistema marca em amarelo e leva até a mensagem. Enter vai para a próxima; Esc fecha. Não precisa digitar acento.",
-    imagem: { src: "/novidades/busca-chat.webp", alt: "Conversa com a busca aberta e a palavra orçamento marcada em amarelo" },
+      "Na lista de Chats, cada cliente que mandou a última mensagem mostra há quanto tempo está esperando: cinza, amarelo depois de 15 min, vermelho depois de 1 hora. " +
+      "Os botões no topo filtram: ⏳ Esperando (quem espera há mais tempo aparece primeiro), ⏰ Retornos e 🔥 Quentes. Não some mais com F5.",
+    imagem: { src: "/novidades/meu-dia.webp", alt: "Lista de Chats com os filtros Esperando, Retornos e Quentes e o tempo de espera de cada cliente" },
   },
   {
-    titulo: "🔍 A busca também está no chat da equipe",
+    titulo: "⏰ Lembrete de retorno",
     texto:
-      "Em Mensagens, a mesma lupa fica no topo da conversa. Ela procura na conversa inteira, até nas mensagens antigas que ainda não estavam na tela.",
-    imagem: { src: "/novidades/busca-interno.webp", alt: "Chat da equipe com a busca aberta" },
+      "Prometeu retornar amanhã? Na conversa, toque em ⏰ Retorno, escolha quando (amanhã 9h, em 3 dias, segunda…) e escreva o que fazer. " +
+      "No horário, o sistema avisa só você, na tela e no celular. Nada é enviado ao cliente: quem escreve é sempre você.",
+    imagem: { src: "/novidades/lembrete.webp", alt: "Janela Lembrar de retornar com atalhos de data e a nota Mandar orçamento" },
   },
   {
-    titulo: "📣 Transmissão para várias empresas de uma vez",
+    titulo: "⏰ Seus retornos do dia",
     texto:
-      "Em Transmissão → Por empresa, marque quantas empresas e cooperativas quiser. Digite \"sicoob\", clique em \"Marcar as encontradas\" e pronto. " +
-      "A lista agora mostra toda a sua carteira, não só quem está em atendimento agora.",
-    imagem: { src: "/novidades/transmissao.webp", alt: "Lista de empresas e cooperativas com duas Sicoob marcadas" },
+      "O botão ⏰ Retornos mostra o que vence hoje e o que está atrasado. Toque no nome para abrir a conversa, em ✓ Feito quando resolver, ou adie para amanhã. " +
+      "Funciona até para cliente com atendimento já encerrado.",
+    imagem: { src: "/novidades/retornos.webp", alt: "Lista de retornos de hoje com botões Feito e Adiar" },
   },
   {
-    titulo: "✅ Mais algumas melhorias",
-    texto: "Pequenas mudanças que você vai notar no dia a dia:",
+    titulo: "⚡ Respostas rápidas com a barra /",
+    texto:
+      "No campo de mensagem, digite / e o começo do nome da resposta (ex.: /preço). Use as setas e Enter. " +
+      "O texto entra no campo já com o nome do cliente no lugar de {nome}, para você revisar antes de enviar. Mensagem personalizada também ajuda a não cair como spam.",
+    imagem: { src: "/novidades/respostas-barra.webp", alt: "Lista de respostas rápidas aberta ao digitar a barra no campo de mensagem" },
+  },
+  {
+    titulo: "🛡️ Proteção do número",
+    texto: "Para o WhatsApp não bloquear o nosso número de novo:",
     itens: [
-      { icone: "🤝", texto: "Despedida do cliente (\"obrigado\", \"tá bom\", \"boa tarde, obrigada\") não conta mais como atendimento atrasado. Pergunta de verdade continua contando — inclusive um \"sim\" sozinho." },
-      { icone: "📍", texto: "Localização, enquete, resposta de botão e ligação perdida do cliente agora aparecem no chat, em vez do aviso \"tipo de mensagem que o sistema não mostra\"." },
-      { icone: "📞", texto: "Ligação perdida aparece como \"O cliente tentou ligar — retorne o contato\"." },
-      { icone: "🗑️", texto: "No chat da equipe, o ícone vermelho de lixeira exclui a conversa para sempre, para todos. Pede para digitar EXCLUIR e não tem volta." },
+      { icone: "🚫", texto: "Cliente que responder \"SAIR\", \"parar\" ou \"não quero receber\" sai sozinho das transmissões. A conversa normal continua. Aparece \"Sem ofertas\" ao lado do nome." },
+      { icone: "🏷️", texto: "Na Ficha do cliente dá para marcar ou desmarcar \"Não recebe ofertas\" à mão (por exemplo, se ele pediu por telefone)." },
+      { icone: "📣", texto: "Transmissões: até 50 pessoas por vez e 100 por dia, só para quem conversou nos últimos 30 dias, com intervalo entre os envios." },
+      { icone: "✨", texto: "O Copiloto agora também sugere o 🧭 próximo passo da venda, com um botão para criar o lembrete de retorno." },
     ],
   },
 ]

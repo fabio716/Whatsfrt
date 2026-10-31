@@ -100,6 +100,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── Build contact query (agents are always scoped to their own contacts) ────
   const baseWhere: Prisma.ContactWhereInput = {
     deletedAt: null,
+    // Pediu "SAIR"/"parar" — nunca recebe transmissão.
+    optOutAt: null,
     whatsappId: { not: { contains: "@lid" } },
     ...(isAgent ? carteiraDoAgente(session.id) : {}),
   }

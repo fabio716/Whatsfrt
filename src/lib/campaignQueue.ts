@@ -127,6 +127,13 @@ export async function processCampaign(campaignId: string): Promise<void> {
 
     if (!campaign) return
 
+    // Quem pediu "SAIR"/"parar" depois que a transmissão foi criada sai da
+    // fila antes de começar (apagar não conta como falha nas estatísticas).
+    const tirados = await prisma.campaignLog.deleteMany({
+      where: { campaignId, status: "PENDING", contact: { optOutAt: { not: null } } },
+    })
+    if (tirados.count > 0) console.log(`[Campaign ${campaignId}] ${tirados.count} contato(s) pediram pra não receber — retirados`)
+
     const logs = await prisma.campaignLog.findMany({
       where: { campaignId, status: "PENDING" },
       include: { contact: { select: { id: true, whatsappId: true, name: true } } },

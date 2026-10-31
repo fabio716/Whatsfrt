@@ -17,13 +17,13 @@ export async function PATCH(
   if (isErrorResponse(auth)) return auth
   const { id } = await params
 
-  const contact = await prisma.contact.findUnique({ where: { id }, select: { id: true, assignedUserId: true } })
+  const contact = await prisma.contact.findUnique({ where: { id }, select: { id: true, assignedUserId: true, optOutAt: true } })
   if (!contact) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
   if (auth.role === "AGENT" && contact.assignedUserId !== auth.id) {
     return NextResponse.json({ error: "Sem permissão para este contato" }, { status: 403 })
   }
 
-  let body: { tagIds?: string[]; notes?: string; temperature?: string | null; excludeFromReports?: boolean }
+  let body: { tagIds?: string[]; notes?: string; temperature?: string | null; excludeFromReports?: boolean; naoRecebeOfertas?: boolean }
   try {
     body = (await request.json()) as typeof body
   } catch {
@@ -47,11 +47,18 @@ export async function PATCH(
     data.excludeFromReports = body.excludeFromReports
   }
 
+  // "Não recebe ofertas": o cliente pediu pra sair das transmissões. Marca
+  // automático quando ele responde "SAIR"; a vendedora também pode marcar à
+  // mão (pediu por telefone) ou desfazer (cliente pediu pra voltar).
+  if (typeof body.naoRecebeOfertas === "boolean") {
+    data.optOutAt = body.naoRecebeOfertas ? (contact.optOutAt ?? new Date()) : null
+  }
+
   const updated = await prisma.contact.update({
     where: { id },
     data,
     select: {
-      id: true, notes: true, temperature: true, excludeFromReports: true,
+      id: true, notes: true, temperature: true, excludeFromReports: true, optOutAt: true,
       tags: { select: { id: true, name: true, color: true }, orderBy: { name: "asc" } },
     },
   })

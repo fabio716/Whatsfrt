@@ -81,20 +81,20 @@ enum CampaignLogStatus {
 
 // Usuários do sistema. Acesso revogado via isActive=false (nunca hard-delete).
 model User {
-  id           String      @id @default(cuid())
-  name         String
-  email        String      @unique
-  passwordHash String      @map("password")
-  role         Role        @default(AGENT)
-  department   Department?
-  isActive     Boolean     @default(true)
+  id                String      @id @default(cuid())
+  name              String
+  email             String      @unique
+  passwordHash      String      @map("password")
+  role              Role        @default(AGENT)
+  department        Department?
+  isActive          Boolean     @default(true)
   // Foto de perfil do próprio usuário (interna) — mostrada no chat da equipe.
-  photoUrl     String?
+  photoUrl          String?
   // Limite diário de mensagens OUTBOUND iniciadas por este usuário.
   // 0 = ILIMITADO, que é o padrão desde 16/09/2026: o teto de 150 travava
   // vendedora em dia de movimento (a Maria Isabel bateu 169). O admin pode
   // definir um teto por pessoa em /admin/users quando precisar.
-  dailyMessageLimit Int    @default(0)
+  dailyMessageLimit Int         @default(0)
 
   // Ordem dos cartões do painel, escolhida arrastando. JSON com a lista de
   // ids ("" = ainda não mexeu, usa a ordem padrão do papel dela). Fica no
@@ -106,15 +106,16 @@ model User {
   // continua ativa, no mesmo setor, recebendo transferência e atendendo a
   // carteira. Tirar o setor também sumiria do menu, mas de quebra a removeria
   // da distribuição por setor — que raramente é o que se quer.
-  uraMenuVisible Boolean @default(true)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  uraMenuVisible Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  messages         Message[]
-  assignedContacts Contact[] @relation("AssignedContacts")
-  cooperatives     Cooperative[] @relation("CooperativeAssignments")
-  serviceSessions  ServiceSession[] @relation("AgentSessions")
+  messages          Message[]
+  assignedContacts  Contact[]          @relation("AssignedContacts")
+  cooperatives      Cooperative[]      @relation("CooperativeAssignments")
+  serviceSessions   ServiceSession[]   @relation("AgentSessions")
   pushSubscriptions PushSubscription[]
+  reminders         ContactReminder[]
 
   @@map("users")
 }
@@ -137,8 +138,8 @@ model PushSubscription {
 
 // Contato externo identificado pelo número WhatsApp.
 model Contact {
-  id              String    @id @default(cuid())
-  whatsappId      String    @unique
+  id              String     @id @default(cuid())
+  whatsappId      String     @unique
   name            String
   profilePhotoUrl String?
   chatStatus      ChatStatus @default(IDLE)
@@ -162,9 +163,9 @@ model Contact {
   // banco), não um cliente de verdade — essas mensagens automáticas não
   // precisam de resposta humana e estavam sendo cobradas da vendedora como se
   // fossem cliente ignorado.
-  excludeFromReports Boolean @default(false)
-  cooperativeId   String?
-  cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id])
+  excludeFromReports Boolean      @default(false)
+  cooperativeId      String?
+  cooperative        Cooperative? @relation(fields: [cooperativeId], references: [id])
 
   // Timestamps do ciclo de atendimento. Setadas quando o chatStatus muda:
   //   waitingAgentSince → ao entrar em WAITING_AGENT
@@ -174,18 +175,18 @@ model Contact {
   inServiceSince    DateTime?
 
   // Dados comerciais — busca/filtro na tela "Clientes Cadastrados".
-  empresa  String?
-  cidade   String?
+  empresa String?
+  cidade  String?
 
   // Notas internas sobre o cliente (visíveis pra equipe, nunca pro cliente).
-  notes    String @default("")
+  notes String @default("")
 
   // Termômetro comercial: HOT (🔥 quente) | WARM (🌤️ morno) | COLD (❄️ frio).
   // null = não classificado. Ícone aparece junto do nome no chat.
   temperature String?
 
   // Etiquetas coloridas (m2m) — "orçamento enviado", "prefere PIX", etc.
-  tags     Tag[]
+  tags Tag[]
 
   // Departamento alvo que o cliente escolheu na URA (ex: "VENDAS", "FINANCEIRO").
   // Populado quando o contato entra em WAITING_AGENT vindo da URA. Usado pela
@@ -196,11 +197,15 @@ model Contact {
   // Marco de "recomeço" do chat. Quando um contato é ASSUMIDO de outro agente,
   // é setado para now() — o chat passa a mostrar só as mensagens a partir daqui,
   // sem herdar o histórico do agente anterior (atendimento começa limpo).
-  historyResetAt  DateTime?
+  historyResetAt DateTime?
 
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  deletedAt       DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  deletedAt DateTime?
+  // Cliente pediu pra não receber ofertas (respondeu "SAIR", "parar"...).
+  // null = recebe normalmente. Transmissões sempre pulam quem tem data aqui.
+  optOutAt  DateTime?
+  reminders ContactReminder[]
 
   messages        Message[]
   campaignLogs    CampaignLog[]
@@ -219,27 +224,27 @@ model Contact {
 //   2. Cálculo de tempo de espera/duração
 //   3. Avaliação do cliente (rating + comment)
 model ServiceSession {
-  id                String   @id @default(cuid())
-  contactId         String
-  contact           Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  agentId           String
-  agent             User     @relation("AgentSessions", fields: [agentId], references: [id])
+  id        String  @id @default(cuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  agentId   String
+  agent     User    @relation("AgentSessions", fields: [agentId], references: [id])
 
   // Ciclo
-  waitingFrom       DateTime  // quando o contato entrou em fila (WAITING_AGENT)
-  startedAt         DateTime  // quando o agente assumiu (IN_SERVICE)
-  endedAt           DateTime? // quando o agente encerrou (botão ou auto)
+  waitingFrom DateTime // quando o contato entrou em fila (WAITING_AGENT)
+  startedAt   DateTime // quando o agente assumiu (IN_SERVICE)
+  endedAt     DateTime? // quando o agente encerrou (botão ou auto)
 
   // Avaliação
   ratingRequestedAt DateTime?
-  rating            Int?      // 1-5 (CSAT)
+  rating            Int? // 1-5 (CSAT)
   comment           String?
   ratedAt           DateTime?
 
   // Encerramento forçado por inatividade (>30 min sem mensagem)
-  autoEnded         Boolean   @default(false)
+  autoEnded Boolean @default(false)
 
-  createdAt         DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([agentId, startedAt])
   @@index([contactId])
@@ -316,24 +321,24 @@ model Message {
 
 // Configuração singleton da URA (IVR). Criada automaticamente no primeiro uso.
 model UraConfig {
-  id                 String   @id @default(cuid())
-  greetingText       String   @default("Olá! 👋 Como podemos te ajudar?\n\nResponda com o número da opção desejada.")
-  isActive           Boolean  @default(true)
-  outOfOfficeMessage String   @default("No momento estamos fora do horário de atendimento. Deixe sua mensagem que retornaremos em breve!")
-  lunchMessage       String   @default("Estamos em horário de almoço. Retornaremos às 13h.")
-  
+  id                 String  @id @default(cuid())
+  greetingText       String  @default("Olá! 👋 Como podemos te ajudar?\n\nResponda com o número da opção desejada.")
+  isActive           Boolean @default(true)
+  outOfOfficeMessage String  @default("No momento estamos fora do horário de atendimento. Deixe sua mensagem que retornaremos em breve!")
+  lunchMessage       String  @default("Estamos em horário de almoço. Retornaremos às 13h.")
+
   // Mensagens do fluxo comercial
-  askNameMessage     String   @default("Por favor, digite seu nome completo:")
-  askProfileMessage  String   @default("Você é:\n1️⃣ Pessoa Física\n2️⃣ Pessoa Jurídica")
-  askSectorMessage   String   @default("Qual setor deseja?\n1️⃣ Financeiro\n2️⃣ Suporte\n3️⃣ Vendas\n0️⃣ Voltar")
-  
+  askNameMessage    String @default("Por favor, digite seu nome completo:")
+  askProfileMessage String @default("Você é:\n1️⃣ Pessoa Física\n2️⃣ Pessoa Jurídica")
+  askSectorMessage  String @default("Qual setor deseja?\n1️⃣ Financeiro\n2️⃣ Suporte\n3️⃣ Vendas\n0️⃣ Voltar")
+
   // Mensagens do fluxo noturno
   nightAskNameMessage    String @default("Obrigado por entrar em contato! Por favor, informe seu nome:")
   nightAskSectorMessage  String @default("Qual o setor de interesse?\n1️⃣ Financeiro\n2️⃣ Suporte\n3️⃣ Vendas")
   nightAskSubjectMessage String @default("Por favor, descreva brevemente o assunto:")
-  
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   options       UraMenuOption[]
   businessHours BusinessHour[]
@@ -344,13 +349,13 @@ model UraConfig {
 
 // Cada linha do menu da URA (dígito → label → departamento).
 model UraMenuOption {
-  id               String    @id @default(cuid())
+  id               String   @id @default(cuid())
   digit            String
   label            String
   targetDepartment String
-  order            Int       @default(0)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  order            Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   configId String
   config   UraConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
@@ -361,16 +366,16 @@ model UraMenuOption {
 
 // Horário de atendimento por dia da semana (0=Dom … 6=Sáb).
 model BusinessHour {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   dayOfWeek     Int
-  isClosed      Boolean   @default(false)
-  openTime      String    @default("08:00")
-  closeTime     String    @default("18:00")
-  hasLunchBreak Boolean   @default(false)
-  lunchStart    String    @default("12:00")
-  lunchEnd      String    @default("13:00")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  isClosed      Boolean  @default(false)
+  openTime      String   @default("08:00")
+  closeTime     String   @default("18:00")
+  hasLunchBreak Boolean  @default(false)
+  lunchStart    String   @default("12:00")
+  lunchEnd      String   @default("13:00")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   configId String
   config   UraConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
@@ -383,10 +388,10 @@ model BusinessHour {
 // sequência com 1 clique na tela de Chats. Gerenciado pelo admin, usado por
 // todos os agentes (biblioteca compartilhada, igual Cooperativa/Contatos).
 model QuickReplyTemplate {
-  id       String  @id @default(cuid())
+  id       String @id @default(cuid())
   name     String
-  category String  @default("Geral")
-  order    Int     @default(0)
+  category String @default("Geral")
+  order    Int    @default(0)
 
   // Texto com suporte a {nome} (mesma convenção do Campaign.messageText).
   text String @default("")
@@ -417,15 +422,15 @@ model Campaign {
   status      CampaignStatus @default(PENDING)
   createdById String?
   createdAt   DateTime       @default(now())
-  
+
   // Proteções e limites
-  maxPerDay   Int            @default(200)
-  maxPerHour  Int            @default(30)
-  delayMin    Int            @default(3)  // segundos
-  delayMax    Int            @default(8)  // segundos
-  pausedAt    DateTime?
-  errorCount  Int            @default(0)
-  deliveryRate Float         @default(0)  // % de entregas bem-sucedidas
+  maxPerDay    Int       @default(200)
+  maxPerHour   Int       @default(30)
+  delayMin     Int       @default(3) // segundos
+  delayMax     Int       @default(8) // segundos
+  pausedAt     DateTime?
+  errorCount   Int       @default(0)
+  deliveryRate Float     @default(0) // % de entregas bem-sucedidas
 
   logs CampaignLog[]
 
@@ -434,20 +439,20 @@ model Campaign {
 
 // Log individual de envio por contato em uma campanha.
 model CampaignLog {
-  id         String            @id @default(cuid())
-  status     CampaignLogStatus @default(PENDING)
-  messageKeyId String?
-  sentAt     DateTime?
-  deliveredAt DateTime?
-  readAt      DateTime?
-  errorMsg   String?
-  blockedByContact Boolean       @default(false)
+  id               String            @id @default(cuid())
+  status           CampaignLogStatus @default(PENDING)
+  messageKeyId     String?
+  sentAt           DateTime?
+  deliveredAt      DateTime?
+  readAt           DateTime?
+  errorMsg         String?
+  blockedByContact Boolean           @default(false)
 
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   contactId String
-  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([messageKeyId])
   @@map("campaign_logs")
@@ -459,21 +464,21 @@ model CampaignLog {
 
 // Sessão da URA (State Machine) armazenada no Redis e persistida no BD
 model UraSession {
-  id            String   @id @default(cuid())
-  whatsappId    String   @unique
-  currentNode   String   // ex: "greeting", "ask_profile", "ask_sector", etc
-  previousNode  String?  // Para navegação com "0" (voltar)
-  isNightFlow   Boolean  @default(false)
-  
+  id           String  @id @default(cuid())
+  whatsappId   String  @unique
+  currentNode  String // ex: "greeting", "ask_profile", "ask_sector", etc
+  previousNode String? // Para navegação com "0" (voltar)
+  isNightFlow  Boolean @default(false)
+
   // Dados coletados durante o fluxo
   collectedName    String?
   collectedProfile String? // "PF" ou "PJ"
   collectedSector  String? // "FINANCEIRO", "SUPORTE", "VENDAS"
   collectedSubject String? // Assunto (fluxo noturno)
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  expiresAt     DateTime // TTL para limpeza automática
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // TTL para limpeza automática
 
   @@index([whatsappId])
   @@index([expiresAt])
@@ -482,19 +487,19 @@ model UraSession {
 
 // Cooperativas (B2B) - Tab 3
 model Cooperative {
-  id          String   @id @default(cuid())
-  name        String   // ex: "Sicoob", "Sicredi", "Cresol"
-  cnpjBase    String?  // CNPJ base (8 primeiros dígitos)
-  isActive    Boolean  @default(true)
-  
+  id       String  @id @default(cuid())
+  name     String // ex: "Sicoob", "Sicredi", "Cresol"
+  cnpjBase String? // CNPJ base (8 primeiros dígitos)
+  isActive Boolean @default(true)
+
   // Atendente B2B responsável
   assignedUserId String?
   assignedUser   User?   @relation("CooperativeAssignments", fields: [assignedUserId], references: [id])
 
-  contacts    Contact[]
+  contacts Contact[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("cooperatives")
 }
@@ -508,11 +513,11 @@ model Cooperative {
 model ContactTransferLog {
   id           String   @id @default(cuid())
   contactId    String
-  contactName  String   // snapshot do nome do cliente no momento
-  fromUserId   String?  // vendedor anterior (null se estava sem carteira)
-  fromUserName String?  // snapshot do nome do vendedor anterior
-  toUserId     String   // vendedor que requisitou (novo dono)
-  toUserName   String   // snapshot do nome do novo dono
+  contactName  String // snapshot do nome do cliente no momento
+  fromUserId   String? // vendedor anterior (null se estava sem carteira)
+  fromUserName String? // snapshot do nome do vendedor anterior
+  toUserId     String // vendedor que requisitou (novo dono)
+  toUserName   String // snapshot do nome do novo dono
   createdAt    DateTime @default(now())
 
   @@index([contactId])
@@ -527,10 +532,10 @@ model ContactTransferLog {
 model ContactTransferRequest {
   id            String    @id @default(cuid())
   contactId     String
-  contactName   String    // snapshot
-  fromUserId    String    // dono atual (pode aprovar, junto com admin)
+  contactName   String // snapshot
+  fromUserId    String // dono atual (pode aprovar, junto com admin)
   fromUserName  String
-  requesterId   String    // quem pediu (vira o novo dono se aprovado)
+  requesterId   String // quem pediu (vira o novo dono se aprovado)
   requesterName String
   status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
   decidedById   String?
@@ -553,7 +558,7 @@ model ContactTransferRequest {
 model InternalConversation {
   id          String   @id @default(cuid())
   isGroup     Boolean  @default(false)
-  name        String?  // nome do grupo (null em conversa 1:1)
+  name        String? // nome do grupo (null em conversa 1:1)
   createdById String?
   createdAt   DateTime @default(now())
   // Atualizado a cada nova mensagem — usado pra ordenar a lista de conversas.
@@ -567,7 +572,7 @@ model InternalConversation {
 }
 
 model InternalConversationMember {
-  id             String   @id @default(cuid())
+  id             String               @id @default(cuid())
   conversationId String
   conversation   InternalConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   userId         String
@@ -580,7 +585,7 @@ model InternalConversationMember {
   // aqui. A conversa some da lista dele e o histórico anterior não volta;
   // mensagem nova reabre a conversa mostrando só o que vier depois.
   clearedAt      DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime             @default(now())
 
   @@unique([conversationId, userId])
   @@index([userId])
@@ -588,14 +593,14 @@ model InternalConversationMember {
 }
 
 model InternalMessage {
-  id             String   @id @default(cuid())
+  id             String               @id @default(cuid())
   conversationId String
   conversation   InternalConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderId       String
   body           String
   mediaUrl       String?
   mediaType      String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime             @default(now())
 
   // Resposta em cima de outra mensagem (igual WhatsApp) — snapshot do citado.
   quotedMsgId  String?
@@ -612,12 +617,12 @@ model InternalMessage {
 // ter UMA reação ativa por mensagem (igual WhatsApp) — reagir de novo troca
 // o emoji, remover apaga a linha.
 model InternalMessageReaction {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   messageId String
   message   InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   userId    String
   emoji     String
-  createdAt DateTime @default(now())
+  createdAt DateTime        @default(now())
 
   @@unique([messageId, userId])
   @@index([messageId])
@@ -626,33 +631,33 @@ model InternalMessageReaction {
 
 // Territórios de Vendas (Geográfico) - Tab 4
 model Territory {
-  id       String   @id @default(cuid())
-  uf       String   @unique // UF do Brasil (ex: "SP", "RJ", "MG")
-  isActive Boolean  @default(true)
-  
+  id       String  @id @default(cuid())
+  uf       String  @unique // UF do Brasil (ex: "SP", "RJ", "MG")
+  isActive Boolean @default(true)
+
   // Atendentes de vendas (pode ter múltiplos - Round Robin)
   assignedUserIds String[] // Array de IDs de usuários
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("territories")
 }
 
 // Oferta Noturna (Cupom de Desconto) - Tab 2
 model NightOffer {
-  id             String   @id @default(cuid())
-  isActive       Boolean  @default(false)
-  couponCode     String   @default("")
-  discountType   String   @default("percentage") // "percentage" ou "fixed"
-  discountValue  Float    @default(0)
-  storeUrl       String   @default("")
-  offerMessage   String   @default("🎁 Oferta especial! Use o cupom {coupon} e ganhe {discount} de desconto!\n\nAcesse: {url}")
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String  @id @default(cuid())
+  isActive      Boolean @default(false)
+  couponCode    String  @default("")
+  discountType  String  @default("percentage") // "percentage" ou "fixed"
+  discountValue Float   @default(0)
+  storeUrl      String  @default("")
+  offerMessage  String  @default("🎁 Oferta especial! Use o cupom {coupon} e ganhe {discount} de desconto!\n\nAcesse: {url}")
 
-  configId String  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  configId String    @unique
   config   UraConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
 
   @@map("night_offers")
@@ -677,7 +682,7 @@ model ChatArchive {
 // WhatsApp; aqui fica só o registro.
 model StatusPost {
   id            String   @id @default(cuid())
-  kind          String   // TEXT | IMAGE | VIDEO
+  kind          String // TEXT | IMAGE | VIDEO
   text          String   @default("") // texto do status ou legenda da mídia
   mediaUrl      String?
   mediaType     String?
@@ -711,4 +716,23 @@ model AiKnowledge {
   updatedBy String?
 
   @@map("ai_knowledge")
+}
+
+// Lembrete de retorno da vendedora ("me lembrar de falar com este cliente").
+// NUNCA envia nada ao cliente — só avisa a própria vendedora no horário.
+model ContactReminder {
+  id         String    @id @default(cuid())
+  contactId  String
+  contact    Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dueAt      DateTime
+  note       String    @default("")
+  doneAt     DateTime?
+  notifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, doneAt, dueAt])
+  @@index([contactId])
+  @@map("contact_reminders")
 }

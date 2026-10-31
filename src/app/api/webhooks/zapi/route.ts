@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from "next/server"
+import { registrarOptOutSePedido } from "@/lib/optOut"
 import { timingSafeEqual } from "node:crypto"
 import { prisma } from "@/lib/prisma"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
@@ -594,6 +595,9 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     }
     throw err
   }
+
+  // Cliente pediu "SAIR"/"parar": sai das próximas transmissões.
+  await registrarOptOutSePedido(contact.id, messageText)
 
   // 4 — SSE broadcast pra UI
   broadcast({
