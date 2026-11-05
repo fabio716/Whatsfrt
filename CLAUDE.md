@@ -115,3 +115,19 @@ ssh root@62.171.178.160
   injetar no WhatsApp Web). Áudio já sai como nota de voz porque reusa o
   endpoint `send-audio` da Z-API, que o gravador do Chats já usava. Admin
   gerencia os templates; agente só usa (lê via GET, não pode criar/editar).
+
+## Economia de créditos — regra obrigatória (Fabio)
+Os créditos estavam acabando rápido porque cada alteração fazia o Claude ler arquivos grandes do início ao fim. Em todo pedido de alteração:
+
+1. **Não ler arquivo grande inteiro.** Primeiro localizar o ponto com busca (Grep/Glob pelo nome da função, texto da tela ou mensagem de erro) e ler só o trecho necessário (Read com offset/limit, umas 50–150 linhas em volta).
+2. **Não reler o que já foi lido** na mesma conversa. Reaproveitar o que já está no contexto.
+3. **Alterar só o que foi pedido.** Não revisar, refatorar nem "melhorar" o resto do arquivo, e não varrer o sistema inteiro procurando outros problemas sem o Fabio pedir.
+4. **Verificação proporcional:** mudança pequena → checagem pequena (tipos/lint só do arquivo mexido). Teste completo só em mudança grande ou quando pedido.
+5. Antes de uma investigação ampla (ler muitos arquivos), **avisar e perguntar** se vale o custo.
+
+Arquivos grandes deste sistema (nunca abrir inteiros):
+- src/app/admin/chats/components/ChatsClient.tsx (~3.000 linhas)
+- src/app/admin/mensagens/page.tsx (~1.600)
+- src/app/admin/manual/page.tsx (~1.100)
+- src/app/api/webhooks/zapi/route.ts (~800)
+- src/lib/reports/dailyReport.ts (~800)
