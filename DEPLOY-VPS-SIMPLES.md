@@ -70,10 +70,10 @@ EVOLUTION_SERVER_URL=http://SEU_IP:8080
 
 ```env
 POSTGRES_USER=whatsfrt_prod
-POSTGRES_PASSWORD=xK9mP2vL8qR4nT6wY1sZ3aB5cD7eF9gH
+POSTGRES_PASSWORD=SUA_SENHA_FORTE
 POSTGRES_DB=whatsfrt
 
-DATABASE_URL=postgresql://whatsfrt_prod:xK9mP2vL8qR4nT6wY1sZ3aB5cD7eF9gH@postgres:5432/whatsfrt?schema=public
+DATABASE_URL=postgresql://whatsfrt_prod:SUA_SENHA_FORTE@postgres:5432/whatsfrt?schema=public
 
 JWT_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { aiConfigured, suggestReply, suggestNextStep } from "@/lib/ai"
+import { checkRateLimit } from "@/lib/rateLimit"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -28,6 +29,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Corpo inválido" }, { status: 400 })
   }
   if (!body.contactId) return NextResponse.json({ error: "contactId é obrigatório" }, { status: 400 })
+
+  // Guia de Blindagem (10/11/2026), item 6: cada chamada gasta crédito da
+  // IA. Limite por pessoa — folgado pro uso normal (cada clique no ✨ faz 2
+  // chamadas: resposta + próximo passo), mas barra uso em loop.
+  const curto = await checkRateLimit(`ai-suggest:10min:${auth.id}`, 40, 600)
+  const diario = curto.allowed ? await checkRateLimit(`ai-suggest:dia:${auth.id}`, 300, 86_400) : curto
+  if (!curto.allowed || !diario.allowed) {
+    const espera = Math.ceil((curto.allowed ? diario : curto).retryAfterSec / 60)
+    return NextResponse.json({
+      error: `Limite de uso do Copiloto atingido. Tente de novo em ${espera} min.`,
+      code: "AI_RATE_LIMIT",
+    }, { status: 429 })
+  }
 
   const contact = await prisma.contact.findUnique({
     where: { id: body.contactId },
