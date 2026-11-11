@@ -108,8 +108,9 @@ export default function AtendenteVirtualPainel() {
     <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <h2 className="text-[15px] font-semibold text-zinc-900">🤖 Atendente virtual</h2>
       <p className="mt-0.5 text-[12.5px] text-zinc-500">
-        Responde o cliente quando a equipe está fora. Usa os preços do site e a base de conhecimento abaixo,
-        combina horário pra vendedora ligar e deixa o resumo em <strong>Retornos</strong>. Em horário comercial fica calado.
+        Responde o cliente quando a equipe está fora. <strong>Compra:</strong> usa só os preços e condições do site e manda o link.
+        <strong> Outros assuntos:</strong> avisa que estamos fora, anota o assunto e combina o horário. O resumo fica em <strong>Retornos</strong>.
+        Em horário comercial fica calado.
       </p>
 
       {!estado.configured && (
@@ -117,9 +118,9 @@ export default function AtendenteVirtualPainel() {
           ⚠️ A chave da IA não está configurada no servidor — o atendente virtual não responde até configurar.
         </p>
       )}
-      {estado.configured && estado.baseVazia && estado.precosQtd === 0 && (
+      {estado.configured && estado.precosQtd === 0 && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800">
-          ⚠️ Sem base de conhecimento e sem preços do site, o atendente não responde (o cliente recebe o aviso de fora do horário). Preencha a base abaixo e atualize os preços.
+          ⚠️ Os preços do site ainda não foram lidos — sem eles o atendente não responde (o cliente recebe o aviso de fora do horário). Clique em “Atualizar preços agora”.
         </p>
       )}
 
