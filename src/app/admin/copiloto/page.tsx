@@ -17,8 +17,8 @@ const MODELO_INICIAL = `# SOBRE A FRT
 
 # ASSISTÊNCIA TÉCNICA
 - Autorizadas trabalham com troca de peças. Equipamento fora de linha (ex.: HT8000) não tem peça na autorizada.
-- O laboratório da fábrica repara em nível de componente na placa, sem depender de peça de reposição — serviço exclusivo da FRT.
-- Envio pra fábrica: frete de ida e volta por conta da FRT. Diagnóstico por escrito antes de aprovar qualquer serviço.
+- A Assistência Técnica FRT fica em Cambará/PR (é a assistência, não a fábrica). Repara em nível de componente na placa, sem depender de peça de reposição.
+- Frete do envio pra assistência: não afirmar quem paga — a equipe da assistência informa no atendimento. Diagnóstico por escrito antes de aprovar qualquer serviço.
 
 # POLÍTICAS
 - Garantia: [PREENCHER]
