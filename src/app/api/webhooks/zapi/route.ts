@@ -27,6 +27,7 @@ import { sendTextOk } from "@/lib/whatsapp"
 import { findOrCreateContact } from "@/lib/contactLookup"
 import { sendPushToUsers } from "@/lib/push"
 import { BusinessHoursValidator } from "@/lib/ura/businessHours"
+import { tentarAtendenteVirtual } from "@/lib/atendenteVirtual"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -665,7 +666,17 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     // Fora do expediente a vendedora não vai responder agora — o cliente
     // precisa saber disso e quando voltamos. Vale inclusive pro lead do site,
     // que é atribuído na hora e por isso nunca passava pela URA.
-    await avisarForaDoHorario(contact)
+    // O atendente virtual conversa no lugar do aviso; desligado ou com
+    // falha, vale o aviso de sempre.
+    const expediente = await BusinessHoursValidator.check()
+    if (!expediente.isOpen || expediente.isLunchTime) {
+      const assumiu = await tentarAtendenteVirtual(
+        contact,
+        expediente.isLunchTime ? "ALMOCO" : "NOITE",
+        () => avisarForaDoHorario(contact),
+      )
+      if (!assumiu) await avisarForaDoHorario(contact)
+    }
     return
   }
 

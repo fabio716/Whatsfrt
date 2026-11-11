@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import AtendenteVirtualPainel from "./AtendenteVirtualPainel"
 
 // ─── Copiloto — Base de Conhecimento (admin) ─────────────────────────────────
 // Texto livre que alimenta a IA nas sugestões de resposta. Escreva como se
@@ -88,6 +89,7 @@ export default function CopilotoPage() {
       </header>
 
       <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
+        <AtendenteVirtualPainel />
         {loading ? (
           <p className="py-8 text-center text-[13px] text-zinc-400">Carregando…</p>
         ) : (

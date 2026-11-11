@@ -718,6 +718,23 @@ model AiKnowledge {
   @@map("ai_knowledge")
 }
 
+// Atendente virtual (IA) — responde o cliente SÓ fora do expediente (noite,
+// fim de semana) e no almoço. Linha única (id "main"), editada na tela Copiloto.
+model AtendenteVirtualConfig {
+  id          String  @id @default("main")
+  ativoNoite  Boolean @default(true)
+  ativoAlmoco Boolean @default(true)
+  // Modo teste: se preenchido (números separados por vírgula), a IA só
+  // responde esses números. Vazio = responde todos.
+  numerosTeste String @default("")
+  // Última vendedora que recebeu cliente novo no rodízio.
+  ultimoRodizioUserId String?
+  updatedAt           DateTime @updatedAt
+  updatedBy           String?
+
+  @@map("atendente_virtual_config")
+}
+
 // Lembrete de retorno da vendedora ("me lembrar de falar com este cliente").
 // NUNCA envia nada ao cliente — só avisa a própria vendedora no horário.
 model ContactReminder {

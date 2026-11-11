@@ -15,6 +15,7 @@ import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { markWaitingForAgent, assignAgent } from "@/lib/serviceTracking"
 import { BusinessHoursValidator } from "@/lib/ura/businessHours"
+import { tentarAtendenteVirtual } from "@/lib/atendenteVirtual"
 import {
   markAwaitingSubMenu,
   getAwaitingSubMenu,
@@ -60,6 +61,8 @@ async function sendUraMessage(contact: ContactSnapshot, text: string): Promise<v
 export async function handleInboundForUra(
   whatsappId: string,
   inboundText: string,
+  // true = o atendente virtual já tentou e não conseguiu; segue o fluxo normal.
+  semAtendenteVirtual = false,
 ): Promise<void> {
   // Pega o estado atual do contato — pode ter mudado desde o webhook (agente
   // assumiu, etc). Sempre buscar fresco antes de mexer.
@@ -78,6 +81,25 @@ export async function handleInboundForUra(
   if (contact.whatsappId.endsWith("@g.us")) return
   const digits = contact.whatsappId.replace("@s.whatsapp.net", "")
   if (digits.length > 13) return
+
+  // Fora do expediente (noite, fim de semana, almoço): o atendente virtual
+  // conversa com o cliente no lugar do aviso automático. Se estiver desligado
+  // ou falhar, cai no fluxo de sempre logo abaixo.
+  if (
+    !semAtendenteVirtual &&
+    (contact.chatStatus === ChatStatus.IDLE || contact.chatStatus === ChatStatus.WAITING_AGENT)
+  ) {
+    const cfgAv = await getUraConfigCached()
+    const expediente = cfgAv.isActive ? isBusinessHour(cfgAv) : "OPEN"
+    if (expediente !== "OPEN") {
+      const assumiu = await tentarAtendenteVirtual(
+        contact,
+        expediente === "LUNCH" ? "ALMOCO" : "NOITE",
+        () => handleInboundForUra(whatsappId, inboundText, true),
+      )
+      if (assumiu) return
+    }
+  }
 
   // Mensagem só de mídia (áudio/foto/vídeo/doc sem caption) NÃO dispara URA.
   // Quem manda áudio quer falar com humano, não escolher menu. Manda direto
