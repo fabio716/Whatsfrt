@@ -34,7 +34,10 @@ export default function AlertaRetornosAtrasados() {
   const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })
 
   return (
-    <div role="alert" className="fixed inset-x-0 top-0 z-[90] border-b border-red-200 bg-red-50 px-4 py-2 shadow-sm md:left-[var(--nav-w,0px)]">
+    <div role="alert" className="fixed inset-x-0 top-0 z-[90] flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 shadow-sm md:left-[var(--nav-w,0px)]">
+      {/* eslint-disable-next-line @next/next/no-img-element -- figura estática pequena */}
+      <img src="/mascote-frt.png" alt="" className="h-10 w-10 shrink-0 rounded-lg" />
+      <div className="min-w-0">
       <p className="text-[12.5px] font-semibold text-red-700">
         ⚠️ {lista.length === 1 ? "1 retorno atrasado" : `${lista.length} retornos atrasados`} — o cliente está esperando
       </p>
@@ -49,6 +52,7 @@ export default function AlertaRetornosAtrasados() {
         ))}
         {lista.length > 5 && <li>e mais {lista.length - 5}…</li>}
       </ul>
+      </div>
     </div>
   )
 }

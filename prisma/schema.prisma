@@ -738,6 +738,14 @@ model AtendenteVirtualConfig {
   @@map("atendente_virtual_config")
 }
 
+// Último "ciente" de cada administrador no resumo do atendente virtual.
+model AtendenteCiencia {
+  userId   String   @id
+  cienteAt DateTime
+
+  @@map("atendente_virtual_ciencia")
+}
+
 // Lembrete de retorno da vendedora ("me lembrar de falar com este cliente").
 // NUNCA envia nada ao cliente — só avisa a própria vendedora no horário.
 model ContactReminder {

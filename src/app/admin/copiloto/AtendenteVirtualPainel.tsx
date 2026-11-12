@@ -106,7 +106,11 @@ export default function AtendenteVirtualPainel() {
 
   return (
     <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <h2 className="text-[15px] font-semibold text-zinc-900">🤖 Atendente virtual</h2>
+      <div className="flex items-center gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element -- figura estática pequena */}
+        <img src="/mascote-frt.png" alt="" className="h-12 w-12 shrink-0 rounded-xl" />
+        <h2 className="text-[15px] font-semibold text-zinc-900">Atendente virtual</h2>
+      </div>
       <p className="mt-0.5 text-[12.5px] text-zinc-500">
         Responde o cliente quando a equipe está fora. <strong>Compra:</strong> usa só os preços e condições do site e manda o link.
         <strong> Outros assuntos:</strong> avisa que estamos fora, anota o assunto e combina o horário. O resumo fica em <strong>Retornos</strong>.

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import Avatar from "@/app/admin/components/Avatar"
 
 interface UserRow {
   id: string
@@ -11,6 +12,7 @@ interface UserRow {
   department: string | null
   isActive: boolean
   uraMenuVisible: boolean
+  photoUrl?: string | null
   createdAt: string
 }
 
@@ -167,6 +169,33 @@ export default function UsersPage() {
     setEditUser(u)
     setEditForm({ name: u.name, email: u.email, password: "", role: u.role, department: u.department ?? "VENDAS", uraMenuVisible: u.uraMenuVisible })
     setEditError(null)
+  }
+
+  // Foto de perfil trocada/removida pelo administrador (sem precisar da senha da pessoa).
+  const [fotoOcupada, setFotoOcupada] = useState(false)
+  const mudarFoto = async (arquivo: File | null) => {
+    if (!editUser || fotoOcupada) return
+    setFotoOcupada(true)
+    setEditError(null)
+    try {
+      let res: Response
+      if (arquivo) {
+        const fd = new FormData()
+        fd.append("file", arquivo)
+        res = await fetch(`/api/admin/users/${editUser.id}/photo`, { method: "POST", body: fd })
+      } else {
+        res = await fetch(`/api/admin/users/${editUser.id}/photo`, { method: "DELETE" })
+      }
+      const data = (await res.json()) as { photoUrl?: string | null; error?: string }
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível alterar a foto")
+      const nova = data.photoUrl ?? null
+      setUsers((prev) => prev.map((u) => u.id === editUser.id ? { ...u, photoUrl: nova } : u))
+      setEditUser((u) => u ? { ...u, photoUrl: nova } : u)
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Erro ao alterar a foto")
+    } finally {
+      setFotoOcupada(false)
+    }
   }
 
   const handleEdit = async (e: { preventDefault: () => void }) => {
@@ -449,6 +478,25 @@ export default function UsersPage() {
             </div>
             <form onSubmit={(e) => void handleEdit(e)} className="flex h-[calc(100%-73px)] flex-col">
               <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
+                <div className="flex items-center gap-4 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
+                  <Avatar name={editUser.name} photoUrl={editUser.photoUrl} size="h-14 w-14" fallback="bg-emerald-100 text-emerald-700 text-[18px] font-semibold" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12.5px] font-medium text-zinc-800">Foto de perfil</p>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      <label className={`cursor-pointer rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-zinc-700 hover:bg-zinc-100 ${fotoOcupada ? "pointer-events-none opacity-50" : ""}`}>
+                        {fotoOcupada ? "Enviando…" : "Trocar foto"}
+                        <input type="file" accept="image/*" className="hidden" disabled={fotoOcupada}
+                          onChange={(ev) => { const f = ev.target.files?.[0] ?? null; ev.target.value = ""; if (f) void mudarFoto(f) }} />
+                      </label>
+                      {editUser.photoUrl && (
+                        <button type="button" onClick={() => void mudarFoto(null)} disabled={fotoOcupada}
+                          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
+                          Remover foto
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <Field id="e-name"  label="Nome completo" required value={editForm.name}  onChange={(v) => patchEdit({ name: v })} placeholder="Maria da Silva" />
                 <Field id="e-email" label="E-mail" type="email" required value={editForm.email} onChange={(v) => patchEdit({ email: v })} placeholder="maria@empresa.com" />
                 <Field id="e-pass"  label="Nova senha" type="password" value={editForm.password} onChange={(v) => patchEdit({ password: v })} placeholder="Deixe vazio para não alterar" />
