@@ -9,6 +9,7 @@ import Novidades from "./Novidades"
 import RetornosObrigatorio from "./RetornosObrigatorio"
 import AlertaRetornosAtrasados from "./AlertaRetornosAtrasados"
 import ResumoAtendenteVirtual from "./ResumoAtendenteVirtual"
+import MeusRetornos from "./MeusRetornos"
 import GlobalNotifier, { type NotifyCounts, type NotifyPrefs, NOTIFY_PREFS_KEY, defaultPrefs } from "./GlobalNotifier"
 
 type Role = "ADMIN" | "AGENT"
@@ -65,6 +66,7 @@ export default function AdminShell({
       <RetornosObrigatorio />
       {userRole === "ADMIN" && <AlertaRetornosAtrasados />}
       {userRole === "ADMIN" && <ResumoAtendenteVirtual />}
+      {userRole === "AGENT" && <MeusRetornos />}
 
       <AdminNav
         userRole={userRole}
