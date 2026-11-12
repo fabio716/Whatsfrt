@@ -9,6 +9,7 @@ import { sendPushToUsers } from "@/lib/push"
 import { broadcastToUsers } from "@/lib/sse-emitter"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
+import { atendimentosHumanos } from "@/lib/retornoAtendido"
 
 const CHECK_INTERVAL_MS = 60 * 1000
 
@@ -82,17 +83,22 @@ export async function escalarAtrasados(): Promise<number> {
       orderBy: { dueAt: "asc" },
       take: 50,
       select: {
-        id: true, userId: true, dueAt: true,
+        id: true, userId: true, dueAt: true, createdAt: true,
         user: { select: { name: true } },
         contact: { select: { id: true, name: true } },
       },
     })
     if (atrasados.length === 0) return 0
 
+    // Quem já respondeu o cliente não é cobrado nem entra no alerta.
+    const atendidos = await atendimentosHumanos(atrasados.map((l) => ({ id: l.id, contactId: l.contact.id, desde: l.createdAt })))
+    const esperando = atrasados.filter((l) => !atendidos.has(l.id))
+    if (esperando.length === 0) return 0
+
     const admins = await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })
     const adminIds = admins.map((a) => a.id)
     let total = 0
-    for (const l of atrasados) {
+    for (const l of esperando) {
       // Marca antes de avisar (mesma regra do aviso de vencimento) e pede nova
       // ciência da vendedora: ela vê a tela de retornos de novo, agora com o aviso.
       const marcado = await prisma.contactReminder.updateMany({

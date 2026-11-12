@@ -16,6 +16,8 @@ interface Item {
   vendedora: string | null
   retornoEm: string | null
   atrasado: boolean
+  atendidoEm: string | null
+  atendidoPor: string | null
 }
 interface Resumo { total: number; respostas: number; itens: Item[] }
 
@@ -82,7 +84,12 @@ export default function ResumoAtendenteVirtual() {
             <p className="mt-0.5 text-[11.5px] text-zinc-700">
               {i.vendedora ? `Com ${i.vendedora}` : "Na fila, sem vendedora"}
               {i.retornoEm ? ` · retorno ${quandoTexto(i.retornoEm, agora || Date.parse(i.retornoEm))}` : ""}
-              {i.atrasado ? <span className="ml-1 font-bold text-red-600">· ATRASADO</span> : null}
+              {i.atrasado && !i.atendidoEm ? <span className="ml-1 font-bold text-red-600">· ATRASADO</span> : null}
+            </p>
+            <p className={`mt-0.5 text-[11.5px] font-semibold ${i.atendidoEm ? "text-emerald-700" : "text-amber-700"}`}>
+              {i.atendidoEm
+                ? `✅ Atendido${i.atendidoPor ? ` por ${i.atendidoPor}` : ""} às ${new Date(i.atendidoEm).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}`
+                : "⏳ Aguardando atendimento"}
             </p>
           </li>
         ))}

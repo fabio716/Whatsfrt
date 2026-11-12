@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
+import { atendimentosHumanos } from "@/lib/retornoAtendido"
 
 export const dynamic = "force-dynamic"
 
@@ -19,11 +20,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     orderBy: { dueAt: "asc" },
     take: 50,
     select: {
-      id: true, dueAt: true, note: true, escalonadoAt: true,
+      id: true, dueAt: true, note: true, escalonadoAt: true, createdAt: true,
       contact: { select: { id: true, name: true, empresa: true } },
     },
   })
-  return NextResponse.json(lista.map((l) => ({ ...l, dueAt: l.dueAt.toISOString(), atrasado: l.escalonadoAt !== null, escalonadoAt: undefined })))
+  // Cliente que ela já respondeu não precisa mais da cobrança.
+  const atendidos = await atendimentosHumanos(lista.map((l) => ({ id: l.id, contactId: l.contact.id, desde: l.createdAt })))
+  return NextResponse.json(lista.filter((l) => !atendidos.has(l.id)).map((l) => ({ ...l, dueAt: l.dueAt.toISOString(), atrasado: l.escalonadoAt !== null, escalonadoAt: undefined, createdAt: undefined })))
 }
 
 // POST { ids: string[] } → "estou ciente" desses retornos.

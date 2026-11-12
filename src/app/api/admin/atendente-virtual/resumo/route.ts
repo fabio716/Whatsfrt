@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
+import { atendimentosHumanos } from "@/lib/retornoAtendido"
 
 export const dynamic = "force-dynamic"
 
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     where: { viaAtendente: true, direction: "OUTBOUND", createdAt: { gt: desde } },
     _count: { _all: true },
     _max: { createdAt: true },
+    _min: { createdAt: true },
     orderBy: { _max: { createdAt: "desc" } },
     take: 200,
   })
@@ -43,6 +45,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       select: { contactId: true, dueAt: true, escalonadoAt: true, user: { select: { name: true } } },
     }),
   ])
+  // Atendido = uma pessoa respondeu o cliente depois da 1ª resposta do atendente.
+  const atendidos = await atendimentosHumanos(
+    grupos.slice(0, MOSTRAR).map((g) => ({ id: g.contactId, contactId: g.contactId, desde: g._min.createdAt ?? desde })),
+  )
   const porContato = new Map(contatos.map((c) => [c.id, c]))
   const ultimaPorContato = new Map(ultimas.map((m) => [m.contactId, m.body]))
   const retornoPorContato = new Map(retornos.map((r) => [r.contactId, r]))
@@ -61,6 +67,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         vendedora: r?.user.name ?? c?.assignedUser?.name ?? null,
         retornoEm: r ? r.dueAt.toISOString() : null,
         atrasado: Boolean(r?.escalonadoAt),
+        atendidoEm: atendidos.get(g.contactId)?.em.toISOString() ?? null,
+        atendidoPor: atendidos.get(g.contactId)?.por ?? null,
       }
     }),
   })

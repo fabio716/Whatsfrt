@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
+import { atendimentosHumanos } from "@/lib/retornoAtendido"
 
 export const dynamic = "force-dynamic"
 
@@ -24,18 +25,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     orderBy: { dueAt: "asc" },
     take: 20,
     select: {
-      id: true, dueAt: true,
+      id: true, dueAt: true, createdAt: true,
       user: { select: { name: true } },
       contact: { select: { id: true, name: true } },
     },
   })
-  return NextResponse.json(lista.map((l) => ({
-    id: l.id,
-    dueAt: l.dueAt.toISOString(),
-    vendedora: l.user.name,
-    contactId: l.contact.id,
-    cliente: l.contact.name,
-  })))
+  const atendidos = await atendimentosHumanos(lista.map((l) => ({ id: l.id, contactId: l.contact.id, desde: l.createdAt })))
+  return NextResponse.json(lista.map((l) => {
+    const at = atendidos.get(l.id)
+    return {
+      id: l.id,
+      dueAt: l.dueAt.toISOString(),
+      vendedora: l.user.name,
+      contactId: l.contact.id,
+      cliente: l.contact.name,
+      atendidoEm: at ? at.em.toISOString() : null,
+      atendidoPor: at ? at.por : null,
+    }
+  }))
 }
 
 // POST → "ciente": tira a faixa da tela deste administrador. Atraso novo
