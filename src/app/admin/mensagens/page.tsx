@@ -297,6 +297,19 @@ export default function MensagensPage() {
 
   useEffect(() => { void loadConversations() }, [loadConversations])
 
+  // Nome e foto da equipe mudam no cadastro e a lista só atualizava quando
+  // chegava mensagem nova — quem estava com a tela aberta continuava vendo o
+  // nome/foto antigos. Agora atualiza a cada minuto e ao voltar pra aba.
+  useEffect(() => {
+    const atualizar = () => { if (document.visibilityState === "visible") void loadConversations() }
+    const timer = setInterval(atualizar, 60_000)
+    document.addEventListener("visibilitychange", atualizar)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", atualizar)
+    }
+  }, [loadConversations])
+
   // ── Carrega mensagens da conversa ativa ──
   const loadMessages = useCallback(async (convId: string) => {
     setLoadingMsgs(true)
