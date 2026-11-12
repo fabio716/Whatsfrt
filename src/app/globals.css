@@ -76,7 +76,9 @@ body {
 .mascote-anim .mascote-olhos { transform-origin: 400px 318px; animation: mascote-piscar 4.2s ease-in-out infinite; }
 .mascote-anim .mascote-braco { transform-origin: 590px 548px; animation: mascote-acenar 5.2s ease-in-out infinite; }
 .mascote-anim .mascote-bola { transform-origin: 400px 88px; animation: mascote-antena 2s ease-in-out infinite; }
+/* Quem pede "reduzir movimento" fica sem o balanço e o aceno (movimentos
+   grandes), mas o mascote continua piscando e com a antena pulsando — são
+   mudanças pequenas, e sem elas ele parecia congelado. */
 @media (prefers-reduced-motion: reduce) {
-  .mascote-anim .mascote-pessoa, .mascote-anim .mascote-sombra, .mascote-anim .mascote-olhos,
-  .mascote-anim .mascote-braco, .mascote-anim .mascote-bola { animation: none; }
+  .mascote-anim .mascote-pessoa, .mascote-anim .mascote-sombra, .mascote-anim .mascote-braco { animation: none; }
 }
