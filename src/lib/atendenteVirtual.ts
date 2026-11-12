@@ -17,7 +17,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { randomUUID } from "node:crypto"
 import { prisma } from "@/lib/prisma"
 import { redis } from "@/lib/redis"
-import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
+import { ChatStatus, MessageDirection, MessageStatus, type Department } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
@@ -381,6 +381,32 @@ async function enviarComMascote(whatsappId: string, legenda: string) {
   }
 }
 
+// Setor da IA → departamentos cadastrados que atendem esse assunto.
+const DEPARTAMENTOS_DO_SETOR: Record<string, Department[]> = {
+  FINANCEIRO: ["FINANCEIRO", "COBRANCA"],
+  SUPORTE: ["SUPORTE", "SECRETARIA_ASSISTENCIA", "TECNICOS_ASSISTENCIA"],
+}
+
+// Quem fica com o retorno de um setor: se o cliente já tem retorno aberto, a
+// mesma pessoa; senão a do setor com menos retornos abertos (empate: ordem do nome).
+async function donoDoSetor(setor: string, contactId: string): Promise<string | null> {
+  const aberto = await prisma.contactReminder.findFirst({
+    where: { contactId, doneAt: null, note: { startsWith: MARCA_RETORNO }, user: { isActive: true } },
+    select: { userId: true },
+  })
+  if (aberto) return aberto.userId
+
+  const departamentos = DEPARTAMENTOS_DO_SETOR[setor] ?? [setor as Department]
+  const pessoas = await prisma.user.findMany({
+    where: { role: "AGENT", isActive: true, department: { in: departamentos } },
+    orderBy: { name: "asc" },
+    select: { id: true, _count: { select: { reminders: { where: { doneAt: null, note: { startsWith: MARCA_RETORNO } } } } } },
+  })
+  if (pessoas.length === 0) return null
+  pessoas.sort((a, b) => a._count.reminders - b._count.reminders)
+  return pessoas[0].id
+}
+
 async function responder(contactId: string, periodo: Periodo): Promise<boolean> {
   const contato = await prisma.contact.findUnique({
     where: { id: contactId },
@@ -507,16 +533,11 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
     await prisma.contact.update({ where: { id: contactId }, data: { temperature: saida.temperatura } })
   }
 
-  // Outro setor com horário combinado: o retorno vai pra alguém desse setor
-  // (o cliente continua na fila do setor, sem dono).
+  // Outro setor: o cliente fica na fila do setor, mas o retorno sempre tem UMA
+  // responsável (balanceado entre as pessoas do setor), combinando horário ou não.
   let donoRetorno = vendedoraId
-  if (!donoRetorno && saida.agendar && saida.setor !== "INDEFINIDO" && saida.setor !== "VENDAS") {
-    const doSetor = await prisma.user.findFirst({
-      where: { role: "AGENT", isActive: true, department: saida.setor },
-      orderBy: { name: "asc" },
-      select: { id: true },
-    })
-    donoRetorno = doSetor?.id ?? null
+  if (!donoRetorno && saida.setor !== "INDEFINIDO" && saida.setor !== "VENDAS") {
+    donoRetorno = await donoDoSetor(saida.setor, contactId)
   }
 
   // ── Retorno pra equipe (um só por cliente, atualizado a cada resposta) ──
