@@ -28,7 +28,6 @@ const DEPT_OPTIONS: { value: string; label: string }[] = [
   { value: "POS_VENDAS",             label: "Pós-Vendas" },
   { value: "SECRETARIA_ASSISTENCIA", label: "Secretária Assistência" },
   { value: "TECNICOS_ASSISTENCIA",   label: "Técnicos Assistência" },
-  { value: "GERENCIA",               label: "Gerência" },
 ]
 const DAY_NAMES   = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"]
 
