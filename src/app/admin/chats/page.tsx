@@ -152,6 +152,7 @@ export default async function ChatsPage(
         quotedMsgId: m.quotedMsgId,
         quotedBody: m.quotedBody,
         quotedSender: m.quotedSender,
+        viaAtendente: m.viaAtendente,
       })),
   }})
 

@@ -19,7 +19,10 @@ import { prisma } from "@/lib/prisma"
 import { redis } from "@/lib/redis"
 import { ChatStatus, MessageDirection, MessageStatus } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
-import { sendText } from "@/lib/whatsapp"
+import { readFile } from "node:fs/promises"
+import path from "node:path"
+import { sendText, sendMedia } from "@/lib/whatsapp"
+import { saveMediaBuffer, isSafeFilename } from "@/lib/mediaStorage"
 import { sendZapiTyping } from "@/lib/zapi"
 import { aiConfigured } from "@/lib/ai"
 import { getUraConfigCached } from "@/lib/ura"
@@ -348,6 +351,36 @@ const ROTULO_MIDIA: Record<string, string> = {
   audio: "[áudio]", image: "[imagem]", video: "[vídeo]", document: "[documento]", sticker: "[figurinha]",
 }
 
+// Manda a figura do mascote com o texto como legenda. null = não deu (quem
+// chamou manda só o texto). A figura fica guardada na pasta de mídias; o nome
+// do arquivo fica no Redis pra não gravar de novo a cada conversa.
+const CHAVE_MASCOTE = "av:mascote:arquivo"
+async function enviarComMascote(whatsappId: string, legenda: string) {
+  try {
+    const dados = await readFile(path.join(process.cwd(), "public", "mascote-frt.png"))
+    let arquivo = await redis.get(CHAVE_MASCOTE)
+    let mediaUrl = arquivo ? `/api/media/${arquivo}` : ""
+    if (!arquivo || !isSafeFilename(arquivo)) {
+      const salvo = await saveMediaBuffer(dados, "image/png", "mascote-frt.png")
+      arquivo = salvo.filename
+      mediaUrl = salvo.mediaUrl
+      await redis.set(CHAVE_MASCOTE, arquivo)
+    }
+    const envio = await sendMedia({
+      whatsappId, filename: arquivo, mimetype: "image/png", caption: legenda,
+      rawBase64: dados.toString("base64"),
+    })
+    if (!envio.ok) {
+      await redis.del(CHAVE_MASCOTE)
+      return null
+    }
+    return { envio, mediaUrl }
+  } catch (err) {
+    console.error("[atendenteVirtual] mascote não enviado:", err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 async function responder(contactId: string, periodo: Periodo): Promise<boolean> {
   const contato = await prisma.contact.findUnique({
     where: { id: contactId },
@@ -422,13 +455,19 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
   })
   if (humano) return true
 
-  const envio = await sendText(contato.whatsappId, saida.mensagem)
+  // Primeira resposta da conversa vai com a figura do mascote e o texto como
+  // legenda — uma mensagem só. Se a imagem falhar, vai só o texto.
+  const primeira = !(await redis.get(`av:cli:${contactId}`))
+  const figura = primeira ? await enviarComMascote(contato.whatsappId, saida.mensagem) : null
+  const envio = figura?.envio ?? (await sendText(contato.whatsappId, saida.mensagem))
   const salva = await prisma.message.create({
     data: {
       body: saida.mensagem,
       direction: MessageDirection.OUTBOUND,
       status: envio.ok ? MessageStatus.SENT : MessageStatus.FAILED,
       contactId,
+      viaAtendente: true,
+      ...(figura ? { mediaUrl: figura.mediaUrl, mediaType: "image/png" } : {}),
       ...(envio.messageId ? { whatsappKeyId: envio.messageId } : {}),
     },
   })
@@ -510,7 +549,8 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
     data: {
       id: salva.id, body: salva.body, direction: salva.direction,
       status: salva.status, createdAt: salva.createdAt.toISOString(),
-      agentId: null, contactId,
+      agentId: null, contactId, viaAtendente: true,
+      mediaUrl: salva.mediaUrl, mediaType: salva.mediaType,
       contact: {
         id: contato.id, name: contato.name, whatsappId: contato.whatsappId,
         profilePhotoUrl: contato.profilePhotoUrl, chatStatus: status, assignedUserId: vendedoraId,

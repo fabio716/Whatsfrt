@@ -13,6 +13,8 @@ export interface MessageData {
   quotedMsgId?: string | null
   quotedBody?: string | null
   quotedSender?: string | null
+  // Enviada pelo atendente virtual (IA), não por uma pessoa.
+  viaAtendente?: boolean
 }
 
 export type ChatStatus = "IDLE" | "IN_URA" | "WAITING_AGENT" | "IN_SERVICE" | "AWAITING_RATING"

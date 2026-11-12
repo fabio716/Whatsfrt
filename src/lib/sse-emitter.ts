@@ -25,6 +25,7 @@ export interface SSEMessageData {
   quotedMsgId?: string | null
   quotedBody?: string | null
   quotedSender?: string | null
+  viaAtendente?: boolean
 }
 
 export interface SSENewMessagePayload {

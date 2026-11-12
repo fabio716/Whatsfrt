@@ -1010,6 +1010,7 @@ export default function ChatsClient({
             status: msg.status, createdAt: msg.createdAt, agentId: msg.agentId,
             mediaUrl: msg.mediaUrl, mediaType: msg.mediaType,
             quotedMsgId: msg.quotedMsgId, quotedBody: msg.quotedBody, quotedSender: msg.quotedSender,
+            viaAtendente: msg.viaAtendente,
           }
           setContacts((prev) => {
             const exists = prev.some((c) => c.id === contact.id)
@@ -2209,6 +2210,13 @@ export default function ChatsClient({
                     return (
                       <div key={msg.id} id={`msg-${msg.id}`} className={`group flex ${isOut ? "justify-end" : "justify-start"} ${hasReaction ? "mb-4" : "mb-1"}`}>
                         <div className={`relative max-w-[68%] rounded-2xl px-3 py-2.5 shadow-sm transition-shadow ${flashMsgId === msg.id ? "ring-2 ring-amber-400" : ""} ${isOut ? "rounded-tr-sm bg-[#dcf8c6] text-zinc-800" : "rounded-tl-sm border border-zinc-100 bg-white text-zinc-800"}`}>
+                          {msg.viaAtendente && (
+                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#002d6b]">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src="/mascote-frt.png" alt="" className="h-5 w-5 rounded-md" />
+                              Atendente virtual
+                            </div>
+                          )}
                           {hasReaction && (
                             <div className={`absolute -bottom-3.5 flex items-center gap-0.5 rounded-full border border-zinc-100 bg-white px-1.5 py-0.5 text-[11px] shadow-sm ${isOut ? "right-2" : "left-2"}`}>
                               {msg.theirReaction && <span title="Reação do cliente">{msg.theirReaction}</span>}
