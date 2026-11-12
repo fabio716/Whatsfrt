@@ -740,8 +740,10 @@ model AtendenteVirtualConfig {
 
 // Último "ciente" de cada administrador no resumo do atendente virtual.
 model AtendenteCiencia {
-  userId   String   @id
-  cienteAt DateTime
+  userId   String    @id
+  cienteAt DateTime?
+  // Último "ciente" na faixa vermelha de retornos atrasados.
+  atrasosCienteAt DateTime?
 
   @@map("atendente_virtual_ciencia")
 }

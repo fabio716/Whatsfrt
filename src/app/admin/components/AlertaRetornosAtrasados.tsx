@@ -16,6 +16,8 @@ interface Atraso {
 export default function AlertaRetornosAtrasados() {
   const [lista, setLista] = useState<Atraso[]>([])
 
+  const [enviando, setEnviando] = useState(false)
+
   useEffect(() => {
     const carregar = async () => {
       try {
@@ -29,6 +31,20 @@ export default function AlertaRetornosAtrasados() {
     const timer = setInterval(() => void carregar(), 60_000)
     return () => clearInterval(timer)
   }, [])
+
+  // "Ciente": tira a faixa da tela deste administrador (atraso novo a traz de volta).
+  const ciente = async () => {
+    if (enviando) return
+    setEnviando(true)
+    try {
+      const res = await fetch("/api/admin/retornos-atrasados", { method: "POST" })
+      if (res.ok) setLista([])
+    } catch {
+      // mantém a faixa; tenta de novo no próximo clique
+    } finally {
+      setEnviando(false)
+    }
+  }
 
   if (lista.length === 0) return null
   const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })
@@ -53,6 +69,14 @@ export default function AlertaRetornosAtrasados() {
         {lista.length > 5 && <li>e mais {lista.length - 5}…</li>}
       </ul>
       </div>
+      <button
+        type="button"
+        onClick={() => void ciente()}
+        disabled={enviando}
+        className="ml-auto shrink-0 rounded-lg bg-red-700 px-3.5 py-1.5 text-[12px] font-semibold text-white hover:bg-red-800 disabled:opacity-50"
+      >
+        {enviando ? "…" : "Ciente"}
+      </button>
     </div>
   )
 }
