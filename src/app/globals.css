@@ -67,20 +67,45 @@ body {
 
 /* ─── Mascote da FRT (components/ui/Mascote.tsx) ─────────────────────────── */
 @keyframes mascote-flutuar { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
-@keyframes mascote-sombra { 0%, 100% { transform: scaleX(1); opacity: .14; } 50% { transform: scaleX(.88); opacity: .09; } }
+@keyframes mascote-sombra { 0%, 100% { transform: scaleX(1); opacity: .16; } 50% { transform: scaleX(.88); opacity: .1; } }
 @keyframes mascote-piscar { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.08); } }
-@keyframes mascote-acenar { 0%, 55%, 100% { transform: rotate(0deg); } 63% { transform: rotate(-16deg); } 71% { transform: rotate(10deg); } 79% { transform: rotate(-14deg); } 87% { transform: rotate(6deg); } }
-@keyframes mascote-antena { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.25); opacity: .55; } }
+@keyframes mascote-acenar { 0%, 48%, 100% { transform: rotate(0deg); } 56% { transform: rotate(-16deg); } 64% { transform: rotate(12deg); } 72% { transform: rotate(-14deg); } 80% { transform: rotate(8deg); } 88% { transform: rotate(0deg); } }
+@keyframes mascote-festejar { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+@keyframes mascote-antena { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.22); opacity: .6; } }
+@keyframes mascote-pe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-28px); } }
+@keyframes mascote-led { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes mascote-flutuar-z { 0% { transform: translate(0, 0); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(16px, -30px); opacity: 0; } }
+@keyframes mascote-ponto { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+@keyframes mascote-confete { 0% { transform: translateY(0) rotate(0deg); } 100% { transform: translateY(-22px) rotate(60deg); } }
 .mascote-anim .mascote-pessoa { animation: mascote-flutuar 3.4s ease-in-out infinite; }
-.mascote-anim .mascote-sombra { transform-origin: 400px 716px; animation: mascote-sombra 3.4s ease-in-out infinite; }
+.mascote-anim .mascote-sombra { transform-origin: 400px 748px; animation: mascote-sombra 3.4s ease-in-out infinite; }
 .mascote-anim .mascote-olhos { transform-origin: 400px 318px; animation: mascote-piscar 4.2s ease-in-out infinite; }
-.mascote-anim .mascote-braco { transform-origin: 590px 548px; animation: mascote-acenar 5.2s ease-in-out infinite; }
-.mascote-anim .mascote-bola { transform-origin: 400px 88px; animation: mascote-antena 2s ease-in-out infinite; }
-/* Quem pede "reduzir movimento" fica sem o balanço e o aceno (movimentos
-   grandes), mas o mascote continua piscando e com a antena pulsando — são
-   mudanças pequenas, e sem elas ele parecia congelado. */
+.mascote-anim .mascote-ola { transform-origin: 0 0; animation: mascote-acenar 4.6s ease-in-out infinite; }
+.mascote-anim .mascote-festa { transform-origin: 0 0; animation: mascote-festejar .45s ease-in-out infinite; }
+.mascote-anim .mascote-bola { transform-origin: 400px 84px; animation: mascote-antena 2s ease-in-out infinite; }
+.mascote-anim .mascote-led { animation: mascote-led 1.6s ease-in-out infinite; }
+.mascote-anim .mascote-led-2 { animation-delay: .8s; }
+.mascote-anim .mascote-zzz { animation: mascote-flutuar-z 2.6s ease-in infinite; }
+.mascote-anim .mascote-zzz-2 { animation-delay: .8s; }
+.mascote-anim .mascote-zzz-3 { animation-delay: 1.6s; }
+.mascote-anim .mascote-ponto { animation: mascote-ponto 1.4s ease-in-out infinite; }
+.mascote-anim .mascote-ponto-2 { animation-delay: .25s; }
+.mascote-anim .mascote-ponto-3 { animation-delay: .5s; }
+.mascote-anim .mascote-conf { transform-box: fill-box; transform-origin: center; animation: mascote-confete .9s ease-in-out infinite alternate; }
+.mascote-anim .mascote-conf-2 { animation-delay: .15s; }
+.mascote-anim .mascote-conf-3 { animation-delay: .3s; }
+.mascote-anim .mascote-conf-4 { animation-delay: .45s; }
+.mascote-anim .mascote-conf-5 { animation-delay: .2s; }
+.mascote-anim .mascote-conf-6 { animation-delay: .35s; }
+.mascote-correndo .mascote-pe-a { animation: mascote-pe .42s ease-in-out infinite; }
+.mascote-correndo .mascote-pe-b { animation: mascote-pe .42s ease-in-out -.21s infinite; }
+/* Quem pede "reduzir movimento" fica sem balanço, aceno, corrida e confete
+   (movimentos grandes), mas o mascote continua piscando, com a antena
+   pulsando e os LEDs acesos — mudanças pequenas; sem elas parecia congelado. */
 @media (prefers-reduced-motion: reduce) {
-  .mascote-anim .mascote-pessoa, .mascote-anim .mascote-sombra, .mascote-anim .mascote-braco { animation: none; }
+  .mascote-anim .mascote-pessoa, .mascote-anim .mascote-sombra, .mascote-anim .mascote-ola,
+  .mascote-anim .mascote-festa, .mascote-anim .mascote-zzz, .mascote-anim .mascote-conf,
+  .mascote-correndo .mascote-pe-a, .mascote-correndo .mascote-pe-b { animation: none; }
 }
 
 /* ─── Mascote ocioso (admin/components/MascoteAmigo.tsx) ─────────────────── */

@@ -361,7 +361,8 @@ const ROTULO_MIDIA: Record<string, string> = {
 // Manda a figura do mascote com o texto como legenda. null = não deu (quem
 // chamou manda só o texto). A figura fica guardada na pasta de mídias; o nome
 // do arquivo fica no Redis pra não gravar de novo a cada conversa.
-const CHAVE_MASCOTE = "av:mascote:arquivo"
+// v2: figura nova do mascote — a chave antiga apontava pro arquivo anterior.
+const CHAVE_MASCOTE = "av:mascote:arquivo:v2"
 async function enviarComMascote(whatsappId: string, legenda: string) {
   try {
     const dados = await readFile(path.join(process.cwd(), "public", "mascote-frt.png"))

@@ -85,7 +85,7 @@ export default function RetornosObrigatorio() {
       <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
         <div className="border-b border-zinc-100 px-5 py-4">
           <div className="flex items-start gap-3">
-            <Mascote className="h-16 w-16 shrink-0 rounded-2xl" title="Atendente virtual da FRT" />
+            <Mascote className="h-16 w-16 shrink-0 rounded-2xl" title="Atendente virtual da FRT" humor={temAtraso ? "surpreso" : "feliz"} />
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#002d6b]">
                 Atendente virtual · aviso obrigatório

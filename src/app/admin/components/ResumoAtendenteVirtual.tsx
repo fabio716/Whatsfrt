@@ -67,7 +67,7 @@ export default function ResumoAtendenteVirtual() {
   return (
     <aside className="fixed bottom-4 right-4 z-[80] flex max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl" aria-label="Resumo do atendente virtual">
       <div className="flex items-start gap-3 border-b border-zinc-100 px-4 py-3">
-        <Mascote className="h-12 w-12 shrink-0 rounded-xl" title="Atendente virtual da FRT" />
+        <Mascote className="h-12 w-12 shrink-0 rounded-xl" title="Atendente virtual da FRT" humor="feliz" />
         <div className="min-w-0">
           <p className="text-[13.5px] font-semibold leading-snug text-zinc-900">
             {resumo.total === 1 ? "Atendi 1 cliente" : `Atendi ${resumo.total} clientes`} enquanto a equipe estava fora

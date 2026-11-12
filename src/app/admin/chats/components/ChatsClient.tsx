@@ -2758,7 +2758,7 @@ export default function ChatsClient({
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-zinc-400 text-sm">
-            <Mascote className="h-28 w-28 rounded-3xl opacity-90" />
+            <Mascote className="h-32 w-32 rounded-3xl" humor="dormindo" />
             <span>Selecione um contato para começar</span>
           </div>
         )}

@@ -125,7 +125,7 @@ export default function MascoteAmigo() {
       {(fase === "falando" || fase === "reagindo") && (
         <div
           ref={bolhaRef}
-          className="pointer-events-auto absolute bottom-[104px] left-1/2 w-[15.5rem] -translate-x-1/2 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 shadow-xl anim-slide-up"
+          className="pointer-events-auto absolute bottom-[124px] sm:bottom-[142px] left-1/2 w-[15.5rem] -translate-x-1/2 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 shadow-xl anim-slide-up"
         >
           <button
             type="button"
@@ -157,7 +157,7 @@ export default function MascoteAmigo() {
       )}
 
       {fase === "reagindo" && (
-        <div aria-hidden className="absolute bottom-24 left-1/2 h-0 w-0">
+        <div aria-hidden className="absolute bottom-28 left-1/2 h-0 w-0">
           {CONFETES.map((c, i) => (
             <span key={i} className="amigo-confete absolute text-xl" style={{ ["--dx" as string]: `${(i - 3.5) * 22}px`, animationDelay: `${i * 70}ms` }}>{c}</span>
           ))}
@@ -165,7 +165,14 @@ export default function MascoteAmigo() {
       )}
 
       <div className={correndo ? "amigo-corre" : fase === "reagindo" ? "amigo-pulo" : ""}>
-        <Mascote className="h-20 w-20 sm:h-24 sm:w-24 drop-shadow-lg" title="Mascote da FRT" />
+        <Mascote
+          className="h-24 w-24 sm:h-28 sm:w-28 drop-shadow-lg"
+          title="Mascote da FRT"
+          fundo={false}
+          reage={false}
+          correndo={correndo}
+          humor={fase === "reagindo" ? "comemorando" : "feliz"}
+        />
       </div>
     </div>
   )

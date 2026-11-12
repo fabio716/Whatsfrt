@@ -105,7 +105,7 @@ export default function MeusRetornos() {
         aria-expanded={aberto}
         className={`ml-auto flex items-center gap-2.5 rounded-full border bg-white py-1.5 pl-1.5 pr-4 shadow-lg ${atrasados > 0 ? "border-red-300" : "border-zinc-200"}`}
       >
-        <Mascote className="h-10 w-10 rounded-full" />
+        <Mascote className="h-10 w-10 rounded-full" humor={atrasados > 0 ? "surpreso" : "normal"} />
         <span className={`text-[12.5px] font-semibold ${atrasados > 0 ? "text-red-700" : "text-zinc-800"}`}>
           {itens.length === 1 ? "1 retorno para fazer" : `${itens.length} retornos para fazer`}
           {atrasados > 0 ? ` · ${atrasados} atrasado${atrasados === 1 ? "" : "s"}` : ""}

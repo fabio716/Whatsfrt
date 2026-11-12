@@ -37,7 +37,7 @@ export default function LoginPage() {
 
         {/* Logo / Brand */}
         <div className="mb-8 text-center">
-          <Mascote className="mx-auto mb-3 h-24 w-24 rounded-3xl shadow-lg shadow-emerald-200/60" title="Atendente virtual da FRT" />
+          <Mascote className="mx-auto mb-3 h-28 w-28 rounded-3xl shadow-lg shadow-emerald-200/60" title="Atendente virtual da FRT" humor="feliz" />
           <h1 className="text-xl font-bold tracking-tight text-zinc-900">WhatsFRT</h1>
           <p className="mt-1 text-sm text-zinc-400">Oi! Vamos atender? 👋 Sistema Interno de Mensageria</p>
         </div>
