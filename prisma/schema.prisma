@@ -750,6 +750,11 @@ model ContactReminder {
   note       String    @default("")
   doneAt     DateTime?
   notifiedAt DateTime?
+  // Quando a dona confirmou que está ciente (tela obrigatória ao abrir o sistema).
+  // null = ainda não viu. Lembrete criado pela própria pessoa já nasce ciente.
+  cienteAt   DateTime?
+  // Quando o retorno atrasou e a diretoria foi avisada. null = não escalado.
+  escalonadoAt DateTime?
   createdAt  DateTime  @default(now())
 
   @@index([userId, doneAt, dueAt])

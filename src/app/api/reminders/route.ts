@@ -75,6 +75,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       userId: auth.id,
       dueAt,
       note: String(body.note ?? "").trim().slice(0, MAX_NOTA),
+      cienteAt: new Date(), // ela mesma criou — já está ciente
     },
     select: { id: true, dueAt: true, note: true },
   })

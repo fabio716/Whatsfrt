@@ -26,7 +26,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Corpo inválido" }, { status: 400 })
   }
 
-  const data: { doneAt?: Date; dueAt?: Date; notifiedAt?: null } = {}
+  const data: { doneAt?: Date; dueAt?: Date; notifiedAt?: null; escalonadoAt?: null } = {}
   if (body.done === true) data.doneAt = new Date()
   if (body.dueAt) {
     const nova = new Date(body.dueAt)
@@ -35,6 +35,7 @@ export async function PATCH(
     }
     data.dueAt = nova
     data.notifiedAt = null // adiado: avisa de novo no novo horário
+    data.escalonadoAt = null // novo prazo: o alerta de atraso volta a valer
   }
   if (Object.keys(data).length === 0) return NextResponse.json({ error: "Nada para alterar." }, { status: 400 })
 

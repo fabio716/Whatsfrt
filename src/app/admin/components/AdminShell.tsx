@@ -6,6 +6,8 @@ import EvolutionStatusBanner from "./EvolutionStatusBanner"
 import NotificationsPrompt from "./NotificationsPrompt"
 import VersaoNova from "./VersaoNova"
 import Novidades from "./Novidades"
+import RetornosObrigatorio from "./RetornosObrigatorio"
+import AlertaRetornosAtrasados from "./AlertaRetornosAtrasados"
 import GlobalNotifier, { type NotifyCounts, type NotifyPrefs, NOTIFY_PREFS_KEY, defaultPrefs } from "./GlobalNotifier"
 
 type Role = "ADMIN" | "AGENT"
@@ -59,6 +61,8 @@ export default function AdminShell({
       {prefs && <GlobalNotifier onCounts={handleCounts} prefs={prefs} />}
 
       <Novidades />
+      <RetornosObrigatorio />
+      {userRole === "ADMIN" && <AlertaRetornosAtrasados />}
 
       <AdminNav
         userRole={userRole}

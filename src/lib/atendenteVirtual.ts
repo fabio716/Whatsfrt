@@ -528,7 +528,7 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
 
     const aberto = await prisma.contactReminder.findFirst({
       where: { contactId, doneAt: null, note: { startsWith: MARCA_RETORNO } },
-      select: { id: true, dueAt: true, note: true },
+      select: { id: true, userId: true, dueAt: true, note: true },
     })
     if (!aberto) {
       await prisma.contactReminder.create({ data: { contactId, userId: donoRetorno, dueAt: quando!, note: nota } })
@@ -538,8 +538,8 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
       await prisma.contactReminder.update({
         where: { id: aberto.id },
         data: combinado || !jaCombinado
-          ? { userId: donoRetorno, dueAt: quando!, note: nota, notifiedAt: null }
-          : { userId: donoRetorno },
+          ? { userId: donoRetorno, dueAt: quando!, note: nota, notifiedAt: null, cienteAt: null }
+          : aberto.userId === donoRetorno ? {} : { userId: donoRetorno, cienteAt: null },
       })
     }
   }
