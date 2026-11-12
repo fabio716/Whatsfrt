@@ -82,3 +82,19 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .mascote-anim .mascote-pessoa, .mascote-anim .mascote-sombra, .mascote-anim .mascote-braco { animation: none; }
 }
+
+/* ─── Mascote ocioso (admin/components/MascoteAmigo.tsx) ─────────────────── */
+@keyframes amigo-entrar { from { left: -130px; } to { left: 42vw; } }
+@keyframes amigo-sair { from { left: 42vw; } to { left: calc(100vw + 130px); } }
+@keyframes amigo-correr { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-16px) rotate(5deg); } }
+@keyframes amigo-pular { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-30px) scale(1.06); } 60% { transform: translateY(-30px) scale(1.06); } }
+@keyframes amigo-confetar { 0% { transform: translate(0, 0) scale(.4); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(var(--dx, 0), -130px) scale(1.1) rotate(40deg); opacity: 0; } }
+.amigo-entrando { left: 42vw; animation: amigo-entrar 4s linear both; }
+.amigo-saindo { animation: amigo-sair 3.4s linear both; }
+.amigo-parado { left: 42vw; }
+.amigo-corre { animation: amigo-correr .42s ease-in-out infinite; }
+.amigo-pulo { animation: amigo-pular .7s ease-in-out 3; }
+.amigo-confete { animation: amigo-confetar 1.6s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .amigo-entrando, .amigo-saindo, .amigo-corre, .amigo-pulo { animation: none; }
+}
