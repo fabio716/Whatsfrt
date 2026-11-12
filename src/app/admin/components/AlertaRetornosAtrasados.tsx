@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Mascote from "@/components/ui/Mascote"
 
 // Faixa vermelha para o administrador: retornos do atendente virtual que
 // passaram do horário sem a vendedora concluir. Some sozinha quando concluem.
@@ -56,8 +57,7 @@ export default function AlertaRetornosAtrasados() {
 
   return (
     <div role="alert" className={`fixed inset-x-0 top-0 z-[90] flex items-center gap-3 border-b px-4 py-2 shadow-sm md:left-[var(--nav-w,0px)] ${tudoAtendido ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element -- figura estática pequena */}
-      <img src="/mascote-frt.png" alt="" className="h-10 w-10 shrink-0 rounded-lg" />
+      <Mascote className="h-10 w-10 shrink-0 rounded-lg" />
       <div className="min-w-0">
         <p className={`text-[12.5px] font-semibold ${tudoAtendido ? "text-emerald-800" : "text-red-700"}`}>
           {tudoAtendido

@@ -64,3 +64,19 @@ body {
     animation: none;
   }
 }
+
+/* ─── Mascote da FRT (components/ui/Mascote.tsx) ─────────────────────────── */
+@keyframes mascote-flutuar { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes mascote-sombra { 0%, 100% { transform: scaleX(1); opacity: .14; } 50% { transform: scaleX(.88); opacity: .09; } }
+@keyframes mascote-piscar { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.08); } }
+@keyframes mascote-acenar { 0%, 55%, 100% { transform: rotate(0deg); } 63% { transform: rotate(-16deg); } 71% { transform: rotate(10deg); } 79% { transform: rotate(-14deg); } 87% { transform: rotate(6deg); } }
+@keyframes mascote-antena { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.25); opacity: .55; } }
+.mascote-anim .mascote-pessoa { animation: mascote-flutuar 3.4s ease-in-out infinite; }
+.mascote-anim .mascote-sombra { transform-origin: 400px 716px; animation: mascote-sombra 3.4s ease-in-out infinite; }
+.mascote-anim .mascote-olhos { transform-origin: 400px 318px; animation: mascote-piscar 4.2s ease-in-out infinite; }
+.mascote-anim .mascote-braco { transform-origin: 590px 548px; animation: mascote-acenar 5.2s ease-in-out infinite; }
+.mascote-anim .mascote-bola { transform-origin: 400px 88px; animation: mascote-antena 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .mascote-anim .mascote-pessoa, .mascote-anim .mascote-sombra, .mascote-anim .mascote-olhos,
+  .mascote-anim .mascote-braco, .mascote-anim .mascote-bola { animation: none; }
+}

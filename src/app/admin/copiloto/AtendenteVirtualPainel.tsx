@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import Mascote from "@/components/ui/Mascote"
 
 // ─── Atendente virtual — painel de controle (admin) ──────────────────────────
 // Liga/desliga a IA que responde o cliente à noite, no fim de semana e no
@@ -107,8 +108,7 @@ export default function AtendenteVirtualPainel() {
   return (
     <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="flex items-center gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element -- figura estática pequena */}
-        <img src="/mascote-frt.png" alt="" className="h-12 w-12 shrink-0 rounded-xl" />
+        <Mascote className="h-12 w-12 shrink-0 rounded-xl" />
         <h2 className="text-[15px] font-semibold text-zinc-900">Atendente virtual</h2>
       </div>
       <p className="mt-0.5 text-[12.5px] text-zinc-500">

@@ -9,6 +9,7 @@ import { normalizarLetras, normalizarTermo, TextoRealcado } from "@/app/admin/co
 import { notifyDesktop } from "@/lib/notify"
 import { handleSessionExpired } from "@/lib/sessionGuard"
 import { LembreteModal, PainelRetornos, venceAteHoje, adiarParaAmanha, type Lembrete } from "./Lembretes"
+import Mascote from "@/components/ui/Mascote"
 
 type Agent = { id: string; name: string }
 
@@ -2756,8 +2757,9 @@ export default function ChatsClient({
             </footer>
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center text-zinc-400 text-sm">
-            Selecione um contato
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-zinc-400 text-sm">
+            <Mascote className="h-28 w-28 rounded-3xl opacity-90" />
+            <span>Selecione um contato para começar</span>
           </div>
         )}
       </main>

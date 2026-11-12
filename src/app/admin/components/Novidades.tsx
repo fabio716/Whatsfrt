@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Mascote from "@/components/ui/Mascote"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Aviso de novidades — aparece UMA vez por pessoa (por navegador) a cada
@@ -177,9 +178,12 @@ export default function Novidades() {
     <div className={`fixed inset-0 z-[100] flex items-end justify-center p-0 backdrop-blur-sm sm:items-center sm:p-4 ${obrigatorio ? "bg-black/70" : "bg-black/40"}`} role="dialog" aria-modal="true" aria-labelledby="novidades-titulo">
       <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3">
+          <span className="flex items-center gap-2">
+            <Mascote className="h-8 w-8 rounded-lg" />
           <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
             Novidades no WhatsFRT{obrigatorio ? ` · leitura obrigatória · ${passo + 1} de ${PASSOS.length}` : ""}
           </p>
+          </span>
           {!obrigatorio && (
             <button type="button" onClick={fechar} aria-label="Fechar" className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" /></svg>

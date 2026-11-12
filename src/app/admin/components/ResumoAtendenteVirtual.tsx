@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { quandoTexto } from "../chats/components/Lembretes"
+import Mascote from "@/components/ui/Mascote"
 
 // ─── Resumo do atendente virtual (só administrador) ──────────────────────────
 // O mascote conta o que fez enquanto a equipe estava fora: quem atendeu, com
@@ -66,8 +67,7 @@ export default function ResumoAtendenteVirtual() {
   return (
     <aside className="fixed bottom-4 right-4 z-[80] flex max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl" aria-label="Resumo do atendente virtual">
       <div className="flex items-start gap-3 border-b border-zinc-100 px-4 py-3">
-        {/* eslint-disable-next-line @next/next/no-img-element -- figura estática pequena */}
-        <img src="/mascote-frt.png" alt="Atendente virtual da FRT" className="h-12 w-12 shrink-0 rounded-xl" />
+        <Mascote className="h-12 w-12 shrink-0 rounded-xl" title="Atendente virtual da FRT" />
         <div className="min-w-0">
           <p className="text-[13.5px] font-semibold leading-snug text-zinc-900">
             {resumo.total === 1 ? "Atendi 1 cliente" : `Atendi ${resumo.total} clientes`} enquanto a equipe estava fora

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { quandoTexto } from "../chats/components/Lembretes"
+import Mascote from "@/components/ui/Mascote"
 
 // ─── Ciência obrigatória dos retornos ────────────────────────────────────────
 // Tela cheia: enquanto houver retorno deixado pelo atendente virtual que a
@@ -84,8 +85,7 @@ export default function RetornosObrigatorio() {
       <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
         <div className="border-b border-zinc-100 px-5 py-4">
           <div className="flex items-start gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element -- figura estática pequena */}
-            <img src="/mascote-frt.png" alt="Atendente virtual da FRT" className="h-16 w-16 shrink-0 rounded-2xl" />
+            <Mascote className="h-16 w-16 shrink-0 rounded-2xl" title="Atendente virtual da FRT" />
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#002d6b]">
                 Atendente virtual · aviso obrigatório
