@@ -22,6 +22,7 @@ interface Agente {
   aVencer: number
   pontualidade: number | null
   atrasoMedioMin: number | null
+  suspeitos: number
 }
 interface Item {
   id: string
@@ -35,6 +36,8 @@ interface Item {
   via: "chat" | "marcado" | null
   status: Status
   atrasoMin: number
+  texto: string
+  suspeito: boolean
 }
 interface Dados {
   dias: number
@@ -60,7 +63,7 @@ const diaHora = (iso: string) => {
   const hora = d.toLocaleTimeString("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit" })
   return `${dia} ${hora}`
 }
-const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit" })
+const horaSeg = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit", second: "2-digit" })
 const duracao = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ""}`)
 
 function Selo({ s }: Readonly<{ s: Status }>) {
@@ -73,8 +76,8 @@ function Selo({ s }: Readonly<{ s: Status }>) {
 }
 
 function textoResultado(i: Item): string {
-  if (i.status === "NO_PRAZO") return i.atendidoEm ? `atendeu às ${hora(i.atendidoEm)} (${i.via === "marcado" ? "marcou feito" : "respondeu no chat"})` : ""
-  if (i.status === "COM_ATRASO") return `atendeu ${duracao(i.atrasoMin)} depois (${hora(i.atendidoEm ?? i.combinado)}, ${i.via === "marcado" ? "marcou feito" : "chat"})`
+  if (i.status === "NO_PRAZO") return i.atendidoEm ? `atendeu às ${horaSeg(i.atendidoEm)} (${i.via === "marcado" ? "marcou feito" : "respondeu no chat"})` : ""
+  if (i.status === "COM_ATRASO") return `atendeu ${duracao(i.atrasoMin)} depois (${horaSeg(i.atendidoEm ?? i.combinado)}, ${i.via === "marcado" ? "marcou feito" : "chat"})`
   if (i.status === "SEM_ATENDIMENTO") return `esperando há ${duracao(i.atrasoMin)}`
   return "ainda não venceu"
 }
@@ -249,6 +252,9 @@ export default function RetornosDashboard() {
                           {a.semAtendimento > 0 && ` · ${a.semAtendimento} sem atendimento`}
                           {a.aVencer > 0 && ` · ${a.aVencer} a vencer`}
                         </p>
+                        {a.suspeitos > 0 && (
+                          <p className="mt-1 text-[11.5px] font-semibold text-amber-700">⚠ {a.suspeitos} {a.suspeitos === 1 ? "retorno atendido" : "retornos atendidos"} no mesmo minuto — confira na lista abaixo</p>
+                        )}
                       </div>
                     </li>
                   )
@@ -293,6 +299,8 @@ export default function RetornosDashboard() {
                         <p className="text-[12px] text-zinc-500">
                           combinado {diaHora(i.combinado)} · <span className="font-medium text-zinc-700">{STATUS[i.status].rotulo}</span>, {textoResultado(i)}
                         </p>
+                        {i.texto && <p className="mt-0.5 truncate text-[12px] italic text-zinc-400">resposta: &ldquo;{i.texto}&rdquo;</p>}
+                        {i.suspeito && <p className="mt-0.5 text-[11.5px] font-semibold text-amber-700">⚠ vários retornos atendidos no mesmo minuto por {i.agente} — confira se foi atendimento de verdade</p>}
                       </div>
                     </li>
                   ))}

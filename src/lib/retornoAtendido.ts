@@ -69,18 +69,19 @@ export function statusRetorno(
 }
 
 // Primeira resposta humana de cada retorno (depois que ele foi criado), numa
-// consulta só — sem o limite de mensagens da versão acima.
-export async function primeiraRespostaHumana(ids: string[]): Promise<Map<string, Date>> {
-  const mapa = new Map<string, Date>()
+// consulta só — sem o limite de mensagens da versão acima. Devolve também o
+// início do texto, pra o administrador conferir o que foi "o atendimento".
+export async function primeiraRespostaHumana(ids: string[]): Promise<Map<string, { em: Date; texto: string }>> {
+  const mapa = new Map<string, { em: Date; texto: string }>()
   if (ids.length === 0) return mapa
-  const linhas = await prisma.$queryRaw<{ id: string; em: Date }[]>(Prisma.sql`
-    SELECT r.id AS id, MIN(m."createdAt") AS em
+  const linhas = await prisma.$queryRaw<{ id: string; em: Date; texto: string | null }[]>(Prisma.sql`
+    SELECT DISTINCT ON (r.id) r.id AS id, m."createdAt" AS em, left(m.body, 90) AS texto
     FROM contact_reminders r
     JOIN messages m ON m."contactId" = r."contactId"
       AND m.direction = 'OUTBOUND' AND m."agentId" IS NOT NULL AND m."createdAt" > r."createdAt"
       AND m."isBroadcast" = false AND m.body NOT LIKE ${PREFIXO_PEDIDO_NOTA + "%"}
     WHERE r.id IN (${Prisma.join(ids)})
-    GROUP BY r.id`)
-  for (const l of linhas) mapa.set(l.id, new Date(l.em))
+    ORDER BY r.id, m."createdAt" ASC`)
+  for (const l of linhas) mapa.set(l.id, { em: new Date(l.em), texto: l.texto ?? "" })
   return mapa
 }

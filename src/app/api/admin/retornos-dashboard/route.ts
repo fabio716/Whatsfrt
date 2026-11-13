@@ -58,7 +58,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const geral = vazio()
   const porAgente = new Map<string, { nome: string; departamento: string | null; c: Contagem; atrasos: number[] }>()
   const itens = lembretes.map((l) => {
-    const msg = respostas.get(l.id) ?? null
+    const resp = respostas.get(l.id) ?? null
+    const msg = resp ? resp.em : null
     // Atendeu = a primeira entre responder no chat e marcar "Fiz o retorno".
     const candidatos = [msg, l.doneAt].filter((d): d is Date => d !== null)
     const atendidoEm = candidatos.length ? new Date(Math.min(...candidatos.map((d) => d.getTime()))) : null
@@ -83,8 +84,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       via,
       status,
       atrasoMin,
+      texto: via === "chat" && resp ? resp.texto : "",
+      suspeito: false,
     }
   })
+
+  // Vários retornos "atendidos" pela mesma pessoa em menos de 1 minuto não é
+  // atendimento de verdade (cliques em lote, mensagens automáticas...): marca
+  // pra o administrador conferir. Janela móvel de 60 s ao redor de cada um.
+  const instantes = new Map<string, number[]>()
+  for (const i of itens) {
+    if (i.atendidoEm) instantes.set(i.agenteId, [...(instantes.get(i.agenteId) ?? []), Date.parse(i.atendidoEm)])
+  }
+  for (const i of itens) {
+    if (!i.atendidoEm) continue
+    const t = Date.parse(i.atendidoEm)
+    i.suspeito = (instantes.get(i.agenteId) ?? []).filter((x) => Math.abs(x - t) <= 60_000).length >= 3
+  }
 
   const agentes = [...porAgente.entries()].map(([id, a]) => ({
     id,
@@ -93,6 +109,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     total: a.c.noPrazo + a.c.comAtraso + a.c.semAtendimento + a.c.aVencer,
     ...a.c,
     pontualidade: pontualidade(a.c),
+    suspeitos: itens.filter((i) => i.agenteId === id && i.suspeito).length,
     atrasoMedioMin: a.atrasos.length ? Math.round(a.atrasos.reduce((s, x) => s + x, 0) / a.atrasos.length) : null,
   }))
   // Quem precisa de atenção primeiro: mais sem atendimento, depois menor pontualidade.
