@@ -49,40 +49,58 @@ export async function atendimentosHumanos(
 }
 
 // ─── Cumprimento do horário combinado ───────────────────────────────────────
-// Respeitou = atendeu até 30 min depois do horário combinado (a mesma
-// tolerância do alerta à diretoria). "Atendeu" = uma pessoa respondeu o
-// cliente no chat OU marcou "Fiz o retorno" (quem liga por telefone).
+// Respeitou = a DONA do retorno respondeu o cliente no chat até 30 min depois
+// do horário combinado (mesma tolerância do alerta à diretoria). Duas coisas
+// NÃO provam o retorno, e ficam em situações próprias, fora da pontualidade:
+//   • só marcou "Fiz o retorno" (sem conversa dela com o cliente — pode ter
+//     sido telefone, ou clique pra limpar o aviso);
+//   • outra pessoa respondeu o cliente (o cliente foi atendido, mas não por ela).
 export const TOLERANCIA_RETORNO_MS = 30 * 60 * 1000
 
-export type StatusRetorno = "NO_PRAZO" | "COM_ATRASO" | "SEM_ATENDIMENTO" | "A_VENCER"
+export type StatusRetorno =
+  | "NO_PRAZO" | "COM_ATRASO" | "SEM_ATENDIMENTO" | "A_VENCER" | "SO_MARCOU" | "OUTRA_PESSOA"
 
 export function statusRetorno(
-  r: { dueAt: Date; atendidoEm: Date | null },
+  r: { dueAt: Date; donoEm: Date | null; marcouEm: Date | null; outroEm: Date | null },
   agora: Date,
 ): { status: StatusRetorno; atrasoMin: number } {
-  if (r.atendidoEm) {
-    const dif = r.atendidoEm.getTime() - r.dueAt.getTime()
+  if (r.donoEm) {
+    const dif = r.donoEm.getTime() - r.dueAt.getTime()
     return { status: dif <= TOLERANCIA_RETORNO_MS ? "NO_PRAZO" : "COM_ATRASO", atrasoMin: Math.max(0, Math.round(dif / 60_000)) }
   }
+  if (r.marcouEm) return { status: "SO_MARCOU", atrasoMin: Math.max(0, Math.round((r.marcouEm.getTime() - r.dueAt.getTime()) / 60_000)) }
+  if (r.outroEm) return { status: "OUTRA_PESSOA", atrasoMin: 0 }
   const espera = agora.getTime() - r.dueAt.getTime()
   if (espera > TOLERANCIA_RETORNO_MS) return { status: "SEM_ATENDIMENTO", atrasoMin: Math.round(espera / 60_000) }
   return { status: "A_VENCER", atrasoMin: 0 }
 }
 
-// Primeira resposta humana de cada retorno (depois que ele foi criado), numa
-// consulta só — sem o limite de mensagens da versão acima. Devolve também o
-// início do texto, pra o administrador conferir o que foi "o atendimento".
-export async function primeiraRespostaHumana(ids: string[]): Promise<Map<string, { em: Date; texto: string }>> {
-  const mapa = new Map<string, { em: Date; texto: string }>()
+export interface RespostasHumanas {
+  dono: { em: Date; texto: string } | null
+  outro: { em: Date; texto: string; por: string } | null
+}
+
+// Primeira resposta humana de cada retorno (depois que ele foi criado), da
+// dona do retorno e de outra pessoa, numa consulta só. Devolve também o início
+// do texto, pra o administrador conferir o que foi "o atendimento".
+export async function primeiraRespostaHumana(ids: string[]): Promise<Map<string, RespostasHumanas>> {
+  const mapa = new Map<string, RespostasHumanas>()
   if (ids.length === 0) return mapa
-  const linhas = await prisma.$queryRaw<{ id: string; em: Date; texto: string | null }[]>(Prisma.sql`
-    SELECT DISTINCT ON (r.id) r.id AS id, m."createdAt" AS em, left(m.body, 90) AS texto
+  const linhas = await prisma.$queryRaw<{ id: string; dono: boolean; em: Date; texto: string | null; por: string | null }[]>(Prisma.sql`
+    SELECT DISTINCT ON (r.id, (m."agentId" = r."userId"))
+      r.id AS id, (m."agentId" = r."userId") AS dono, m."createdAt" AS em, left(m.body, 90) AS texto, ua.name AS por
     FROM contact_reminders r
     JOIN messages m ON m."contactId" = r."contactId"
       AND m.direction = 'OUTBOUND' AND m."agentId" IS NOT NULL AND m."createdAt" > r."createdAt"
       AND m."isBroadcast" = false AND m."viaAtendente" = false AND m.body NOT LIKE ${PREFIXO_PEDIDO_NOTA + "%"}
+    LEFT JOIN users ua ON ua.id = m."agentId"
     WHERE r.id IN (${Prisma.join(ids)})
-    ORDER BY r.id, m."createdAt" ASC`)
-  for (const l of linhas) mapa.set(l.id, { em: new Date(l.em), texto: l.texto ?? "" })
+    ORDER BY r.id, (m."agentId" = r."userId"), m."createdAt" ASC`)
+  for (const l of linhas) {
+    const atual = mapa.get(l.id) ?? { dono: null, outro: null }
+    if (l.dono) atual.dono = { em: new Date(l.em), texto: l.texto ?? "" }
+    else atual.outro = { em: new Date(l.em), texto: l.texto ?? "", por: l.por ?? "equipe" }
+    mapa.set(l.id, atual)
+  }
   return mapa
 }

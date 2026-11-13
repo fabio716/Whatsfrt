@@ -19,7 +19,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const id = request.nextUrl.searchParams.get("id") ?? ""
   const lembrete = await prisma.contactReminder.findUnique({
     where: { id },
-    select: { contactId: true, createdAt: true, dueAt: true, doneAt: true, user: { select: { name: true } } },
+    select: { contactId: true, userId: true, createdAt: true, dueAt: true, doneAt: true, user: { select: { name: true } } },
   })
   if (!lembrete) return NextResponse.json({ error: "Retorno não encontrado." }, { status: 404 })
 
@@ -36,7 +36,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let contouId: string | null = null
   const lista = mensagens.map((m) => {
     const tipo = m.direction === "INBOUND" ? "cliente" : m.viaAtendente ? "robo" : m.agentId ? "equipe" : "sistema"
-    const naoConta = tipo === "equipe" && (m.isBroadcast || m.body.startsWith(PREFIXO_PEDIDO_NOTA))
+    const semValor = tipo === "equipe" && (m.isBroadcast || m.body.startsWith(PREFIXO_PEDIDO_NOTA))
+    const deOutra = tipo === "equipe" && !semValor && m.agentId !== lembrete.userId
+    const naoConta = semValor || deOutra
     const conta = tipo === "equipe" && !naoConta && m.createdAt > lembrete.createdAt
     if (conta && !contouId) contouId = m.id
     const midia = ROTULO_MIDIA[(m.mediaType ?? "").split("/")[0].toLowerCase()] ?? (m.mediaType ? "[arquivo]" : "")
@@ -46,7 +48,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       quem: tipo === "cliente" ? "Cliente" : tipo === "robo" ? "Robô" : tipo === "equipe" ? (m.agent?.name ?? "Equipe") : "Sistema",
       texto: (m.body.trim() || midia).slice(0, 400),
       em: m.createdAt.toISOString(),
-      naoConta: naoConta ? (m.isBroadcast ? "transmissão em massa" : "pedido de nota ao encerrar") : null,
+      naoConta: semValor ? (m.isBroadcast ? "transmissão em massa" : "pedido de nota ao encerrar") : deOutra ? `outra pessoa, não é a responsável ${lembrete.user.name}` : null,
       contou: false,
     }
   })

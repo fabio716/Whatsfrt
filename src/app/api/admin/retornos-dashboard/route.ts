@@ -18,18 +18,21 @@ function inicioDoDiaBr(diasAtras: number): Date {
   return new Date(meiaNoite + FUSO_MS)
 }
 
-interface Contagem { noPrazo: number; comAtraso: number; semAtendimento: number; aVencer: number }
-const vazio = (): Contagem => ({ noPrazo: 0, comAtraso: 0, semAtendimento: 0, aVencer: 0 })
+interface Contagem { noPrazo: number; comAtraso: number; semAtendimento: number; aVencer: number; soMarcou: number; outraPessoa: number }
+const vazio = (): Contagem => ({ noPrazo: 0, comAtraso: 0, semAtendimento: 0, aVencer: 0, soMarcou: 0, outraPessoa: 0 })
 
 function somar(c: Contagem, s: StatusRetorno): void {
   if (s === "NO_PRAZO") c.noPrazo++
   else if (s === "COM_ATRASO") c.comAtraso++
   else if (s === "SEM_ATENDIMENTO") c.semAtendimento++
+  else if (s === "SO_MARCOU") c.soMarcou++
+  else if (s === "OUTRA_PESSOA") c.outraPessoa++
   else c.aVencer++
 }
 
 // Pontualidade = no prazo / (no prazo + com atraso + sem atendimento).
-// "A vencer" ainda não conta: não deu tempo de errar.
+// "A vencer", "só marcou feito" e "outra pessoa atendeu" ficam de fora: não
+// provam nem desmentem que a dona respeitou o horário.
 const pontualidade = (c: Contagem): number | null => {
   const base = c.noPrazo + c.comAtraso + c.semAtendimento
   return base === 0 ? null : Math.round((c.noPrazo / base) * 100)
@@ -58,13 +61,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const geral = vazio()
   const porAgente = new Map<string, { nome: string; departamento: string | null; c: Contagem; atrasos: number[] }>()
   const itens = lembretes.map((l) => {
-    const resp = respostas.get(l.id) ?? null
-    const msg = resp ? resp.em : null
-    // Atendeu = a primeira entre responder no chat e marcar "Fiz o retorno".
-    const candidatos = [msg, l.doneAt].filter((d): d is Date => d !== null)
-    const atendidoEm = candidatos.length ? new Date(Math.min(...candidatos.map((d) => d.getTime()))) : null
-    const via = atendidoEm === null ? null : msg && (!l.doneAt || msg <= l.doneAt) ? "chat" : "marcado"
-    const { status, atrasoMin } = statusRetorno({ dueAt: l.dueAt, atendidoEm }, agora)
+    const resp = respostas.get(l.id)
+    const donoEm = resp?.dono?.em ?? null
+    const outroEm = resp?.outro?.em ?? null
+    const { status, atrasoMin } = statusRetorno({ dueAt: l.dueAt, donoEm, marcouEm: l.doneAt, outroEm }, agora)
+    const atendidoEm = donoEm ?? l.doneAt ?? outroEm
+    const via = donoEm ? "chat" : l.doneAt ? "marcado" : outroEm ? "outra" : null
+    // Marcou "Fiz o retorno" bem antes do horário combinado: aviso.
+    const antesMin = via === "marcado" && l.doneAt && l.dueAt.getTime() - l.doneAt.getTime() > 15 * 60_000
+      ? Math.round((l.dueAt.getTime() - l.doneAt.getTime()) / 60_000) : 0
 
     somar(geral, status)
     const ag = porAgente.get(l.userId) ?? { nome: l.user.name, departamento: l.user.department, c: vazio(), atrasos: [] }
@@ -84,7 +89,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       via,
       status,
       atrasoMin,
-      texto: via === "chat" && resp ? resp.texto : "",
+      antesMin,
+      por: via === "outra" ? resp?.outro?.por ?? null : null,
+      texto: via === "chat" ? resp?.dono?.texto ?? "" : via === "outra" ? resp?.outro?.texto ?? "" : "",
       suspeito: false,
     }
   })
@@ -106,7 +113,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     id,
     nome: a.nome,
     departamento: a.departamento,
-    total: a.c.noPrazo + a.c.comAtraso + a.c.semAtendimento + a.c.aVencer,
+    total: a.c.noPrazo + a.c.comAtraso + a.c.semAtendimento + a.c.aVencer + a.c.soMarcou + a.c.outraPessoa,
     ...a.c,
     pontualidade: pontualidade(a.c),
     suspeitos: itens.filter((i) => i.agenteId === id && i.suspeito).length,

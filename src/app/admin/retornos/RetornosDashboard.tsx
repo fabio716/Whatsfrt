@@ -9,7 +9,7 @@ import Mascote from "@/components/ui/Mascote"
 // chat ou marcando "Fiz o retorno"). A barra de cada agente mostra a mistura
 // dos quatro estados; clicar filtra a lista de baixo.
 
-type Status = "NO_PRAZO" | "COM_ATRASO" | "SEM_ATENDIMENTO" | "A_VENCER"
+type Status = "NO_PRAZO" | "COM_ATRASO" | "SEM_ATENDIMENTO" | "A_VENCER" | "SO_MARCOU" | "OUTRA_PESSOA"
 
 interface Agente {
   id: string
@@ -20,6 +20,8 @@ interface Agente {
   comAtraso: number
   semAtendimento: number
   aVencer: number
+  soMarcou: number
+  outraPessoa: number
   pontualidade: number | null
   atrasoMedioMin: number | null
   suspeitos: number
@@ -33,9 +35,11 @@ interface Item {
   empresa: string | null
   combinado: string
   atendidoEm: string | null
-  via: "chat" | "marcado" | null
+  via: "chat" | "marcado" | "outra" | null
   status: Status
   atrasoMin: number
+  antesMin: number
+  por: string | null
   texto: string
   suspeito: boolean
 }
@@ -43,7 +47,7 @@ interface MsgConversa { id: string; tipo: "cliente" | "robo" | "equipe" | "siste
 interface Conversa { agente: string; combinado: string; criadoEm: string; feitoEm: string | null; mensagens: MsgConversa[] }
 interface Dados {
   dias: number
-  geral: { total: number; noPrazo: number; comAtraso: number; semAtendimento: number; aVencer: number; pontualidade: number | null }
+  geral: { total: number; noPrazo: number; comAtraso: number; semAtendimento: number; aVencer: number; soMarcou: number; outraPessoa: number; pontualidade: number | null }
   agentes: Agente[]
   itens: Item[]
   truncado: boolean
@@ -54,9 +58,11 @@ const STATUS: Record<Status, { rotulo: string; cor: string; icone: string; texto
   NO_PRAZO: { rotulo: "No prazo", cor: "#0ca30c", icone: "✓", textoNaCor: "#ffffff", campo: "noPrazo" },
   COM_ATRASO: { rotulo: "Atendeu com atraso", cor: "#fab219", icone: "!", textoNaCor: "#0b0b0b", campo: "comAtraso" },
   SEM_ATENDIMENTO: { rotulo: "Sem atendimento", cor: "#d03b3b", icone: "✕", textoNaCor: "#ffffff", campo: "semAtendimento" },
+  SO_MARCOU: { rotulo: "Só marcou feito", cor: "#2a78d6", icone: "?", textoNaCor: "#ffffff", campo: "soMarcou" },
+  OUTRA_PESSOA: { rotulo: "Outra pessoa atendeu", cor: "#6250d6", icone: "↔", textoNaCor: "#ffffff", campo: "outraPessoa" },
   A_VENCER: { rotulo: "A vencer", cor: "#c3c2b7", icone: "◷", textoNaCor: "#0b0b0b", campo: "aVencer" },
 }
-const ORDEM: Status[] = ["NO_PRAZO", "COM_ATRASO", "SEM_ATENDIMENTO", "A_VENCER"]
+const ORDEM: Status[] = ["NO_PRAZO", "COM_ATRASO", "SEM_ATENDIMENTO", "SO_MARCOU", "OUTRA_PESSOA", "A_VENCER"]
 
 const FUSO = "America/Sao_Paulo"
 const diaHora = (iso: string) => {
@@ -78,8 +84,11 @@ function Selo({ s }: Readonly<{ s: Status }>) {
 }
 
 function textoResultado(i: Item): string {
-  if (i.status === "NO_PRAZO") return i.atendidoEm ? `atendeu às ${horaSeg(i.atendidoEm)} (${i.via === "marcado" ? "marcou feito" : "respondeu no chat"})` : ""
-  if (i.status === "COM_ATRASO") return `atendeu ${duracao(i.atrasoMin)} depois (${horaSeg(i.atendidoEm ?? i.combinado)}, ${i.via === "marcado" ? "marcou feito" : "chat"})`
+  const quando = horaSeg(i.atendidoEm ?? i.combinado)
+  if (i.status === "NO_PRAZO") return `${i.agente} respondeu o cliente no chat às ${quando}`
+  if (i.status === "COM_ATRASO") return `${i.agente} respondeu o cliente ${duracao(i.atrasoMin)} depois (às ${quando})`
+  if (i.status === "SO_MARCOU") return `marcou "Fiz o retorno" às ${quando}, mas não há conversa dela com o cliente no chat${i.antesMin > 0 ? ` — marcou ${duracao(i.antesMin)} antes do horário combinado` : ""}`
+  if (i.status === "OUTRA_PESSOA") return `${i.por ?? "outra pessoa"} respondeu o cliente às ${quando}; ${i.agente} não respondeu`
   if (i.status === "SEM_ATENDIMENTO") return `esperando há ${duracao(i.atrasoMin)}`
   return "ainda não venceu"
 }
@@ -171,8 +180,9 @@ export default function RetornosDashboard() {
           <div>
             <h1 className="text-xl font-semibold text-zinc-900 md:text-2xl">Retornos da equipe</h1>
             <p className="mt-0.5 max-w-2xl text-[12.5px] text-zinc-500">
-              Quem está respeitando o horário combinado com o cliente. Vale o retorno que o atendente virtual agendou:
-              respeitou quem atendeu até 30 minutos depois do horário, respondendo no chat ou marcando &ldquo;Fiz o retorno&rdquo;.
+              Quem está respeitando o horário combinado com o cliente. Vale o retorno que o atendente virtual agendou.
+              Respeitou quem respondeu o cliente no chat até 30 minutos depois do horário. Só marcar &ldquo;Fiz o retorno&rdquo; ou outra pessoa atender
+              aparecem à parte, sem contar como cumprido.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -224,10 +234,10 @@ export default function RetornosDashboard() {
                 <p className="mt-1.5 text-[12px] leading-snug text-zinc-500">
                   {dados.geral.pontualidade === null
                     ? "Ainda não venceu nenhum retorno neste período."
-                    : `${dados.geral.noPrazo} de ${dados.geral.noPrazo + dados.geral.comAtraso + dados.geral.semAtendimento} retornos vencidos foram atendidos no horário.`}
+                    : `${dados.geral.noPrazo} de ${dados.geral.noPrazo + dados.geral.comAtraso + dados.geral.semAtendimento} retornos vencidos foram respondidos no chat pela responsável, no horário. Não entram na conta: só marcou feito, outra pessoa atendeu e a vencer.`}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                 {ORDEM.map((s) => {
                   const m = STATUS[s]
                   const ativo = filtroStatus === s
@@ -299,6 +309,8 @@ export default function RetornosDashboard() {
                           {" · "}{a.noPrazo} no prazo
                           {a.comAtraso > 0 && ` · ${a.comAtraso} com atraso${a.atrasoMedioMin !== null ? ` (em média ${duracao(a.atrasoMedioMin)} depois)` : ""}`}
                           {a.semAtendimento > 0 && ` · ${a.semAtendimento} sem atendimento`}
+                          {a.soMarcou > 0 && ` · ${a.soMarcou} só marcou feito`}
+                          {a.outraPessoa > 0 && ` · ${a.outraPessoa} atendido por outra pessoa`}
                           {a.aVencer > 0 && ` · ${a.aVencer} a vencer`}
                         </p>
                         {a.suspeitos > 0 && (
