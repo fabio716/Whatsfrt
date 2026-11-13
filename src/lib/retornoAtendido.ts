@@ -8,6 +8,11 @@ import { prisma } from "@/lib/prisma"
 import { MessageDirection } from "@/generated/prisma/enums"
 import { Prisma } from "@/generated/prisma/client"
 
+// Mensagens que levam o nome de uma pessoa mas NÃO são atendimento: envio em
+// massa (transmissão) e o pedido de nota que sai ao encerrar um atendimento.
+// Sem excluir, encerrar 5 atendimentos de uma vez contava como "atendeu 5 retornos".
+export const PREFIXO_PEDIDO_NOTA = "🙏 Obrigado pelo contato! Antes de finalizar"
+
 export interface Atendimento {
   em: Date
   por: string
@@ -27,6 +32,8 @@ export async function atendimentosHumanos(
       contactId: { in: [...new Set(itens.map((i) => i.contactId))] },
       direction: MessageDirection.OUTBOUND,
       agentId: { not: null },
+      isBroadcast: false,
+      NOT: { body: { startsWith: PREFIXO_PEDIDO_NOTA } },
       createdAt: { gt: menor },
     },
     orderBy: { createdAt: "asc" },
@@ -71,6 +78,7 @@ export async function primeiraRespostaHumana(ids: string[]): Promise<Map<string,
     FROM contact_reminders r
     JOIN messages m ON m."contactId" = r."contactId"
       AND m.direction = 'OUTBOUND' AND m."agentId" IS NOT NULL AND m."createdAt" > r."createdAt"
+      AND m."isBroadcast" = false AND m.body NOT LIKE ${PREFIXO_PEDIDO_NOTA + "%"}
     WHERE r.id IN (${Prisma.join(ids)})
     GROUP BY r.id`)
   for (const l of linhas) mapa.set(l.id, new Date(l.em))

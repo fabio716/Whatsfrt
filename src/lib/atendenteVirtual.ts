@@ -323,6 +323,7 @@ export async function tentarAtendenteVirtual(
         contactId: contato.id,
         direction: MessageDirection.OUTBOUND,
         agentId: { not: null },
+        isBroadcast: false, // transmissão em massa não é conversa
         createdAt: { gt: new Date(Date.now() - HUMANO_RECENTE_MIN * 60_000) },
       },
       select: { id: true },
