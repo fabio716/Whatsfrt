@@ -39,6 +39,8 @@ interface Item {
   texto: string
   suspeito: boolean
 }
+interface MsgConversa { id: string; tipo: "cliente" | "robo" | "equipe" | "sistema"; quem: string; texto: string; em: string; naoConta: string | null; contou: boolean }
+interface Conversa { agente: string; combinado: string; criadoEm: string; feitoEm: string | null; mensagens: MsgConversa[] }
 interface Dados {
   dias: number
   geral: { total: number; noPrazo: number; comAtraso: number; semAtendimento: number; aVencer: number; pontualidade: number | null }
@@ -82,6 +84,35 @@ function textoResultado(i: Item): string {
   return "ainda não venceu"
 }
 
+const COR_QUEM: Record<MsgConversa["tipo"], string> = { cliente: "#52514e", robo: "#0b3f8a", equipe: "#006300", sistema: "#898781" }
+
+function PainelConversa({ dado }: Readonly<{ dado: Conversa | "carregando" | "erro" | undefined }>) {
+  if (!dado || dado === "carregando") return <p className="mt-2 text-[12px] text-zinc-400">Carregando a conversa…</p>
+  if (dado === "erro") return <p className="mt-2 text-[12px] font-medium text-red-600">⚠️ Não foi possível carregar a conversa.</p>
+  const temEquipe = dado.mensagens.some((m) => m.tipo === "equipe" && !m.naoConta)
+  return (
+    <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+      <p className="mb-2 text-[11.5px] text-zinc-500">
+        Combinado {diaHora(dado.combinado)} com {dado.agente}
+        {dado.feitoEm ? ` · marcou "Fiz o retorno" às ${horaSeg(dado.feitoEm)}` : ""}
+        {!temEquipe && !dado.feitoEm ? " · nenhuma resposta da equipe ao cliente" : ""}
+      </p>
+      <ul className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+        {dado.mensagens.map((m) => (
+          <li key={m.id} className={`rounded-lg px-2.5 py-1.5 text-[12px] leading-snug ${m.contou ? "bg-emerald-100 ring-1 ring-emerald-400" : m.naoConta ? "bg-zinc-100 opacity-70" : "bg-white"}`}>
+            <span className="mr-1.5 font-semibold" style={{ color: COR_QUEM[m.tipo] }}>{m.quem}</span>
+            <span className="mr-1.5 text-[11px] text-zinc-400">{horaSeg(m.em)}</span>
+            <span className="text-zinc-800">{m.texto || "(sem texto)"}</span>
+            {m.contou && <span className="ml-2 font-semibold text-emerald-700">← contou como atendimento</span>}
+            {m.naoConta && <span className="ml-2 text-[11px] font-semibold text-zinc-500">(não conta: {m.naoConta})</span>}
+          </li>
+        ))}
+        {dado.mensagens.length === 0 && <li className="text-[12px] text-zinc-400">Nenhuma mensagem encontrada.</li>}
+      </ul>
+    </div>
+  )
+}
+
 export default function RetornosDashboard() {
   const [dias, setDias] = useState(7)
   const [dados, setDados] = useState<Dados | null>(null)
@@ -90,6 +121,8 @@ export default function RetornosDashboard() {
   const [filtroStatus, setFiltroStatus] = useState<Status | "TODOS">("TODOS")
   const [filtroAgente, setFiltroAgente] = useState<string | null>(null)
   const [mostrar, setMostrar] = useState(40)
+  const [aberta, setAberta] = useState<string | null>(null)
+  const [conversas, setConversas] = useState<Record<string, Conversa | "carregando" | "erro">>({})
 
   const carregar = useCallback(async (d: number) => {
     try {
@@ -108,6 +141,22 @@ export default function RetornosDashboard() {
     const timer = setInterval(() => void carregar(dias), 60_000)
     return () => clearInterval(timer)
   }, [dias, carregar])
+
+  // "Ver conversa": abre as mensagens por trás do retorno pra conferir.
+  const alternarConversa = async (id: string) => {
+    if (aberta === id) { setAberta(null); return }
+    setAberta(id)
+    if (conversas[id] && conversas[id] !== "erro") return
+    setConversas((c) => ({ ...c, [id]: "carregando" }))
+    try {
+      const res = await fetch(`/api/admin/retornos-dashboard/conversa?id=${encodeURIComponent(id)}`, { cache: "no-store" })
+      if (!res.ok) throw new Error("falhou")
+      const dados = (await res.json()) as Conversa
+      setConversas((c) => ({ ...c, [id]: dados }))
+    } catch {
+      setConversas((c) => ({ ...c, [id]: "erro" }))
+    }
+  }
 
   const trocarPeriodo = (d: number) => { setDados(null); setDias(d); setMostrar(40) }
 
@@ -301,6 +350,10 @@ export default function RetornosDashboard() {
                         </p>
                         {i.texto && <p className="mt-0.5 truncate text-[12px] italic text-zinc-400">resposta: &ldquo;{i.texto}&rdquo;</p>}
                         {i.suspeito && <p className="mt-0.5 text-[11.5px] font-semibold text-amber-700">⚠ vários retornos atendidos no mesmo minuto por {i.agente} — confira se foi atendimento de verdade</p>}
+                        <button type="button" onClick={() => void alternarConversa(i.id)} aria-expanded={aberta === i.id} className="mt-1 text-[12px] font-semibold text-[#002d6b] underline-offset-2 hover:underline">
+                          {aberta === i.id ? "Esconder conversa" : "Ver conversa"}
+                        </button>
+                        {aberta === i.id && <PainelConversa dado={conversas[i.id]} />}
                       </div>
                     </li>
                   ))}
