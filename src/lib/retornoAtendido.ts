@@ -33,6 +33,7 @@ export async function atendimentosHumanos(
       direction: MessageDirection.OUTBOUND,
       agentId: { not: null },
       isBroadcast: false,
+      viaAtendente: false, // resposta do robô nunca é atendimento
       NOT: { body: { startsWith: PREFIXO_PEDIDO_NOTA } },
       createdAt: { gt: menor },
     },
@@ -79,7 +80,7 @@ export async function primeiraRespostaHumana(ids: string[]): Promise<Map<string,
     FROM contact_reminders r
     JOIN messages m ON m."contactId" = r."contactId"
       AND m.direction = 'OUTBOUND' AND m."agentId" IS NOT NULL AND m."createdAt" > r."createdAt"
-      AND m."isBroadcast" = false AND m.body NOT LIKE ${PREFIXO_PEDIDO_NOTA + "%"}
+      AND m."isBroadcast" = false AND m."viaAtendente" = false AND m.body NOT LIKE ${PREFIXO_PEDIDO_NOTA + "%"}
     WHERE r.id IN (${Prisma.join(ids)})
     ORDER BY r.id, m."createdAt" ASC`)
   for (const l of linhas) mapa.set(l.id, { em: new Date(l.em), texto: l.texto ?? "" })

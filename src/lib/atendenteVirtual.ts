@@ -324,6 +324,7 @@ export async function tentarAtendenteVirtual(
         direction: MessageDirection.OUTBOUND,
         agentId: { not: null },
         isBroadcast: false, // transmissão em massa não é conversa
+        viaAtendente: false,
         createdAt: { gt: new Date(Date.now() - HUMANO_RECENTE_MIN * 60_000) },
       },
       select: { id: true },
