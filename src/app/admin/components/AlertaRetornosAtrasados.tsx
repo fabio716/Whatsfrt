@@ -56,7 +56,7 @@ export default function AlertaRetornosAtrasados() {
   const tudoAtendido = esperando === 0
 
   return (
-    <div role="alert" className={`fixed inset-x-0 top-0 z-[90] flex items-center gap-3 border-b px-4 py-2 shadow-sm md:left-[var(--nav-w,0px)] ${tudoAtendido ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+    <div role="alert" className={`flex items-center gap-3 border-b px-4 py-2 ${tudoAtendido ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
       <Mascote className="h-10 w-10 shrink-0 rounded-lg" humor={tudoAtendido ? "feliz" : "surpreso"} />
       <div className="min-w-0">
         <p className={`text-[12.5px] font-semibold ${tudoAtendido ? "text-emerald-800" : "text-red-700"}`}>

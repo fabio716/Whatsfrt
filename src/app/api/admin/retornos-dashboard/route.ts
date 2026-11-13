@@ -1,0 +1,108 @@
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+import { requireAdmin, isErrorResponse } from "@/lib/auth"
+import { primeiraRespostaHumana, statusRetorno, type StatusRetorno } from "@/lib/retornoAtendido"
+
+export const dynamic = "force-dynamic"
+
+// Painel do administrador: cada agente está respeitando o horário combinado
+// nos retornos do atendente virtual (🤖)? Período = retornos com horário
+// combinado de N dias atrás (dia de Brasília) em diante, inclusive os que
+// ainda vão vencer.
+
+const FUSO_MS = 3 * 60 * 60 * 1000
+
+function inicioDoDiaBr(diasAtras: number): Date {
+  const br = new Date(Date.now() - FUSO_MS)
+  const meiaNoite = Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate() - diasAtras)
+  return new Date(meiaNoite + FUSO_MS)
+}
+
+interface Contagem { noPrazo: number; comAtraso: number; semAtendimento: number; aVencer: number }
+const vazio = (): Contagem => ({ noPrazo: 0, comAtraso: 0, semAtendimento: 0, aVencer: 0 })
+
+function somar(c: Contagem, s: StatusRetorno): void {
+  if (s === "NO_PRAZO") c.noPrazo++
+  else if (s === "COM_ATRASO") c.comAtraso++
+  else if (s === "SEM_ATENDIMENTO") c.semAtendimento++
+  else c.aVencer++
+}
+
+// Pontualidade = no prazo / (no prazo + com atraso + sem atendimento).
+// "A vencer" ainda não conta: não deu tempo de errar.
+const pontualidade = (c: Contagem): number | null => {
+  const base = c.noPrazo + c.comAtraso + c.semAtendimento
+  return base === 0 ? null : Math.round((c.noPrazo / base) * 100)
+}
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireAdmin(request)
+  if (isErrorResponse(auth)) return auth
+
+  const diasParam = Number(request.nextUrl.searchParams.get("dias") ?? 7)
+  const dias = [1, 7, 30].includes(diasParam) ? diasParam : 7
+  const agora = new Date()
+
+  const lembretes = await prisma.contactReminder.findMany({
+    where: { note: { startsWith: "🤖" }, dueAt: { gte: inicioDoDiaBr(dias - 1) }, contact: { deletedAt: null } },
+    orderBy: { dueAt: "desc" },
+    take: 1000,
+    select: {
+      id: true, userId: true, dueAt: true, doneAt: true,
+      user: { select: { name: true, department: true } },
+      contact: { select: { id: true, name: true, empresa: true } },
+    },
+  })
+  const respostas = await primeiraRespostaHumana(lembretes.map((l) => l.id))
+
+  const geral = vazio()
+  const porAgente = new Map<string, { nome: string; departamento: string | null; c: Contagem; atrasos: number[] }>()
+  const itens = lembretes.map((l) => {
+    const msg = respostas.get(l.id) ?? null
+    // Atendeu = a primeira entre responder no chat e marcar "Fiz o retorno".
+    const candidatos = [msg, l.doneAt].filter((d): d is Date => d !== null)
+    const atendidoEm = candidatos.length ? new Date(Math.min(...candidatos.map((d) => d.getTime()))) : null
+    const via = atendidoEm === null ? null : msg && (!l.doneAt || msg <= l.doneAt) ? "chat" : "marcado"
+    const { status, atrasoMin } = statusRetorno({ dueAt: l.dueAt, atendidoEm }, agora)
+
+    somar(geral, status)
+    const ag = porAgente.get(l.userId) ?? { nome: l.user.name, departamento: l.user.department, c: vazio(), atrasos: [] }
+    somar(ag.c, status)
+    if (status === "COM_ATRASO") ag.atrasos.push(atrasoMin)
+    porAgente.set(l.userId, ag)
+
+    return {
+      id: l.id,
+      agenteId: l.userId,
+      agente: l.user.name,
+      contactId: l.contact.id,
+      cliente: l.contact.name,
+      empresa: l.contact.empresa,
+      combinado: l.dueAt.toISOString(),
+      atendidoEm: atendidoEm ? atendidoEm.toISOString() : null,
+      via,
+      status,
+      atrasoMin,
+    }
+  })
+
+  const agentes = [...porAgente.entries()].map(([id, a]) => ({
+    id,
+    nome: a.nome,
+    departamento: a.departamento,
+    total: a.c.noPrazo + a.c.comAtraso + a.c.semAtendimento + a.c.aVencer,
+    ...a.c,
+    pontualidade: pontualidade(a.c),
+    atrasoMedioMin: a.atrasos.length ? Math.round(a.atrasos.reduce((s, x) => s + x, 0) / a.atrasos.length) : null,
+  }))
+  // Quem precisa de atenção primeiro: mais sem atendimento, depois menor pontualidade.
+  agentes.sort((x, y) => y.semAtendimento - x.semAtendimento || (x.pontualidade ?? 101) - (y.pontualidade ?? 101) || x.nome.localeCompare(y.nome))
+
+  return NextResponse.json({
+    dias,
+    geral: { total: itens.length, ...geral, pontualidade: pontualidade(geral) },
+    agentes,
+    itens: itens.slice(0, 400),
+    truncado: itens.length > 400,
+  })
+}

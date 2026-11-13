@@ -65,7 +65,6 @@ export default function AdminShell({
 
       <Novidades />
       <RetornosObrigatorio />
-      {userRole === "ADMIN" && <AlertaRetornosAtrasados />}
       {userRole === "ADMIN" && <ResumoAtendenteVirtual />}
       {userRole === "AGENT" && <MeusRetornos />}
       <MascoteAmigo />
@@ -104,6 +103,7 @@ export default function AdminShell({
 
         <VersaoNova />
         <EvolutionStatusBanner />
+        {userRole === "ADMIN" && <AlertaRetornosAtrasados />}
         <NotificationsPrompt />
         <div className="flex-1 overflow-y-auto">{children}</div>
       </main>

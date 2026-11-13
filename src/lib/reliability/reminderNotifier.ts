@@ -9,7 +9,7 @@ import { sendPushToUsers } from "@/lib/push"
 import { broadcastToUsers } from "@/lib/sse-emitter"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
-import { atendimentosHumanos } from "@/lib/retornoAtendido"
+import { atendimentosHumanos, TOLERANCIA_RETORNO_MS } from "@/lib/retornoAtendido"
 
 const CHECK_INTERVAL_MS = 60 * 1000
 
@@ -58,7 +58,7 @@ async function avisarVencidos(): Promise<void> {
 // concluído → os administradores recebem o alerta e a vendedora é avisada de
 // que a diretoria foi avisada. Só dispara em horário de expediente (nunca
 // de madrugada) e uma vez por retorno; adiar o retorno rearma o alerta.
-const TOLERANCIA_MS = 30 * 60 * 1000
+const TOLERANCIA_MS = TOLERANCIA_RETORNO_MS
 const JANELA_MAX_MS = 24 * 60 * 60 * 1000
 let escalando = false
 
