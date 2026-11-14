@@ -1,4 +1,8 @@
 import type { Humor } from "@/components/ui/Mascote"
+import {
+  COBRANCA_ATRASADO, COBRANCA_CRITICO, COBRANCA_FUTURO, COBRANCA_RECENTE, FESTA_UM, FESTA_VARIOS,
+  preencher, RESP_AGORA, RESP_DEPOIS, RESP_IGNOROU, RESP_TELEFONE, sortear,
+} from "./mascoteRepertorio"
 
 // Falas do mascote quando a pessoa tem retorno pendente. Tom de brincadeira
 // (o mascote "leva bronca do chefe"), sem apontar ninguém: só a própria pessoa vê.
@@ -33,30 +37,32 @@ const OPCOES: TextoCobranca["opcoes"] = [
 
 export function textoCobranca(nome: string | null, itens: ItemCobranca[]): TextoCobranca {
   const primeiro = (nome ?? "").trim().split(/\s+/)[0]
-  const oi = primeiro ? `${primeiro}` : "Ei"
   const pior = itens[0] // o mais antigo
-  const mais = itens.length > 1 ? ` (e mais ${itens.length - 1})` : ""
-  if (pior.minAtraso < 0) {
-    return { humor: "pedindo", texto: `${oi}! Daqui a ${quanto(-pior.minAtraso)} tem retorno com ${pior.cliente}${mais}. Já vai se preparando? 😉`, opcoes: OPCOES.slice(0, 1).concat(OPCOES.slice(2)) }
+  const dados = {
+    oi: primeiro || "Ei",
+    cliente: pior.cliente,
+    hora: hora(pior.dueAt),
+    quanto: quanto(pior.minAtraso < 0 ? -pior.minAtraso : pior.minAtraso),
+    mais: itens.length > 1 ? ` (e mais ${itens.length - 1})` : "",
   }
-  if (pior.minAtraso <= 30) {
-    return { humor: "pedindo", texto: `${oi}! Tem retorno do ${pior.cliente} marcado pra ${hora(pior.dueAt)}${mais}. Atende pra eu não levar bronca! 🥺`, opcoes: OPCOES }
-  }
-  if (pior.minAtraso <= 120) {
-    return { humor: "preocupado", texto: `${oi}... o ${pior.cliente} está esperando desde ${hora(pior.dueAt)}${mais}. Se o chefe ver, quem leva bronca sou eu! 😅`, opcoes: OPCOES }
-  }
-  return { humor: "preocupado", texto: `${oi}, pelo amor! 😱 O ${pior.cliente} espera há ${quanto(pior.minAtraso)}${mais}. O chefe vai me dar uma bronca (e sobra pra nós dois)!`, opcoes: OPCOES }
+  const [grupo, chave, humor, opcoes]: [readonly string[], string, Humor, TextoCobranca["opcoes"]] =
+    pior.minAtraso < 0 ? [COBRANCA_FUTURO, "cob_futuro", "pedindo", OPCOES.slice(0, 1).concat(OPCOES.slice(2))]
+    : pior.minAtraso <= 30 ? [COBRANCA_RECENTE, "cob_recente", "pedindo", OPCOES]
+    : pior.minAtraso <= 120 ? [COBRANCA_ATRASADO, "cob_atrasado", "preocupado", OPCOES]
+    : [COBRANCA_CRITICO, "cob_critico", "preocupado", OPCOES]
+  return { humor, texto: preencher(sortear(chave, grupo).item, dados), opcoes }
 }
 
 export function textoFesta(qtd: number): string {
   return qtd > 1
-    ? `Boaaa! Você atendeu ${qtd} retornos e me salvou de ${qtd} broncas! 🎉`
-    : "Boaaa! Atendeu o retorno e me salvou da bronca! Você é demais! 🎉"
+    ? preencher(sortear("festa_varios", FESTA_VARIOS).item, { qtd: String(qtd) })
+    : sortear("festa_um", FESTA_UM).item
 }
 
+// Resposta aos botões da cobrança — sorteada a cada uso, sem repetir.
 export const FALAS = {
-  agora: "Isso! Corre lá! 🏃",
-  telefone: "Anotado! Dica: manda um 'oi' no chat pro chefe ver que você falou com o cliente 😉",
-  depois: "Tá bom... mas não demora, hein? 😬",
-  ignorou: "Vou ficar de olho! 👀",
+  get agora() { return sortear("resp_agora", RESP_AGORA).item },
+  get telefone() { return sortear("resp_telefone", RESP_TELEFONE).item },
+  get depois() { return sortear("resp_depois", RESP_DEPOIS).item },
+  get ignorou() { return sortear("resp_ignorou", RESP_IGNOROU).item },
 }

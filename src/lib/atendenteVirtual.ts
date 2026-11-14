@@ -17,7 +17,6 @@ import Anthropic from "@anthropic-ai/sdk"
 import { randomUUID } from "node:crypto"
 import { prisma } from "@/lib/prisma"
 import { redis } from "@/lib/redis"
-import { sintetizarVoz } from "@/lib/vozMascote"
 import { ChatStatus, MessageDirection, MessageStatus, type Department } from "@/generated/prisma/enums"
 import { broadcast } from "@/lib/sse-emitter"
 import { readFile } from "node:fs/promises"
@@ -394,33 +393,6 @@ async function enviarComMascote(whatsappId: string, legenda: string) {
   return null
 }
 
-// Áudio curto de boas-vindas na voz do mascote. DESLIGADO por padrão (liga com
-// AV_AUDIO_BOAS_VINDAS=1): é uma 2ª mensagem na primeira resposta, então só
-// vai se o volume estiver sob controle. Frase fixa → gerada uma vez (cache).
-const FALA_BOAS_VINDAS = "Oi! Eu sou o assistente virtual da F R T Automação. Já já a nossa equipe te atende!"
-async function enviarAudioBoasVindas(contactId: string, whatsappId: string): Promise<void> {
-  if (process.env.AV_AUDIO_BOAS_VINDAS !== "1") return
-  try {
-    const audio = await sintetizarVoz(FALA_BOAS_VINDAS)
-    if (!audio) return
-    const salvo = await saveMediaBuffer(audio, "audio/mpeg", "mascote-ola.mp3")
-    const envio = await sendMedia({
-      whatsappId, filename: salvo.filename, mimetype: "audio/mpeg", caption: "",
-      rawBase64: audio.toString("base64"),
-    })
-    await prisma.message.create({
-      data: {
-        body: "", direction: MessageDirection.OUTBOUND,
-        status: envio.ok ? MessageStatus.SENT : MessageStatus.FAILED,
-        contactId, viaAtendente: true, mediaUrl: salvo.mediaUrl, mediaType: "audio/mpeg",
-        ...(envio.messageId ? { whatsappKeyId: envio.messageId } : {}),
-      },
-    })
-  } catch (err) {
-    console.error("[atendenteVirtual] áudio de boas-vindas não enviado:", err instanceof Error ? err.message : err)
-  }
-}
-
 // Acha a vendedora que o cliente citou (sem acento/maiúscula; primeiro nome só
 // vale se for único). null = não achou.
 function acharVendedora(citado: string, lista: { id: string; name: string }[]): string | null {
@@ -562,7 +534,6 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
     },
   })
   if (!envio.ok) return false
-  if (primeira && figura) await enviarAudioBoasVindas(contactId, contato.whatsappId)
 
   if ((await redis.incr(`av:cli:${contactId}`)) === 1) await redis.expire(`av:cli:${contactId}`, 12 * 60 * 60)
   if ((await redis.incr(chaveDia())) === 1) await redis.expire(chaveDia(), 26 * 60 * 60)

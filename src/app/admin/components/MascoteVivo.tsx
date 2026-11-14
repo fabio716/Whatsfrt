@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation"
 import Mascote, { type Humor } from "@/components/ui/Mascote"
 import Mascote3D, { type Animacao3D } from "@/components/ui/Mascote3D"
 import { escolherConversa } from "./mascoteConversas"
+import {
+  BOLINHA_CONVITE, BOLINHA_PEGOU, BOLINHA_PERDEU, ESPIAR_FALAS, SHOW_ABERTURA, SHOW_FINAL, preencher, sortear,
+} from "./mascoteRepertorio"
 import { FALAS, textoCobranca, textoFesta, type ItemCobranca } from "./mascoteTexto"
 
 // ─── Mascote vivo ────────────────────────────────────────────────────────────
@@ -23,7 +26,7 @@ import { FALAS, textoCobranca, textoFesta, type ItemCobranca } from "./mascoteTe
 type Cena = "cobranca" | "conversa" | "bolinha" | "show" | "espiar" | "festa"
 type Dir = "esq" | "dir" | null
 interface Fala { texto: string; opcoes: { rotulo: string; id: string }[]; dx: number }
-interface Prefs { desligado: boolean; silenciarAte: number; voz: boolean }
+interface Prefs { desligado: boolean; silenciarAte: number }
 
 const OCIOSO_MS = 90_000
 const ENTRE_CENAS_MS = 6 * 60_000
@@ -42,8 +45,8 @@ const gravar = (k: string, v: number): void => { try { localStorage.setItem(k, S
 export function lerPrefs(): Prefs {
   try {
     const p = JSON.parse(localStorage.getItem(CHAVE_PREFS) ?? "{}") as Partial<Prefs>
-    return { desligado: p.desligado === true, silenciarAte: Number(p.silenciarAte ?? 0) || 0, voz: p.voz === true }
-  } catch { return { desligado: false, silenciarAte: 0, voz: false } }
+    return { desligado: p.desligado === true, silenciarAte: Number(p.silenciarAte ?? 0) || 0 }
+  } catch { return { desligado: false, silenciarAte: 0 } }
 }
 export function gravarPrefs(p: Prefs): void {
   try { localStorage.setItem(CHAVE_PREFS, JSON.stringify(p)) } catch { /* ok */ }
@@ -56,48 +59,6 @@ function podeAparecer(): boolean {
   const el = document.activeElement
   if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.value.trim().length > 0) return false
   return true
-}
-
-// Voz do mascote (opcional, desligada por padrão): lê a fala em português.
-// Usa a voz natural do servidor (ElevenLabs); se não estiver disponível ou der
-// erro, cai na voz do navegador.
-let audioAtual: HTMLAudioElement | null = null
-function pararVoz(): void {
-  if (audioAtual) { audioAtual.pause(); audioAtual = null }
-  pararVoz()
-}
-function vozDoNavegador(limpo: string): void {
-  if (!("speechSynthesis" in window)) return
-  window.speechSynthesis.cancel()
-  const u = new SpeechSynthesisUtterance(limpo)
-  u.lang = "pt-BR"
-  u.rate = 1.05
-  u.pitch = 1.2
-  const voz = window.speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith("pt-br"))
-  if (voz) u.voice = voz
-  window.speechSynthesis.speak(u)
-}
-function falarEmVoz(texto: string): void {
-  if (!lerPrefs().voz) return
-  const limpo = texto.replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, "").replace(/\s+/g, " ").trim()
-  if (!limpo) return
-  pararVoz()
-  void (async () => {
-    try {
-      const r = await fetch("/api/mascote/voz", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ texto: limpo }),
-      })
-      if (!r.ok) throw new Error(String(r.status))
-      const url = URL.createObjectURL(await r.blob())
-      const audio = new Audio(url)
-      audio.onended = () => URL.revokeObjectURL(url)
-      pararVoz()
-      audioAtual = audio
-      await audio.play()
-    } catch {
-      vozDoNavegador(limpo)
-    }
-  })()
 }
 
 // WebGL disponível? Sem ele, fica o mascote 2D.
@@ -212,7 +173,6 @@ export default function MascoteVivo() {
       cancelers.push(() => { clearTimeout(t); res() })
     })
     const limpar = () => {
-      pararVoz()
       setVisivel(false); setFalando(false); setFala(null); setBola(null); setFesta(false); setAcao(""); setCorrendo(false); setDirecao(null)
       escolhaRef.current = null
       bolaFimRef.current = null
@@ -262,7 +222,6 @@ export default function MascoteVivo() {
       const meio = Math.min(Math.max(cx, 150), window.innerWidth - 150)
       setFala({ texto, opcoes: [], dx: meio - cx })
       mexerBoca(texto)
-      falarEmVoz(texto)
       await esperar(ms)
     }
     // Fala com botões; devolve o id escolhido ou null se ninguém respondeu.
@@ -271,7 +230,6 @@ export default function MascoteVivo() {
       const meio = Math.min(Math.max(cx, 150), window.innerWidth - 150)
       setFala({ texto, opcoes, dx: meio - cx })
       mexerBoca(texto)
-      falarEmVoz(texto)
       const t = setTimeout(() => { escolhaRef.current = null; res(null) }, ms)
       escolhaRef.current = (op) => { clearTimeout(t); escolhaRef.current = null; res(op) }
       cancelers.push(() => { clearTimeout(t); escolhaRef.current = null; res(null) })
@@ -316,7 +274,7 @@ export default function MascoteVivo() {
     }
 
     const cenaConversa = async (id: number) => {
-      const { conversa, indice } = escolherConversa(perfil, lerNum(K.conversa) - 1)
+      const { conversa, indice } = escolherConversa(perfil)
       gravar(K.conversa, indice + 1)
       await entrar(id, Math.round(window.innerWidth * 0.4), "feliz")
       if (!vivo(id)) return
@@ -333,7 +291,7 @@ export default function MascoteVivo() {
     const cenaBolinha = async (id: number) => {
       await entrar(id, Math.round(window.innerWidth * 0.3), "feliz")
       if (!vivo(id)) return
-      await dizer("Bora brincar? Pega a bolinha! ⚽", 1500)
+      await dizer(sortear("bolinha_convite", BOLINHA_CONVITE).item, 1500)
       if (!vivo(id)) return
       setFala(null)
       bolaRef.current = { x: x + tam() * 0.7, y: window.innerHeight - tam() }
@@ -365,11 +323,11 @@ export default function MascoteVivo() {
         const total = lerNum(K.bolinhas) + 1
         gravar(K.bolinhas, total)
         setHumor("comemorando"); setFesta(true); setAcao("pulo")
-        await dizer(`Você pegou! 🎯 Já são ${total} ${total === 1 ? "bolinha" : "bolinhas"}!`, 3200)
+        await dizer(preencher(sortear("bolinha_pegou", BOLINHA_PEGOU).item, { total: String(total), bolinhas: total === 1 ? "bolinha" : "bolinhas" }), 3200)
         setFesta(false); setAcao("")
       } else {
         setHumor("feliz")
-        await dizer("Peguei! 😄 Foi divertido!", 2200)
+        await dizer(sortear("bolinha_perdeu", BOLINHA_PERDEU).item, 2200)
       }
       if (vivo(id)) await sair(id)
     }
@@ -377,14 +335,14 @@ export default function MascoteVivo() {
     const cenaShow = async (id: number) => {
       await entrar(id, Math.round(window.innerWidth * 0.45), "feliz")
       if (!vivo(id)) return
-      await dizer("Olha só isso! 🤸", 1200)
+      await dizer(sortear("show_abertura", SHOW_ABERTURA).item, 1200)
       setFala(null)
       setHumor("comemorando")
       if (!reduzido()) { await fazer("cambalhota", 1000); if (!vivo(id)) return }
       setHumor("feliz"); setAcao("virar"); await esperar(550); setAcao("")
       if (!vivo(id)) return
       setHumor("comemorando"); setAcao("danca")
-      await dizer("🎵 Tchan-tchan! 🎶", 3000)
+      await dizer(sortear("show_final", SHOW_FINAL).item, 3000)
       setAcao("")
       if (vivo(id)) await sair(id)
     }
@@ -397,7 +355,7 @@ export default function MascoteVivo() {
       await mover(-t * 0.45, 260, id)
       if (!vivo(id)) return
       setDirecao("dir"); setCorrendo(false)
-      await dizer("Psiu... tá trabalhando? 👀", 2300)
+      await dizer(sortear("espiar", ESPIAR_FALAS).item, 2300)
       setFala(null)
       setAcao("virar"); await esperar(500); setAcao("")
       setHumor("feliz")
