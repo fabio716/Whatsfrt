@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Mascote, { type Humor } from "@/components/ui/Mascote"
+import Mascote3D, { type Animacao3D, type Expressao3D } from "@/components/ui/Mascote3D"
 import { escolherConversa } from "./mascoteConversas"
 import { FALAS, textoCobranca, textoFesta, type ItemCobranca } from "./mascoteTexto"
 
@@ -22,7 +23,7 @@ import { FALAS, textoCobranca, textoFesta, type ItemCobranca } from "./mascoteTe
 type Cena = "cobranca" | "conversa" | "bolinha" | "show" | "espiar" | "festa"
 type Dir = "esq" | "dir" | null
 interface Fala { texto: string; opcoes: { rotulo: string; id: string }[]; dx: number }
-interface Prefs { desligado: boolean; silenciarAte: number }
+interface Prefs { desligado: boolean; silenciarAte: number; voz: boolean }
 
 const OCIOSO_MS = 90_000
 const ENTRE_CENAS_MS = 6 * 60_000
@@ -41,8 +42,8 @@ const gravar = (k: string, v: number): void => { try { localStorage.setItem(k, S
 export function lerPrefs(): Prefs {
   try {
     const p = JSON.parse(localStorage.getItem(CHAVE_PREFS) ?? "{}") as Partial<Prefs>
-    return { desligado: p.desligado === true, silenciarAte: Number(p.silenciarAte ?? 0) || 0 }
-  } catch { return { desligado: false, silenciarAte: 0 } }
+    return { desligado: p.desligado === true, silenciarAte: Number(p.silenciarAte ?? 0) || 0, voz: p.voz === true }
+  } catch { return { desligado: false, silenciarAte: 0, voz: false } }
 }
 export function gravarPrefs(p: Prefs): void {
   try { localStorage.setItem(CHAVE_PREFS, JSON.stringify(p)) } catch { /* ok */ }
@@ -55,6 +56,44 @@ function podeAparecer(): boolean {
   const el = document.activeElement
   if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.value.trim().length > 0) return false
   return true
+}
+
+// Voz do mascote (opcional, desligada por padrão): lê a fala em português.
+function falarEmVoz(texto: string): void {
+  if (!lerPrefs().voz || !("speechSynthesis" in window)) return
+  const limpo = texto.replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, "").replace(/\s+/g, " ").trim()
+  if (!limpo) return
+  window.speechSynthesis.cancel()
+  const u = new SpeechSynthesisUtterance(limpo)
+  u.lang = "pt-BR"
+  u.rate = 1.05
+  u.pitch = 1.2
+  const voz = window.speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith("pt-br"))
+  if (voz) u.voice = voz
+  window.speechSynthesis.speak(u)
+}
+
+// WebGL disponível? Sem ele, fica o mascote 2D.
+function temWebGL(): boolean {
+  try {
+    const c = document.createElement("canvas")
+    return Boolean(c.getContext("webgl2") ?? c.getContext("webgl"))
+  } catch { return false }
+}
+
+// Humor/ação da cena → animação e rosto do robô 3D.
+function animacaoPara(humor: Humor, correndo: boolean, acao: string): Animacao3D {
+  if (correndo) return "correr"
+  if (acao === "danca") return "dancar"
+  if (acao === "cambalhota" || acao === "pulo") return "pular"
+  if (humor === "comemorando") return "dancar"
+  if (humor === "preocupado") return "nao"
+  if (humor === "pedindo") return "acenar"
+  if (humor === "dormindo") return "sentar"
+  return "idle"
+}
+function expressaoPara(humor: Humor): Expressao3D {
+  return { triste: humor === "preocupado" ? 1 : humor === "pedindo" ? 0.6 : 0, surpreso: humor === "surpreso" ? 1 : 0, bravo: 0 }
 }
 
 const reduzido = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -119,6 +158,7 @@ export default function MascoteVivo() {
   const [fala, setFala] = useState<Fala | null>(null)
   const [festa, setFesta] = useState(false)
   const [bola, setBola] = useState<{ x: number; y: number } | null>(null)
+  const [usar3d, setUsar3d] = useState(false)
   const elRef = useRef<HTMLDivElement>(null)
   const bolaRef = useRef({ x: 0, y: 0 })
   const escolhaRef = useRef<((id: string) => void) | null>(null)
@@ -126,7 +166,7 @@ export default function MascoteVivo() {
 
   // Toda a "direção" das cenas vive aqui dentro (só usa refs e setters estáveis).
   useEffect(() => {
-    const tam = () => (window.innerWidth >= 640 ? 128 : 96)
+    const tam = () => (window.innerWidth >= 640 ? 160 : 120)
     let x = -400
     let sessao = 0
     let cenaAtual: Cena | null = null
@@ -148,6 +188,7 @@ export default function MascoteVivo() {
       cancelers.push(() => { clearTimeout(t); res() })
     })
     const limpar = () => {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
       setVisivel(false); setFala(null); setBola(null); setFesta(false); setAcao(""); setCorrendo(false); setDirecao(null)
       escolhaRef.current = null
       bolaFimRef.current = null
@@ -191,6 +232,7 @@ export default function MascoteVivo() {
       const cx = x + tam() / 2
       const meio = Math.min(Math.max(cx, 150), window.innerWidth - 150)
       setFala({ texto, opcoes: [], dx: meio - cx })
+      falarEmVoz(texto)
       await esperar(ms)
     }
     // Fala com botões; devolve o id escolhido ou null se ninguém respondeu.
@@ -198,6 +240,7 @@ export default function MascoteVivo() {
       const cx = x + tam() / 2
       const meio = Math.min(Math.max(cx, 150), window.innerWidth - 150)
       setFala({ texto, opcoes, dx: meio - cx })
+      falarEmVoz(texto)
       const t = setTimeout(() => { escolhaRef.current = null; res(null) }, ms)
       escolhaRef.current = (op) => { clearTimeout(t); escolhaRef.current = null; res(op) }
       cancelers.push(() => { clearTimeout(t); escolhaRef.current = null; res(null) })
@@ -437,6 +480,11 @@ export default function MascoteVivo() {
       } catch { /* sem perfil: fala genérica */ }
     })()
 
+    void (async () => {
+      await quadro()
+      setUsar3d(!reduzido() && temWebGL())
+    })()
+
     const primeira = setTimeout(() => void verificarCobranca(), 4000)
     const tCobranca = setInterval(() => void verificarCobranca(), VERIFICAR_MS)
     const tOcio = setInterval(verificarOcio, 3000)
@@ -452,7 +500,7 @@ export default function MascoteVivo() {
 
   if (!visivel) return null
 
-  const classeAcao = correndo ? "amigo-corre" : acao === "pulo" ? "amigo-pulo" : acao === "cambalhota" ? "amigo-cambalhota" : acao === "danca" ? "amigo-danca" : acao === "virar" ? "amigo-virar" : acao === "tremor" ? "amigo-tremor" : ""
+  const classeAcao = usar3d ? "" : correndo ? "amigo-corre" : acao === "pulo" ? "amigo-pulo" : acao === "cambalhota" ? "amigo-cambalhota" : acao === "danca" ? "amigo-danca" : acao === "virar" ? "amigo-virar" : acao === "tremor" ? "amigo-tremor" : ""
 
   return (
     <>
@@ -460,7 +508,7 @@ export default function MascoteVivo() {
         {fala && (
           <div
             data-mascote
-            className="pointer-events-auto absolute bottom-[130px] left-1/2 w-[17rem] rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 shadow-xl anim-slide-up sm:bottom-[150px]"
+            className={`pointer-events-auto absolute left-1/2 w-[17rem] rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 shadow-xl anim-slide-up ${usar3d ? "bottom-[184px] sm:bottom-[240px]" : "bottom-[130px] sm:bottom-[150px]"}`}
             style={{ transform: `translateX(calc(-50% + ${fala.dx}px))` }}
           >
             <button
@@ -498,7 +546,7 @@ export default function MascoteVivo() {
         )}
 
         {festa && (
-          <div aria-hidden className="absolute bottom-32 left-1/2 h-0 w-0">
+          <div aria-hidden className="absolute left-1/2 h-0 w-0 bottom-32 sm:bottom-44">
             {CONFETES.map((c, i) => (
               <span key={i} className="amigo-confete absolute text-xl" style={{ ["--dx" as string]: `${(i - 3.5) * 24}px`, animationDelay: `${i * 70}ms` }}>{c}</span>
             ))}
@@ -506,15 +554,28 @@ export default function MascoteVivo() {
         )}
 
         <div className={classeAcao}>
-          <Mascote
-            className="h-24 w-24 drop-shadow-lg sm:h-32 sm:w-32"
-            title="Mascote da FRT"
-            fundo={false}
-            reage={false}
-            correndo={correndo}
-            direcao={direcao}
-            humor={humor}
-          />
+          {usar3d ? (
+            <div className="relative">
+              <div aria-hidden className="absolute bottom-[3px] left-1/2 h-3 w-16 -translate-x-1/2 rounded-full bg-black/25 blur-[3px] sm:w-20" />
+              <Mascote3D
+                className="relative h-44 w-[7.5rem] sm:h-56 sm:w-40"
+                animacao={animacaoPara(humor, correndo, acao)}
+                expressao={expressaoPara(humor)}
+                direcao={direcao}
+                onErro={() => setUsar3d(false)}
+              />
+            </div>
+          ) : (
+            <Mascote
+              className="h-24 w-24 drop-shadow-lg sm:h-32 sm:w-32"
+              title="Mascote da FRT"
+              fundo={false}
+              reage={false}
+              correndo={correndo}
+              direcao={direcao}
+              humor={humor}
+            />
+          )}
         </div>
       </div>
 

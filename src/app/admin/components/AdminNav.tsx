@@ -288,6 +288,11 @@ export default function AdminNav({
   const [showPrefs, setShowPrefs] = useState(false)
 
   // Liga/desliga o mascote vivo (preferência de cada pessoa, neste navegador).
+  const vozLigada = useSyncExternalStore(
+    (aviso) => { window.addEventListener(EVENTO_PREFS, aviso); return () => window.removeEventListener(EVENTO_PREFS, aviso) },
+    () => lerPrefs().voz,
+    () => false,
+  )
   const mascoteDesligado = useSyncExternalStore(
     (aviso) => { window.addEventListener(EVENTO_PREFS, aviso); return () => window.removeEventListener(EVENTO_PREFS, aviso) },
     () => lerPrefs().desligado,
@@ -417,6 +422,17 @@ export default function AdminNav({
             className="mb-1 ml-9 rounded-md px-2 py-1 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
           >
             ▶ Chamar agora
+          </button>
+        )}
+        {!mascoteDesligado && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={vozLigada}
+            onClick={() => gravarPrefs({ ...lerPrefs(), voz: !vozLigada })}
+            className="mb-1 ml-9 rounded-md px-2 py-1 text-[11.5px] font-semibold text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+          >
+            🔊 Voz do mascote: {vozLigada ? "ligada" : "desligada"}
           </button>
         )}
         <button
