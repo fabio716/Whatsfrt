@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useSyncExternalStore } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { APP_VERSION } from "@/lib/version"
 import { EVENTO_ABRIR_NOVIDADES } from "./Novidades"
+import { EVENTO_PREFS, gravarPrefs, lerPrefs } from "./MascoteVivo"
 import type { NotifyPrefs } from "./GlobalNotifier"
 import Mascote from "@/components/ui/Mascote"
 
@@ -286,6 +287,13 @@ export default function AdminNav({
   const router = useRouter()
   const [showPrefs, setShowPrefs] = useState(false)
 
+  // Liga/desliga o mascote vivo (preferência de cada pessoa, neste navegador).
+  const mascoteDesligado = useSyncExternalStore(
+    (aviso) => { window.addEventListener(EVENTO_PREFS, aviso); return () => window.removeEventListener(EVENTO_PREFS, aviso) },
+    () => lerPrefs().desligado,
+    () => false,
+  )
+
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" })
     router.push("/login")
@@ -389,6 +397,19 @@ export default function AdminNav({
             </button>
           </>
         )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!mascoteDesligado}
+          onClick={() => gravarPrefs({ ...lerPrefs(), desligado: !mascoteDesligado })}
+          className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+        >
+          <span aria-hidden className="flex h-4 w-4 items-center justify-center text-[13px] leading-none">🤖</span>
+          <span className="flex-1 text-left">Mascote</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${mascoteDesligado ? "bg-zinc-200 text-zinc-600" : "bg-emerald-500 text-white"}`}>
+            {mascoteDesligado ? "DESLIGADO" : "LIGADO"}
+          </span>
+        </button>
         <button
           type="button"
           onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_NOVIDADES))}

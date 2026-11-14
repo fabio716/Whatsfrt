@@ -108,18 +108,23 @@ body {
   .mascote-correndo .mascote-pe-a, .mascote-correndo .mascote-pe-b { animation: none; }
 }
 
-/* ─── Mascote ocioso (admin/components/MascoteAmigo.tsx) ─────────────────── */
-@keyframes amigo-entrar { from { left: -130px; } to { left: 42vw; } }
-@keyframes amigo-sair { from { left: 42vw; } to { left: calc(100vw + 130px); } }
+/* ─── Mascote vivo (admin/components/MascoteVivo.tsx) ────────────────────── */
 @keyframes amigo-correr { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-16px) rotate(5deg); } }
-@keyframes amigo-pular { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-30px) scale(1.06); } 60% { transform: translateY(-30px) scale(1.06); } }
-@keyframes amigo-confetar { 0% { transform: translate(0, 0) scale(.4); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(var(--dx, 0), -130px) scale(1.1) rotate(40deg); opacity: 0; } }
-.amigo-entrando { left: 42vw; animation: amigo-entrar 4s linear both; }
-.amigo-saindo { animation: amigo-sair 3.4s linear both; }
-.amigo-parado { left: 42vw; }
+@keyframes amigo-pular { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-34px) scale(1.06); } 60% { transform: translateY(-34px) scale(1.06); } }
+@keyframes amigo-cambalhota { 0% { transform: translateY(0) rotate(0deg); } 45% { transform: translateY(-70px) rotate(190deg); } 100% { transform: translateY(0) rotate(360deg); } }
+@keyframes amigo-dancar { 0%, 100% { transform: translateX(-10px) rotate(-9deg); } 50% { transform: translateX(10px) rotate(9deg) translateY(-8px); } }
+@keyframes amigo-virar { 0% { transform: scaleX(1); } 50% { transform: scaleX(.12); } 100% { transform: scaleX(1); } }
+@keyframes amigo-tremer { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@keyframes amigo-confetar { 0% { transform: translate(0, 0) scale(.4); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(var(--dx, 0), -150px) scale(1.1) rotate(40deg); opacity: 0; } }
+@keyframes mascote-suar { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(46px); opacity: 0; } }
 .amigo-corre { animation: amigo-correr .42s ease-in-out infinite; }
 .amigo-pulo { animation: amigo-pular .7s ease-in-out 3; }
+.amigo-cambalhota { animation: amigo-cambalhota .95s ease-in-out 1; }
+.amigo-danca { animation: amigo-dancar .5s ease-in-out infinite; }
+.amigo-virar { animation: amigo-virar .5s ease-in-out 1; }
+.amigo-tremor { animation: amigo-tremer .18s linear infinite; }
 .amigo-confete { animation: amigo-confetar 1.6s ease-out both; }
+.mascote-suor { animation: mascote-suar 1.6s ease-in infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .amigo-entrando, .amigo-saindo, .amigo-corre, .amigo-pulo { animation: none; }
+  .amigo-corre, .amigo-pulo, .amigo-cambalhota, .amigo-danca, .amigo-virar, .amigo-tremor, .mascote-suor { animation: none; }
 }

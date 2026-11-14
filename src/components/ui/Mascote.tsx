@@ -11,7 +11,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react"
 //  • fundo={false}: personagem solto, sem o quadrado de fundo.
 // As animações ficam em globals.css (classes mascote-*).
 
-export type Humor = "normal" | "feliz" | "pensando" | "comemorando" | "dormindo" | "surpreso"
+export type Humor = "normal" | "feliz" | "pensando" | "comemorando" | "dormindo" | "surpreso" | "preocupado" | "pedindo"
 
 interface Pose { esq: number; dir: number; ola: boolean }
 const POSES: Record<Humor, Pose> = {
@@ -21,6 +21,8 @@ const POSES: Record<Humor, Pose> = {
   comemorando: { esq: 152, dir: -152, ola: false },
   dormindo: { esq: 12, dir: -12, ola: false },
   surpreso: { esq: 64, dir: -64, ola: false },
+  preocupado: { esq: 38, dir: -38, ola: false },
+  pedindo: { esq: 132, dir: -132, ola: false },
 }
 
 // Estrela de 5 pontas (olhos de quem comemora).
@@ -48,6 +50,7 @@ export default function Mascote({
   correndo = false,
   olhar = true,
   reage = true,
+  direcao = null,
 }: Readonly<{
   className?: string
   title?: string
@@ -57,6 +60,7 @@ export default function Mascote({
   correndo?: boolean
   olhar?: boolean
   reage?: boolean
+  direcao?: "esq" | "dir" | null
 }>) {
   const id = useId().replace(/:/g, "")
   const svgRef = useRef<SVGSVGElement>(null)
@@ -111,9 +115,10 @@ export default function Mascote({
   const tela = `mt${id}`
   const fundoId = `mf${id}`
   const bolaId = `mb${id}`
-  const abertos = atual === "normal" || atual === "pensando" || atual === "surpreso"
+  const abertos = atual === "normal" || atual === "pensando" || atual === "surpreso" || atual === "preocupado" || atual === "pedindo"
+  const olhosGrandes = atual === "surpreso" || atual === "pedindo"
   const sorrisoGrande = atual === "feliz" || atual === "comemorando"
-  const desvioX = atual === "pensando" ? 16 : 0
+  const desvioX = (atual === "pensando" ? 16 : 0) + (direcao === "dir" ? 14 : direcao === "esq" ? -14 : 0)
   const desvioY = atual === "pensando" ? -14 : 0
   const olhos: CSSProperties = {
     transform: `translate(calc(var(--olho-x, 0px) + ${desvioX}px), calc(var(--olho-y, 0px) + ${desvioY}px))`,
@@ -185,11 +190,12 @@ export default function Mascote({
         <g style={olhos}>
           {abertos && (
             <g className="mascote-olhos">
-              {atual === "surpreso" ? (
+              {olhosGrandes ? (
                 <>
                   <ellipse cx="312" cy="316" rx="48" ry="56" fill="#3ee08a" /><ellipse cx="488" cy="316" rx="48" ry="56" fill="#3ee08a" />
                   <ellipse cx="312" cy="316" rx="32" ry="40" fill="#bfffd9" opacity=".6" /><ellipse cx="488" cy="316" rx="32" ry="40" fill="#bfffd9" opacity=".6" />
                   <circle cx="328" cy="296" r="15" fill="#fff" /><circle cx="504" cy="296" r="15" fill="#fff" />
+                  {atual === "pedindo" && <><circle cx="294" cy="338" r="8" fill="#fff" /><circle cx="470" cy="338" r="8" fill="#fff" /></>}
                 </>
               ) : (
                 <>
@@ -219,6 +225,12 @@ export default function Mascote({
           </>
         )}
         {atual === "pensando" && <path d="M448 252 q44 -24 90 -4" fill="none" stroke="#bfffd9" strokeWidth="10" strokeLinecap="round" />}
+        {atual === "preocupado" && (
+          <>
+            <path d="M262 272 L346 242" fill="none" stroke="#bfffd9" strokeWidth="10" strokeLinecap="round" />
+            <path d="M538 272 L454 242" fill="none" stroke="#bfffd9" strokeWidth="10" strokeLinecap="round" />
+          </>
+        )}
 
         {/* bochechas */}
         <ellipse cx="250" cy="388" rx={sorrisoGrande ? 28 : 22} ry={sorrisoGrande ? 15 : 12} fill="#f472b6" opacity={atual === "surpreso" ? 0.3 : 0.55} />
@@ -234,6 +246,10 @@ export default function Mascote({
           <ellipse cx="400" cy="408" rx="22" ry="28" fill="#04122b" stroke="#3ee08a" strokeWidth="9" />
         ) : atual === "pensando" ? (
           <path d="M366 402 q34 -16 68 0" fill="none" stroke="#3ee08a" strokeWidth="12" strokeLinecap="round" />
+        ) : atual === "preocupado" ? (
+          <path d="M348 410 q13 -17 26 0 t26 0 t26 0 t26 0" fill="none" stroke="#3ee08a" strokeWidth="11" strokeLinecap="round" />
+        ) : atual === "pedindo" ? (
+          <path d="M366 394 q34 26 68 0 q-34 -10 -68 0 z" fill="#04122b" stroke="#3ee08a" strokeWidth="9" strokeLinejoin="round" />
         ) : atual === "dormindo" ? (
           <path d="M374 396 q26 16 52 0" fill="none" stroke="#3ee08a" strokeWidth="11" strokeLinecap="round" />
         ) : (
@@ -256,6 +272,16 @@ export default function Mascote({
             <text className="mascote-zzz" x="596" y="150" fontSize="64">Z</text>
             <text className="mascote-zzz mascote-zzz-2" x="650" y="106" fontSize="48">z</text>
             <text className="mascote-zzz mascote-zzz-3" x="690" y="70" fontSize="36">z</text>
+          </g>
+        )}
+        {atual === "preocupado" && (
+          <path className="mascote-suor" d="M592 232 q-26 40 0 54 q26 -14 0 -54 z" fill="#7dd3fc" stroke="#fff" strokeWidth="4" />
+        )}
+        {atual === "pedindo" && (
+          <g fill="#ffd84d">
+            <polygon className="mascote-ponto" points={estrela(214, 232, 18, 7)} />
+            <polygon className="mascote-ponto mascote-ponto-2" points={estrela(588, 226, 14, 6)} />
+            <polygon className="mascote-ponto mascote-ponto-3" points={estrela(168, 330, 11, 5)} />
           </g>
         )}
         {atual === "pensando" && (
