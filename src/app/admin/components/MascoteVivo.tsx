@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Mascote, { type Humor } from "@/components/ui/Mascote"
-import Mascote3D, { type Animacao3D, type Expressao3D } from "@/components/ui/Mascote3D"
+import Mascote3D, { type Animacao3D } from "@/components/ui/Mascote3D"
 import { escolherConversa } from "./mascoteConversas"
 import { FALAS, textoCobranca, textoFesta, type ItemCobranca } from "./mascoteTexto"
 
@@ -88,14 +88,10 @@ function animacaoPara(humor: Humor, correndo: boolean, acao: string): Animacao3D
   if (acao === "cambalhota" || acao === "pulo") return "pular"
   if (humor === "comemorando") return "dancar"
   if (humor === "preocupado") return "nao"
-  if (humor === "pedindo") return "acenar"
+  if (humor === "pedindo") return "pedir"
   if (humor === "dormindo") return "sentar"
   return "idle"
 }
-function expressaoPara(humor: Humor): Expressao3D {
-  return { triste: humor === "preocupado" ? 1 : humor === "pedindo" ? 0.6 : 0, surpreso: humor === "surpreso" ? 1 : 0, bravo: 0 }
-}
-
 const reduzido = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)").matches
 const quadro = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()))
 
@@ -159,6 +155,7 @@ export default function MascoteVivo() {
   const [festa, setFesta] = useState(false)
   const [bola, setBola] = useState<{ x: number; y: number } | null>(null)
   const [usar3d, setUsar3d] = useState(false)
+  const [falando, setFalando] = useState(false)
   const elRef = useRef<HTMLDivElement>(null)
   const bolaRef = useRef({ x: 0, y: 0 })
   const escolhaRef = useRef<((id: string) => void) | null>(null)
@@ -189,7 +186,7 @@ export default function MascoteVivo() {
     })
     const limpar = () => {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel()
-      setVisivel(false); setFala(null); setBola(null); setFesta(false); setAcao(""); setCorrendo(false); setDirecao(null)
+      setVisivel(false); setFalando(false); setFala(null); setBola(null); setFesta(false); setAcao(""); setCorrendo(false); setDirecao(null)
       escolhaRef.current = null
       bolaFimRef.current = null
       x = -400
@@ -228,10 +225,16 @@ export default function MascoteVivo() {
       setFala(null); setHumor("feliz")
       await mover(window.innerWidth + tam() + 40, 560, id)
     }
+    const mexerBoca = (texto: string) => {
+      setFalando(true)
+      const t = setTimeout(() => setFalando(false), Math.min(4000, 900 + texto.length * 55))
+      cancelers.push(() => clearTimeout(t))
+    }
     const dizer = async (texto: string, ms: number) => {
       const cx = x + tam() / 2
       const meio = Math.min(Math.max(cx, 150), window.innerWidth - 150)
       setFala({ texto, opcoes: [], dx: meio - cx })
+      mexerBoca(texto)
       falarEmVoz(texto)
       await esperar(ms)
     }
@@ -240,6 +243,7 @@ export default function MascoteVivo() {
       const cx = x + tam() / 2
       const meio = Math.min(Math.max(cx, 150), window.innerWidth - 150)
       setFala({ texto, opcoes, dx: meio - cx })
+      mexerBoca(texto)
       falarEmVoz(texto)
       const t = setTimeout(() => { escolhaRef.current = null; res(null) }, ms)
       escolhaRef.current = (op) => { clearTimeout(t); escolhaRef.current = null; res(op) }
@@ -560,7 +564,8 @@ export default function MascoteVivo() {
               <Mascote3D
                 className="relative h-44 w-[7.5rem] sm:h-56 sm:w-40"
                 animacao={animacaoPara(humor, correndo, acao)}
-                expressao={expressaoPara(humor)}
+                humor={humor}
+                falando={falando}
                 direcao={direcao}
                 onErro={() => setUsar3d(false)}
               />

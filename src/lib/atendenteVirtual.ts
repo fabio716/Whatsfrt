@@ -360,35 +360,37 @@ const ROTULO_MIDIA: Record<string, string> = {
   audio: "[áudio]", image: "[imagem]", video: "[vídeo]", document: "[documento]", sticker: "[figurinha]",
 }
 
-// Manda a figura do mascote com o texto como legenda. null = não deu (quem
-// chamou manda só o texto). A figura fica guardada na pasta de mídias; o nome
-// do arquivo fica no Redis pra não gravar de novo a cada conversa.
-// v2: figura nova do mascote — a chave antiga apontava pro arquivo anterior.
-const CHAVE_MASCOTE = "av:mascote:arquivo:v2"
+// Manda o mascote (vídeo curto acenando) com o texto como legenda. Se o vídeo
+// não for, tenta a figura parada. null = não deu (quem chamou manda só o
+// texto). O arquivo fica na pasta de mídias; o nome fica no Redis pra não
+// gravar de novo a cada conversa. Uma mensagem só — sem aumentar o volume.
+const MASCOTES = [
+  { arquivo: "mascote-ola.mp4", mimetype: "video/mp4", chave: "av:mascote:arquivo:v3:video" },
+  { arquivo: "mascote-frt.png", mimetype: "image/png", chave: "av:mascote:arquivo:v3:png" },
+]
 async function enviarComMascote(whatsappId: string, legenda: string) {
-  try {
-    const dados = await readFile(path.join(process.cwd(), "public", "mascote-frt.png"))
-    let arquivo = await redis.get(CHAVE_MASCOTE)
-    let mediaUrl = arquivo ? `/api/media/${arquivo}` : ""
-    if (!arquivo || !isSafeFilename(arquivo)) {
-      const salvo = await saveMediaBuffer(dados, "image/png", "mascote-frt.png")
-      arquivo = salvo.filename
-      mediaUrl = salvo.mediaUrl
-      await redis.set(CHAVE_MASCOTE, arquivo)
+  for (const m of MASCOTES) {
+    try {
+      const dados = await readFile(path.join(process.cwd(), "public", m.arquivo))
+      let arquivo = await redis.get(m.chave)
+      let mediaUrl = arquivo ? `/api/media/${arquivo}` : ""
+      if (!arquivo || !isSafeFilename(arquivo)) {
+        const salvo = await saveMediaBuffer(dados, m.mimetype, m.arquivo)
+        arquivo = salvo.filename
+        mediaUrl = salvo.mediaUrl
+        await redis.set(m.chave, arquivo)
+      }
+      const envio = await sendMedia({
+        whatsappId, filename: arquivo, mimetype: m.mimetype, caption: legenda,
+        rawBase64: dados.toString("base64"),
+      })
+      if (envio.ok) return { envio, mediaUrl, mediaType: m.mimetype }
+      await redis.del(m.chave)
+    } catch (err) {
+      console.error("[atendenteVirtual] mascote não enviado:", err instanceof Error ? err.message : err)
     }
-    const envio = await sendMedia({
-      whatsappId, filename: arquivo, mimetype: "image/png", caption: legenda,
-      rawBase64: dados.toString("base64"),
-    })
-    if (!envio.ok) {
-      await redis.del(CHAVE_MASCOTE)
-      return null
-    }
-    return { envio, mediaUrl }
-  } catch (err) {
-    console.error("[atendenteVirtual] mascote não enviado:", err instanceof Error ? err.message : err)
-    return null
   }
+  return null
 }
 
 // Acha a vendedora que o cliente citou (sem acento/maiúscula; primeiro nome só
@@ -527,7 +529,7 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
       status: envio.ok ? MessageStatus.SENT : MessageStatus.FAILED,
       contactId,
       viaAtendente: true,
-      ...(figura ? { mediaUrl: figura.mediaUrl, mediaType: "image/png" } : {}),
+      ...(figura ? { mediaUrl: figura.mediaUrl, mediaType: figura.mediaType } : {}),
       ...(envio.messageId ? { whatsappKeyId: envio.messageId } : {}),
     },
   })
