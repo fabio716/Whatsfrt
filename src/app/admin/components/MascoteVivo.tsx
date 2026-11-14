@@ -59,10 +59,15 @@ function podeAparecer(): boolean {
 }
 
 // Voz do mascote (opcional, desligada por padrão): lê a fala em português.
-function falarEmVoz(texto: string): void {
-  if (!lerPrefs().voz || !("speechSynthesis" in window)) return
-  const limpo = texto.replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, "").replace(/\s+/g, " ").trim()
-  if (!limpo) return
+// Usa a voz natural do servidor (ElevenLabs); se não estiver disponível ou der
+// erro, cai na voz do navegador.
+let audioAtual: HTMLAudioElement | null = null
+function pararVoz(): void {
+  if (audioAtual) { audioAtual.pause(); audioAtual = null }
+  pararVoz()
+}
+function vozDoNavegador(limpo: string): void {
+  if (!("speechSynthesis" in window)) return
   window.speechSynthesis.cancel()
   const u = new SpeechSynthesisUtterance(limpo)
   u.lang = "pt-BR"
@@ -71,6 +76,28 @@ function falarEmVoz(texto: string): void {
   const voz = window.speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith("pt-br"))
   if (voz) u.voice = voz
   window.speechSynthesis.speak(u)
+}
+function falarEmVoz(texto: string): void {
+  if (!lerPrefs().voz) return
+  const limpo = texto.replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, "").replace(/\s+/g, " ").trim()
+  if (!limpo) return
+  pararVoz()
+  void (async () => {
+    try {
+      const r = await fetch("/api/mascote/voz", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ texto: limpo }),
+      })
+      if (!r.ok) throw new Error(String(r.status))
+      const url = URL.createObjectURL(await r.blob())
+      const audio = new Audio(url)
+      audio.onended = () => URL.revokeObjectURL(url)
+      pararVoz()
+      audioAtual = audio
+      await audio.play()
+    } catch {
+      vozDoNavegador(limpo)
+    }
+  })()
 }
 
 // WebGL disponível? Sem ele, fica o mascote 2D.
@@ -185,7 +212,7 @@ export default function MascoteVivo() {
       cancelers.push(() => { clearTimeout(t); res() })
     })
     const limpar = () => {
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
+      pararVoz()
       setVisivel(false); setFalando(false); setFala(null); setBola(null); setFesta(false); setAcao(""); setCorrendo(false); setDirecao(null)
       escolhaRef.current = null
       bolaFimRef.current = null
