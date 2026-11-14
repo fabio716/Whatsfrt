@@ -80,6 +80,12 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/mascote",
+        label: "Treinar mascote",
+        roles: ["ADMIN"],
+        icon: <span aria-hidden className="flex h-4 w-4 items-center justify-center text-[13px] leading-none">🤖</span>,
+      },
+      {
         href: "/admin/equipe-ao-vivo",
         label: "Equipe ao vivo",
         roles: ["ADMIN"],

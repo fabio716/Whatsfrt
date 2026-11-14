@@ -23,9 +23,9 @@ import { FALAS, textoCobranca, textoFesta, type ItemCobranca } from "./mascoteTe
 // aparece com janela aberta, aba em segundo plano ou texto sendo digitado, e dá
 // pra silenciar/desligar (menu lateral, "Mascote").
 
-type Cena = "cobranca" | "conversa" | "bolinha" | "show" | "espiar" | "festa"
+type Cena = "cobranca" | "papo" | "conversa" | "bolinha" | "show" | "espiar" | "festa"
 type Dir = "esq" | "dir" | null
-interface Fala { texto: string; opcoes: { rotulo: string; id: string }[]; dx: number }
+interface Fala { texto: string; opcoes: { rotulo: string; id: string }[]; dx: number; campo?: boolean }
 interface Prefs { desligado: boolean; silenciarAte: number }
 
 const OCIOSO_MS = 90_000
@@ -144,6 +144,7 @@ export default function MascoteVivo() {
   const [bola, setBola] = useState<{ x: number; y: number } | null>(null)
   const [usar3d, setUsar3d] = useState(false)
   const [falando, setFalando] = useState(false)
+  const [digitado, setDigitado] = useState("")
   const elRef = useRef<HTMLDivElement>(null)
   const bolaRef = useRef({ x: 0, y: 0 })
   const escolhaRef = useRef<((id: string) => void) | null>(null)
@@ -225,10 +226,11 @@ export default function MascoteVivo() {
       await esperar(ms)
     }
     // Fala com botões; devolve o id escolhido ou null se ninguém respondeu.
-    const perguntar = (texto: string, opcoes: Fala["opcoes"], ms: number): Promise<string | null> => new Promise((res) => {
+    const perguntar = (texto: string, opcoes: Fala["opcoes"], ms: number, campo = false): Promise<string | null> => new Promise((res) => {
       const cx = x + tam() / 2
       const meio = Math.min(Math.max(cx, 150), window.innerWidth - 150)
-      setFala({ texto, opcoes, dx: meio - cx })
+      setFala({ texto, opcoes, dx: meio - cx, campo })
+      setDigitado("")
       mexerBoca(texto)
       const t = setTimeout(() => { escolhaRef.current = null; res(null) }, ms)
       escolhaRef.current = (op) => { clearTimeout(t); escolhaRef.current = null; res(op) }
@@ -237,8 +239,54 @@ export default function MascoteVivo() {
     const fazer = async (nome: string, ms: number) => { setAcao(nome); await esperar(ms); setAcao("") }
 
     // ── Cenas ──────────────────────────────────────────────────────────────
+    // Conversa com a IA do mascote. null = indisponível (usa as falas prontas).
+    const chamarIA = async (modo: "papo" | "cobranca", mensagens: { role: "user" | "assistant"; texto: string }[], ms = 12_000): Promise<string | null> => {
+      const ctl = new AbortController()
+      const t = setTimeout(() => ctl.abort(), ms)
+      try {
+        const r = await fetch("/api/mascote/conversa", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ modo, mensagens }), signal: ctl.signal,
+        })
+        if (!r.ok) return null
+        const d = (await r.json()) as { resposta?: unknown }
+        return typeof d.resposta === "string" && d.resposta.trim() ? d.resposta.trim() : null
+      } catch { return null } finally { clearTimeout(t) }
+    }
+
+    // Papo de verdade: o mascote puxa assunto (relaxar, motivar, ajudar, retornos)
+    // e a pessoa responde digitando. Até 6 trocas; "Agora não" encerra.
+    const cenaPapo = async (id: number) => {
+      const abertura = await chamarIA("papo", [])
+      if (!vivo(id)) return
+      if (!abertura) { await cenaConversa(id); return }
+      await entrar(id, Math.round(window.innerWidth * 0.4), "feliz")
+      if (!vivo(id)) return
+      const hist: { role: "user" | "assistant"; texto: string }[] = []
+      let falaAtual = abertura
+      let conversou = false
+      for (let turno = 0; turno < 6 && vivo(id); turno++) {
+        hist.push({ role: "assistant", texto: falaAtual })
+        const escolha = await perguntar(falaAtual, [{ rotulo: "Agora não, valeu! 👋", id: "fechar" }], 120_000, true)
+        if (!vivo(id)) return
+        if (escolha === null || !escolha.startsWith("txt:")) break
+        conversou = true
+        hist.push({ role: "user", texto: escolha.slice(4) })
+        setFala((f) => (f ? { ...f, texto: "…", opcoes: [], campo: false } : f))
+        const resp = await chamarIA("papo", hist)
+        if (!vivo(id)) return
+        if (!resp) { await dizer("Opa, me enrolei aqui! 😅 A gente continua depois!", 3000); break }
+        falaAtual = resp
+      }
+      if (vivo(id) && conversou) { setHumor("comemorando"); await dizer("Adorei o papo! Qualquer coisa, é só me chamar. 💙", 2600) }
+      if (vivo(id)) await sair(id)
+    }
+
     const cenaCobranca = async (id: number, itens: ItemCobranca[]) => {
-      const t = textoCobranca(perfil.nome, itens)
+      const pronto = textoCobranca(perfil.nome, itens)
+      const ia = await chamarIA("cobranca", [], 7000)
+      if (!vivo(id)) return
+      const t = { ...pronto, texto: ia ?? pronto.texto }
       await entrar(id, Math.round(window.innerWidth * 0.34), t.humor)
       if (!vivo(id)) return
       if (t.humor === "preocupado") setAcao("tremor")
@@ -407,8 +455,8 @@ export default function MascoteVivo() {
     const sortearBrincadeira = (): Cena => {
       // Demonstração: localStorage.setItem("mascote_cena_teste", "bolinha") força a cena.
       const forcada = (() => { try { return localStorage.getItem("mascote_cena_teste") } catch { return null } })()
-      if (forcada && ["conversa", "bolinha", "show", "espiar"].includes(forcada)) return forcada as Cena
-      const opcoes: Cena[] = reduzido() ? ["conversa", "espiar"] : ["conversa", "bolinha", "bolinha", "show", "show", "espiar"]
+      if (forcada && ["conversa", "papo", "bolinha", "show", "espiar"].includes(forcada)) return forcada as Cena
+      const opcoes: Cena[] = reduzido() ? ["papo", "espiar"] : ["papo", "papo", "papo", "bolinha", "show", "espiar"]
       return opcoes[Math.floor(Math.random() * opcoes.length)]
     }
 
@@ -428,7 +476,7 @@ export default function MascoteVivo() {
 
     const brincar = () => {
       const cena = sortearBrincadeira()
-      const fn = { conversa: cenaConversa, bolinha: cenaBolinha, show: cenaShow, espiar: cenaEspiar }[cena as "conversa"]
+      const fn = { papo: cenaPapo, conversa: cenaConversa, bolinha: cenaBolinha, show: cenaShow, espiar: cenaEspiar }[cena as "papo"]
       void rodar(cena, fn)
     }
 
@@ -509,6 +557,24 @@ export default function MascoteVivo() {
               ✕
             </button>
             <p className="pr-5 text-[13px] font-medium leading-snug text-zinc-800">{fala.texto}</p>
+            {fala.campo && (
+              <form
+                className="mt-2.5 flex gap-1.5"
+                onSubmit={(e) => { e.preventDefault(); const v = digitado.trim(); if (v) escolhaRef.current?.(`txt:${v}`) }}
+              >
+                <input
+                  autoFocus
+                  value={digitado}
+                  onChange={(e) => setDigitado(e.target.value.slice(0, 400))}
+                  placeholder="Escreva pro mascote…"
+                  aria-label="Responder ao mascote"
+                  className="min-w-0 flex-1 rounded-full border border-zinc-300 px-3 py-1 text-[12.5px] text-zinc-800 outline-none focus:border-[#0b3f8a]"
+                />
+                <button type="submit" disabled={!digitado.trim()} className="rounded-full bg-[#00bf5b] px-3 py-1 text-[12px] font-bold text-white disabled:opacity-40">
+                  Enviar
+                </button>
+              </form>
+            )}
             {fala.opcoes.length > 0 && (
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {fala.opcoes.map((o) => (
