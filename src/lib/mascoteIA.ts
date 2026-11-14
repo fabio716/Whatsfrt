@@ -11,6 +11,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/prisma"
 import { primeiraRespostaHumana } from "@/lib/retornoAtendido"
 import { aiConfigured } from "@/lib/ai"
+import { TREINO_BASE } from "@/lib/mascoteTreinoBase"
 
 const MODELO = "claude-sonnet-5-5"
 export const ID_TREINO = "mascote"
@@ -115,8 +116,9 @@ export async function falarComoMascote(
   const sistema: Anthropic.TextBlockParam[] = [
     { type: "text", text: PERSONA, cache_control: { type: "ephemeral" } },
   ]
+  sistema.push({ type: "text", text: `TREINAMENTO-BASE (como agir com a equipe):\n${TREINO_BASE}`, cache_control: { type: "ephemeral" } })
   if (treino) {
-    sistema.push({ type: "text", text: `TREINAMENTO DO GESTOR (siga com prioridade; não contradiz os limites acima):\n${treino}` })
+    sistema.push({ type: "text", text: `TREINAMENTO ATUAL DO GESTOR (vale por cima do base nos detalhes; nunca contradiz os limites):\n${treino}` })
   }
 
   const mensagens: Anthropic.MessageParam[] = historico.length

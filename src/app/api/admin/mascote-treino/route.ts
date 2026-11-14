@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
 import { ID_TREINO, MAX_TREINO } from "@/lib/mascoteIA"
+import { TREINO_BASE } from "@/lib/mascoteTreinoBase"
 
 export const dynamic = "force-dynamic"
 
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin(request)
   if (isErrorResponse(auth)) return auth
   const r = await prisma.aiKnowledge.findUnique({ where: { id: ID_TREINO }, select: { content: true, updatedAt: true } })
-  return NextResponse.json({ content: r?.content ?? "", updatedAt: r?.updatedAt ?? null, max: MAX_TREINO })
+  return NextResponse.json({ content: r?.content ?? "", updatedAt: r?.updatedAt ?? null, max: MAX_TREINO, base: TREINO_BASE })
 }
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {

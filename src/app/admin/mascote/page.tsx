@@ -24,6 +24,7 @@ Reconheça quem atendeu rápido. Em dia puxado, sugira uma pausa curta.
 export default function MascoteTreinoPage() {
   const [content, setContent] = useState("")
   const [max, setMax] = useState(6000)
+  const [base, setBase] = useState("")
   const [atualizado, setAtualizado] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -34,9 +35,9 @@ export default function MascoteTreinoPage() {
     fetch("/api/admin/mascote-treino", { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) throw new Error()
-        const d = (await r.json()) as { content: string; updatedAt: string | null; max: number }
+        const d = (await r.json()) as { content: string; updatedAt: string | null; max: number; base: string }
         if (!vivo) return
-        setContent(d.content); setAtualizado(d.updatedAt); setMax(d.max)
+        setContent(d.content); setAtualizado(d.updatedAt); setMax(d.max); setBase(d.base)
       })
       .catch(() => { if (vivo) setMsg({ ok: false, texto: "Não consegui carregar o treinamento. Tente recarregar a página." }) })
       .finally(() => { if (vivo) setCarregando(false) })
@@ -70,12 +71,19 @@ export default function MascoteTreinoPage() {
         <p className="mt-6 text-sm text-zinc-500">Carregando…</p>
       ) : (
         <>
+          {base && (
+            <details className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+              <summary className="cursor-pointer font-semibold">Treinamento base já ativo (apoio aos agentes e encanto de clientes)</summary>
+              <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed">{base}</pre>
+            </details>
+          )}
+          <p className="mt-4 text-sm font-semibold text-zinc-800">O que você quer acrescentar:</p>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value.slice(0, max))}
             rows={16}
             placeholder={EXEMPLO}
-            className="mt-4 w-full rounded-xl border border-zinc-300 p-3 text-sm leading-relaxed text-zinc-800 outline-none focus:border-[#0b3f8a]"
+            className="mt-2 w-full rounded-xl border border-zinc-300 p-3 text-sm leading-relaxed text-zinc-800 outline-none focus:border-[#0b3f8a]"
           />
           <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
             <span>{content.length}/{max} caracteres</span>
