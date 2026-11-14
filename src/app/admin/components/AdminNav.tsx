@@ -410,7 +410,7 @@ export default function AdminNav({
             {mascoteDesligado ? "DESLIGADO" : "LIGADO"}
           </span>
         </button>
-        {!mascoteDesligado && (
+        {!mascoteDesligado && userRole === "ADMIN" && (
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event(EVENTO_CHAMAR))}
