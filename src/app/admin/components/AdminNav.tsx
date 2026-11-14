@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { APP_VERSION } from "@/lib/version"
 import { EVENTO_ABRIR_NOVIDADES } from "./Novidades"
-import { EVENTO_PREFS, gravarPrefs, lerPrefs } from "./MascoteVivo"
+import { EVENTO_CHAMAR, EVENTO_PREFS, gravarPrefs, lerPrefs } from "./MascoteVivo"
 import type { NotifyPrefs } from "./GlobalNotifier"
 import Mascote from "@/components/ui/Mascote"
 
@@ -410,6 +410,15 @@ export default function AdminNav({
             {mascoteDesligado ? "DESLIGADO" : "LIGADO"}
           </span>
         </button>
+        {!mascoteDesligado && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(EVENTO_CHAMAR))}
+            className="mb-1 ml-9 rounded-md px-2 py-1 text-[11.5px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+          >
+            ▶ Chamar agora
+          </button>
+        )}
         <button
           type="button"
           onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_NOVIDADES))}

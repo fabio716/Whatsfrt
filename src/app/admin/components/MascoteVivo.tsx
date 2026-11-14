@@ -32,6 +32,7 @@ const VERIFICAR_MS = 45_000
 
 export const CHAVE_PREFS = "mascote_prefs"
 export const EVENTO_PREFS = "mascote:prefs"
+export const EVENTO_CHAMAR = "mascote:chamar"
 const K = { ultima: "mascote_vivo_ultima", cobrancaAte: "mascote_cobranca_ate", teste: "mascote_ocioso_ms", bolinhas: "mascote_bolinhas", conversa: "mascote_amigo_conversa" }
 const CONFETES = ["🎉", "✨", "🎊", "⭐", "💚", "🎉", "✨", "🚀"]
 
@@ -390,9 +391,27 @@ export default function MascoteVivo() {
       if (!teste && Date.now() - lerNum(K.ultima) < ENTRE_CENAS_MS) return
       if (!podeAparecer()) return
       gravar(K.ultima, Date.now())
+      brincar()
+    }
+
+    const brincar = () => {
       const cena = sortearBrincadeira()
       const fn = { conversa: cenaConversa, bolinha: cenaBolinha, show: cenaShow, espiar: cenaEspiar }[cena as "conversa"]
       void rodar(cena, fn)
+    }
+
+    // Botão "Chamar agora" (menu lateral): cobra se houver retorno pendente; senão brinca.
+    const aoChamar = async () => {
+      if (lerPrefs().desligado || ocupado) return
+      const itens = await buscarCobranca()
+      if (ocupado) return
+      if (itens && itens.length > 0) {
+        itens.forEach((i) => cobrados.add(i.id))
+        gravar(K.cobrancaAte, Date.now() + ENTRE_COBRANCAS_MS)
+        void rodar("cobranca", (id) => cenaCobranca(id, itens))
+        return
+      }
+      brincar()
     }
 
     // Atividade da pessoa: tecla/clique fora do mascote encerra as brincadeiras.
@@ -406,6 +425,7 @@ export default function MascoteVivo() {
 
     const aoMudarPrefs = () => { if (lerPrefs().desligado && ocupado) cancelar() }
     window.addEventListener(EVENTO_PREFS, aoMudarPrefs)
+    window.addEventListener(EVENTO_CHAMAR, aoChamar)
 
     void (async () => {
       try {
@@ -425,6 +445,7 @@ export default function MascoteVivo() {
       clearTimeout(primeira); clearInterval(tCobranca); clearInterval(tOcio)
       for (const ev of eventos) window.removeEventListener(ev, agiu)
       window.removeEventListener(EVENTO_PREFS, aoMudarPrefs)
+      window.removeEventListener(EVENTO_CHAMAR, aoChamar)
       cancelar()
     }
   }, [router])
