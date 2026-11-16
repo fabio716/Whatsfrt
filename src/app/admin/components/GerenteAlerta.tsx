@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import Mascote from "@/components/ui/Mascote"
 
 // ─── Gerente virtual: alerta com ciência obrigatória ─────────────────────────
@@ -17,13 +17,15 @@ interface Item {
   cliente: string
   minutos: number
   toleranciaMin: number
+  ciente: boolean
   diretoriaAvisada: boolean
 }
 
-const CHECAR_A_CADA_MS = 15_000
+const CHECAR_A_CADA_MS = 8_000
 
 export default function GerenteAlerta() {
   const router = useRouter()
+  const pathname = usePathname()
   const [itens, setItens] = useState<Item[]>([])
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState("")
@@ -45,15 +47,17 @@ export default function GerenteAlerta() {
   }, [carregar])
 
   const ciente = async (irPara?: string) => {
-    if (enviando || itens.length === 0) return
+    const novos = itens.filter((i) => !i.ciente)
+    if (enviando || novos.length === 0) return
     setEnviando(true); setErro("")
     try {
       const res = await fetch("/api/gerente/ciencia", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: itens.map((i) => i.id) }),
+        body: JSON.stringify({ ids: novos.map((i) => i.id) }),
       })
       if (!res.ok) { setErro("Não foi possível registrar. Confira a internet e tente de novo."); return }
-      setItens([])
+      // Ciente registrado: continua travado até atender, mas libera o chat.
+      setItens((antes) => antes.map((i) => ({ ...i, ciente: true })))
       if (irPara) router.push(`/admin/chats?contact=${irPara}`)
     } catch {
       setErro("Sem conexão. Tente de novo.")
@@ -62,6 +66,17 @@ export default function GerenteAlerta() {
 
   if (itens.length === 0) return null
   const primeiro = itens[0]
+  const faltaCiencia = itens.some((i) => !i.ciente)
+  // Já deu ciência: o sistema fica travado até ela atender, mas o chat é liberado
+  // (é onde ela responde). Fora do chat, a tela trava de novo.
+  if (!faltaCiencia && pathname.startsWith("/admin/chats")) {
+    return (
+      <div role="status" className="fixed inset-x-0 top-0 z-[119] bg-red-600 px-4 py-2 text-center text-[13px] font-semibold text-white shadow-lg">
+        ⏱️ Responda {primeiro.cliente}{itens.length > 1 ? ` (e mais ${itens.length - 1})` : ""} para liberar o sistema · {primeiro.minutos} min de espera
+        {itens.some((i) => i.diretoriaAvisada) ? " · o administrador já foi avisado" : ""}
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="alertdialog" aria-modal="true" aria-labelledby="gerente-titulo">
@@ -72,7 +87,9 @@ export default function GerenteAlerta() {
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-red-700">Gerente virtual · aviso obrigatório</p>
               <h2 id="gerente-titulo" className="mt-0.5 text-[17px] font-semibold leading-snug text-zinc-900">
-                {itens.length === 1 ? "Você tem um atraso a resolver" : `Você tem ${itens.length} atrasos a resolver`}
+                {faltaCiencia
+                  ? (itens.length === 1 ? "Você tem um atraso a resolver" : `Você tem ${itens.length} atrasos a resolver`)
+                  : "Atenda o cliente para continuar usando o sistema"}
               </h2>
             </div>
           </div>
@@ -90,7 +107,7 @@ export default function GerenteAlerta() {
                   : `O horário combinado passou há ${i.minutos} min e o cliente ainda não teve retorno.`}
                 {i.fila ? " (cliente na fila, sem responsável)" : ""}
               </p>
-              {i.diretoriaAvisada && <p className="mt-1 text-[12px] font-semibold text-red-700">⚠️ A diretoria já foi avisada.</p>}
+              {i.diretoriaAvisada && <p className="mt-1 text-[12px] font-semibold text-red-700">📨 Enviado ao administrador: você não atendeu depois da cobrança.</p>}
             </li>
           ))}
         </ul>
@@ -98,12 +115,16 @@ export default function GerenteAlerta() {
         <div className="border-t border-zinc-100 px-5 py-4">
           {erro && <p role="alert" className="mb-2 text-[12px] font-medium text-red-600">⚠️ {erro}</p>}
           <button
-            type="button" onClick={() => void ciente(primeiro.contactId)} disabled={enviando}
+            type="button"
+            onClick={() => (faltaCiencia ? void ciente(primeiro.contactId) : router.push(`/admin/chats?contact=${primeiro.contactId}`))}
+            disabled={enviando}
             className="w-full rounded-xl bg-[#002d6b] px-4 py-2.5 text-[13.5px] font-semibold text-white hover:bg-[#0b3f8a] disabled:opacity-50"
           >
-            {enviando ? "Registrando…" : "Estou ciente — vou atender agora"}
+            {enviando ? "Registrando…" : faltaCiencia ? "Estou ciente — vou atender agora" : "Ir para a conversa"}
           </button>
-          <p className="mt-2 text-center text-[11px] text-zinc-500">O seu aceite fica registrado com data e hora.</p>
+          <p className="mt-2 text-center text-[11px] text-zinc-500">
+            {faltaCiencia ? "O seu aceite fica registrado com data e hora." : "O sistema libera sozinho quando você responder o cliente."}
+          </p>
         </div>
       </div>
     </div>

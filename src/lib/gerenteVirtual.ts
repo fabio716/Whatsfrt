@@ -11,6 +11,8 @@
 import { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { sendPushToUsers } from "@/lib/push"
+import { broadcastToUsers } from "@/lib/sse-emitter"
+import { acharOuCriarDM } from "@/lib/internalChat"
 import { getUraConfigCached, type UraConfigFull } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { idsOnline } from "@/lib/presence"
@@ -18,7 +20,7 @@ import { PREFIXO_PEDIDO_NOTA, primeiraRespostaHumana } from "@/lib/retornoAtendi
 
 export const TOLERANCIA_ESPERA_MS = 60_000 // cliente esperando: 1 min
 export const TOLERANCIA_RETORNO_MS = 5 * 60_000 // retorno agendado: 5 min depois do horário
-export const ESCALA_DIRETORIA_MS = 5 * 60_000 // quanto tempo sem atendimento avisa a diretoria
+export const ESCALA_DIRETORIA_MS = 5 * 60_000 // depois de COBRAR, quanto tempo sem atender até enviar ao admin
 const JANELA_MS = 12 * 60 * 60_000
 const CHECK_MS = 20_000
 
@@ -138,7 +140,7 @@ async function avisarPessoa(tipo: TipoOcorrencia, userId: string | null, contact
 }
 
 // Fecha as ocorrências que já foram atendidas (ou perderam o sentido).
-async function resolverOcorrencias(): Promise<void> {
+export async function resolverOcorrencias(): Promise<void> {
   const abertas = await prisma.gerenteOcorrencia.findMany({
     where: { resolvidaEm: null }, take: 300, orderBy: { abertaEm: "asc" },
   })
@@ -190,16 +192,43 @@ async function resolverOcorrencias(): Promise<void> {
   }
 }
 
-// Passou de 5 min sem atendimento → avisa a diretoria (uma vez por ocorrência).
+// Remetente das mensagens internas do gerente. Conta de sistema: inativa (não
+// entra no login nem nas listas de equipe), só existe para assinar a mensagem.
+const ID_GERENTE = "gerente-virtual-sistema"
+async function usuarioGerente(): Promise<string> {
+  await prisma.user.upsert({
+    where: { id: ID_GERENTE },
+    update: {},
+    create: { id: ID_GERENTE, name: "Gerente virtual", email: "gerente-virtual@sistema.interno", passwordHash: "!sem-login", role: "AGENT", isActive: false } as never,
+  })
+  return ID_GERENTE
+}
+
+// Manda uma mensagem do gerente virtual para cada administrador (chat interno).
+async function mensagemAosAdmins(adminIds: string[], corpo: string): Promise<void> {
+  try {
+    const remetente = await usuarioGerente()
+    for (const adminId of adminIds) {
+      const conversaId = await acharOuCriarDM(remetente, adminId)
+      if (!conversaId) continue
+      const msg = await prisma.internalMessage.create({ data: { conversationId: conversaId, senderId: remetente, body: corpo } })
+      await prisma.internalConversation.update({ where: { id: conversaId }, data: { updatedAt: new Date() } })
+      broadcastToUsers([adminId], {
+        type: "internal_message",
+        data: { id: msg.id, conversationId: conversaId, senderId: remetente, senderName: "Gerente virtual", body: corpo, mediaUrl: null, mediaType: null, createdAt: msg.createdAt.toISOString() },
+      })
+    }
+  } catch (err) {
+    console.error("[gerente] mensagem interna falhou:", err instanceof Error ? err.message : err)
+  }
+}
+
+// Cobrou e a pessoa continua sem atender depois de 5 min → manda ao admin
+// (chat interno + notificação) e avisa a própria pessoa de que foi enviado.
 async function avisarDiretoria(): Promise<void> {
   const limite = new Date(Date.now() - ESCALA_DIRETORIA_MS)
   const pendentes = await prisma.gerenteOcorrencia.findMany({
-    where: {
-      resolvidaEm: null, escaladaEm: null,
-      // Cliente: 5 min desde que começou a esperar. Retorno: 5 min depois do alerta à pessoa.
-      OR: [{ tipo: "ESPERA_CLIENTE", desde: { lte: limite } }, { tipo: "RETORNO_ATRASADO", abertaEm: { lte: limite } }],
-    },
-    take: 50,
+    where: { resolvidaEm: null, escaladaEm: null, abertaEm: { lte: limite } }, take: 50,
   })
   if (pendentes.length === 0) return
   const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
@@ -216,11 +245,20 @@ async function avisarDiretoria(): Promise<void> {
     const quem = o.userId ? primeiroNome(nomeUsuario.get(o.userId)) : "Fila (sem dono)"
     const cliente = nomeContato.get(o.contactId) ?? "cliente"
     const min = minutos(Date.now() - o.desde.getTime())
+    const motivo = o.tipo === "ESPERA_CLIENTE"
+      ? `${cliente} está há ${min} min sem atendimento`
+      : `o retorno de ${cliente} (combinado para ${horaBr(o.desde)}) está atrasado há ${min} min`
+    await mensagemAosAdmins(admins, `⚠️ Gerente virtual: cobrei ${quem}, mas ${motivo}. Ela(e) já foi avisada(o) e não atendeu. Abra a conversa: /admin/chats?contact=${o.contactId}`)
     sendPushToUsers(admins, {
-      title: o.tipo === "ESPERA_CLIENTE" ? `⚠️ ${quem}: cliente esperando ${min} min` : `⚠️ ${quem}: retorno atrasado ${min} min`,
-      body: o.tipo === "ESPERA_CLIENTE" ? `${cliente} está sem atendimento.` : `${cliente} esperava o retorno às ${horaBr(o.desde)}.`,
+      title: `⚠️ ${quem} não atendeu depois da cobrança`, body: `${cliente}: ${motivo}.`,
       tag: `gerente-adm-${o.id}`, url: `/admin/chats?contact=${o.contactId}`,
     }).catch((e: unknown) => console.error("[gerente] push diretoria falhou:", e instanceof Error ? e.message : e))
+    if (o.userId) {
+      sendPushToUsers([o.userId], {
+        title: "📨 Enviado ao administrador", body: `${cliente} continua sem atendimento: o administrador foi avisado. Atenda agora.`,
+        tag: `gerente-pessoa-${o.id}`, url: `/admin/chats?contact=${o.contactId}`,
+      }).catch((e: unknown) => console.error("[gerente] push pessoa falhou:", e instanceof Error ? e.message : e))
+    }
   }
 }
 

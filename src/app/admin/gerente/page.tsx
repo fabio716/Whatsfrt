@@ -51,6 +51,16 @@ export default function GerentePage() {
     return () => clearInterval(t)
   }, [carregar])
 
+  const liberar = async (id: string) => {
+    if (ocupado) return
+    setOcupado(id); setErro("")
+    try {
+      const r = await fetch("/api/admin/gerente/liberar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+      if (!r.ok) { const d = (await r.json().catch(() => ({}))) as { erro?: string }; setErro(d.erro ?? "Não foi possível liberar."); return }
+      await carregar()
+    } catch { setErro("Sem conexão. Tente de novo.") } finally { setOcupado("") }
+  }
+
   const decidir = async (id: string, decisao: "CONCLUIDO" | "NAO_CONCLUIDO") => {
     if (ocupado) return
     setOcupado(id); setErro("")
@@ -160,7 +170,12 @@ export default function GerentePage() {
             {ocorrencias.map((o) => (
               <li key={o.id} className="rounded-lg bg-zinc-50 px-3 py-2">
                 {o.tipo === "ESPERA_CLIENTE" ? "⏱️" : "⏰"} <b>{o.pessoa}</b> · {o.cliente} · desde {hora(o.desde)}
-                {o.resolvidaEm ? ` · atendido após ${o.esperaMin} min` : <b className="text-red-600"> · ainda em aberto</b>}
+                {o.resolvidaEm ? ` · atendido após ${o.esperaMin} min` : (
+                  <>
+                    <b className="text-red-600"> · ainda em aberto</b>{" "}
+                    <button type="button" onClick={() => void liberar(o.id)} disabled={ocupado !== ""} className="rounded bg-white px-2 py-0.5 text-[11px] font-semibold text-zinc-700 ring-1 ring-zinc-300 hover:bg-zinc-100 disabled:opacity-50">Já atendido / liberar</button>
+                  </>
+                )}
                 {o.cienteAt ? ` · ciente ${hora(o.cienteAt)}` : <b className="text-amber-700"> · sem ciência</b>}
                 {o.diretoriaAvisada ? " · diretoria avisada" : ""}
               </li>
