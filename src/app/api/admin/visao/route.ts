@@ -12,6 +12,7 @@ type Estado = "OK" | "RODANDO" | "ATENCAO" | "CRITICO" | "OCIOSO"
 interface Agente {
   id: string; nome: string; icone: string; estado: Estado
   resumo: string; achou: string[]; proximo: string; link: string
+  itens?: { titulo: string; detalhe: string; link: string }[]
 }
 
 const min = (ms: number) => Math.max(0, Math.round(ms / 60_000))
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const [cfgUra, cfgAv, abertas, hoje, retPend, retAtras, conf, avHoje, avRetornos, fila, emAtendimento, agentes, online] = await Promise.all([
     getUraConfigCached(),
     getAtendenteConfig(),
-    prisma.gerenteOcorrencia.findMany({ where: { resolvidaEm: null }, select: { tipo: true, desde: true, cienteAt: true, escaladaEm: true } }),
+    prisma.gerenteOcorrencia.findMany({ where: { resolvidaEm: null }, select: { tipo: true, desde: true, cienteAt: true, escaladaEm: true, contactId: true, userId: true } }),
     prisma.gerenteOcorrencia.findMany({ where: { abertaEm: { gte: inicioDia } }, select: { tipo: true, esperaMin: true, resolvidaEm: true, cienteAt: true } }),
     prisma.contactReminder.count({ where: { doneAt: null, dueAt: { lt: fimDia }, contact: { deletedAt: null } } }),
     prisma.contactReminder.count({ where: { doneAt: null, dueAt: { lt: new Date(agora - 5 * 60_000) }, contact: { deletedAt: null } } }),
@@ -42,6 +43,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     idsOnline(),
   ])
 
+  const abertasEspera = abertas.filter((o) => o.tipo === "ESPERA_CLIENTE").sort((a, b) => a.desde.getTime() - b.desde.getTime()).slice(0, 10)
+  const [contatosEspera, usuariosEspera] = await Promise.all([
+    prisma.contact.findMany({ where: { id: { in: abertasEspera.map((o) => o.contactId) } }, select: { id: true, name: true, chatStatus: true } }),
+    prisma.user.findMany({ where: { id: { in: abertasEspera.map((o) => o.userId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } }),
+  ])
+  const nomeContato = new Map(contatosEspera.map((c) => [c.id, c]))
+  const nomeUsuario = new Map(usuariosEspera.map((u) => [u.id, u.name]))
+
   const aberto = !cfgUra.isActive || isBusinessHour(cfgUra) === "OPEN"
   const esperaAbertas = abertas.filter((o) => o.tipo === "ESPERA_CLIENTE")
   const maiorEspera = esperaAbertas.length ? min(agora - Math.min(...esperaAbertas.map((o) => o.desde.getTime()))) : 0
@@ -53,15 +62,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const agenteEspera: Agente = {
     id: "espera", nome: "Cliente esperando", icone: "⏱️",
     estado: !aberto ? "OCIOSO" : esperaAbertas.length === 0 ? "OK" : maiorEspera >= 5 ? "CRITICO" : "ATENCAO",
-    resumo: !aberto ? "FORA DO HORÁRIO" : esperaAbertas.length === 0 ? "EM DIA" : `${esperaAbertas.length} ESPERANDO`,
+    resumo: !aberto ? "FORA DO HORÁRIO" : esperaAbertas.length === 0 ? "EM DIA" : `${esperaAbertas.length} SEM RESPOSTA`,
     achou: [
-      !aberto ? "Fora do horário de atendimento: não cobro ninguém agora." : esperaAbertas.length === 0 ? "Nenhum cliente esperando além da tolerância de 1 min." : `${esperaAbertas.length} cliente(s) esperando; o mais antigo há ${maiorEspera} min.`,
+      !aberto ? "Fora do horário de atendimento: não cobro ninguém agora." : esperaAbertas.length === 0 ? "Nenhum cliente esperando além da tolerância de 1 min." : `${esperaAbertas.length} cliente(s) com mensagem sem resposta de uma pessoa (inclui quem já está em atendimento); o mais antigo há ${maiorEspera} min.`,
       `Hoje: ${esperaHoje.length} atraso(s) de espera, média de ${media} min até atender.`,
       semCiencia > 0 ? `${semCiencia} alerta(s) ainda sem ciência da equipe.` : "Todos os alertas abertos já têm ciência.",
-      `Fila agora: ${fila.length} cliente(s) aguardando atendente.`,
+      `Fila de espera (sem atendente): ${fila.length}. É outra contagem: aqui contam também clientes já atribuídos a um atendente.`,
     ],
-    proximo: esperaAbertas.length ? "Veja quem está atrasado e cobre ao vivo." : "Nada a fazer: acompanhe o relatório de atrasos.",
+    proximo: esperaAbertas.length ? "Confira a lista abaixo: se alguém já foi atendido (por exemplo, pelo celular), me avise para eu ajustar." : "Nada a fazer: acompanhe o relatório de atrasos.",
     link: "/admin/gerente",
+    itens: abertasEspera.map((o) => {
+      const c = nomeContato.get(o.contactId)
+      return {
+        titulo: c?.name ?? "Cliente",
+        detalhe: `${o.userId ? `com ${(nomeUsuario.get(o.userId) ?? "—").split(" ")[0]}` : "na fila, sem atendente"} · sem resposta há ${min(agora - o.desde.getTime())} min${o.cienteAt ? "" : " · sem ciência"}`,
+        link: `/admin/chats?contact=${o.contactId}`,
+      }
+    }),
   }
 
   const atrasadosAbertos = abertas.filter((o) => o.tipo === "RETORNO_ATRASADO").length

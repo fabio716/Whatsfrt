@@ -9,7 +9,7 @@ import Link from "next/link"
 // passo. Atualiza sozinho a cada 30 s. Só leitura.
 
 type Estado = "OK" | "RODANDO" | "ATENCAO" | "CRITICO" | "OCIOSO"
-interface Agente { id: string; nome: string; icone: string; estado: Estado; resumo: string; achou: string[]; proximo: string; link: string }
+interface Agente { id: string; nome: string; icone: string; estado: Estado; resumo: string; achou: string[]; proximo: string; link: string; itens?: { titulo: string; detalhe: string; link: string }[] }
 interface Dados { atualizadoEm: string; orquestrador: { estado: Estado; resumo: string; prioridades: string[] }; agentes: Agente[] }
 
 const COR: Record<Estado, { anel: string; texto: string; rotulo: string }> = {
@@ -126,6 +126,21 @@ export default function VisaoPage() {
                 <ul className="mt-2 space-y-2 text-sm leading-relaxed text-slate-200">
                   {atual.achou.map((t, i) => <li key={i} className="rounded-lg bg-white/5 px-3 py-2">{t}</li>)}
                 </ul>
+                {atual.itens && atual.itens.length > 0 && (
+                  <>
+                    <p className="mt-4 font-mono text-[11px] tracking-[0.25em] text-slate-500">QUEM É</p>
+                    <ul className="mt-2 space-y-1.5 text-sm">
+                      {atual.itens.map((it, i) => (
+                        <li key={i}>
+                          <Link href={it.link} className="block rounded-lg bg-white/5 px-3 py-2 hover:bg-white/10">
+                            <span className="font-semibold text-slate-100">{it.titulo}</span>
+                            <span className="block text-[12px] text-slate-400">{it.detalhe}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
                 <p className="mt-4 font-mono text-[11px] tracking-[0.25em] text-slate-500">PRÓXIMO PASSO</p>
                 <p className="mt-2 text-sm text-slate-100">{atual.proximo}</p>
                 <Link href={atual.link} className="mt-4 inline-block rounded-xl bg-[#00bf5b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#00a950]">Abrir</Link>
