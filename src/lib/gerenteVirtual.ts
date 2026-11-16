@@ -66,6 +66,12 @@ async function clientesSemResposta(desdeMin: Date): Promise<LinhaEspera[]> {
     FROM contacts c
     JOIN messages m ON m."contactId" = c.id AND m.direction = 'INBOUND' AND m."isBroadcast" = false
       AND m."createdAt" > ${new Date(Date.now() - JANELA_MS)}
+      -- Mensagem já coberta por um retorno agendado (o cliente foi atendido pelo robô e
+      -- ficou combinado um horário) não é "esperando": quem cobra é o retorno, na hora marcada.
+      AND NOT EXISTS (
+        SELECT 1 FROM contact_reminders r
+        WHERE r."contactId" = c.id AND r."doneAt" IS NULL AND r."createdAt" >= m."createdAt"
+      )
       AND m.body !~* '^\\s*(ok|okay|obrigad[oa]|obg|valeu|blz|beleza|certo|combinado|👍|🙏)[\\s.!]*$'
     LEFT JOIN humana h ON h."contactId" = c.id
     WHERE c."chatStatus" IN ('WAITING_AGENT', 'IN_SERVICE') AND c."deletedAt" IS NULL
@@ -153,6 +159,14 @@ async function resolverOcorrencias(): Promise<void> {
     orderBy: { createdAt: "asc" }, take: 3000,
     select: { contactId: true, agentId: true, createdAt: true },
   })
+  // Espera cujo cliente tem retorno agendado criado depois da mensagem: passa a ser retorno.
+  const esperas = abertas.filter((a) => a.tipo === "ESPERA_CLIENTE")
+  const mensagensEspera = esperas.length
+    ? new Map((await prisma.message.findMany({ where: { id: { in: esperas.map((e) => e.refId) } }, select: { id: true, createdAt: true } })).map((m) => [m.id, m.createdAt]))
+    : new Map<string, Date>()
+  const retornosAbertos = esperas.length
+    ? await prisma.contactReminder.findMany({ where: { contactId: { in: [...new Set(esperas.map((e) => e.contactId))] }, doneAt: null }, select: { contactId: true, createdAt: true } })
+    : []
   const lembretes = abertas.filter((a) => a.tipo === "RETORNO_ATRASADO").map((a) => a.refId.split(":")[0])
   const feitos = new Map((await prisma.contactReminder.findMany({
     where: { id: { in: lembretes } }, select: { id: true, doneAt: true },
@@ -164,6 +178,7 @@ async function resolverOcorrencias(): Promise<void> {
     let fim: Date | null = null
     let por: string | null = null
     if (resp) { fim = resp.createdAt; por = resp.agentId }
+    else if (o.tipo === "ESPERA_CLIENTE" && retornosAbertos.some((r) => r.contactId === o.contactId && r.createdAt >= (mensagensEspera.get(o.refId) ?? o.desde))) fim = new Date()
     else if (o.tipo === "RETORNO_ATRASADO" && feitos.get(o.refId.split(":")[0])) fim = feitos.get(o.refId.split(":")[0]) ?? null
     else if (!c || c.deletedAt || (o.tipo === "ESPERA_CLIENTE" && !["WAITING_AGENT", "IN_SERVICE"].includes(c.chatStatus))) fim = new Date()
     else if (agora - o.abertaEm.getTime() > 24 * 60 * 60_000) fim = new Date()
