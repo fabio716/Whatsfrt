@@ -64,12 +64,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     estado: !aberto ? "OCIOSO" : esperaAbertas.length === 0 ? "OK" : maiorEspera >= 5 ? "CRITICO" : "ATENCAO",
     resumo: !aberto ? "FORA DO HORÁRIO" : esperaAbertas.length === 0 ? "EM DIA" : `${esperaAbertas.length} SEM RESPOSTA`,
     achou: [
-      !aberto ? "Fora do horário de atendimento: não cobro ninguém agora." : esperaAbertas.length === 0 ? "Nenhum cliente esperando além da tolerância de 1 min." : `${esperaAbertas.length} cliente(s) com mensagem sem resposta de uma pessoa (inclui quem já está em atendimento); o mais antigo há ${maiorEspera} min.`,
+      !aberto ? "Fora do horário de atendimento: não cobro ninguém agora." : esperaAbertas.length === 0 ? "Nenhum cliente na fila além da tolerância de 1 min." : `${esperaAbertas.length} cliente(s) na fila de espera além da tolerância de 1 min; o mais antigo há ${maiorEspera} min.`,
       `Hoje: ${esperaHoje.length} atraso(s) de espera, média de ${media} min até atender.`,
       semCiencia > 0 ? `${semCiencia} alerta(s) ainda sem ciência da equipe.` : "Todos os alertas abertos já têm ciência.",
-      `Fila de espera (sem atendente): ${fila.length}. É outra contagem: aqui contam também clientes já atribuídos a um atendente.`,
+      `Fila de espera agora (sem atendente): ${fila.length}.`,
     ],
-    proximo: esperaAbertas.length ? "Confira a lista abaixo: se alguém já foi atendido (por exemplo, pelo celular), me avise para eu ajustar." : "Nada a fazer: acompanhe o relatório de atrasos.",
+    proximo: esperaAbertas.length ? "Assuma os clientes da lista abaixo na Fila de espera." : "Nada a fazer: acompanhe o relatório de atrasos.",
     link: "/admin/gerente",
     itens: abertasEspera.map((o) => {
       const c = nomeContato.get(o.contactId)

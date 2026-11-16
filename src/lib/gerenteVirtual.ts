@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // Gerente virtual. Acompanha o atendimento no lugar do gestor e cobra a equipe:
-//   • CLIENTE ESPERANDO — o cliente escreveu e nenhuma PESSOA respondeu em
-//     1 minuto (a resposta do atendente virtual/robô não conta);
+//   • CLIENTE ESPERANDO — cliente NA FILA DE ESPERA (sem atendente) que escreveu e
+//     nenhuma PESSOA respondeu em 1 minuto (a resposta do atendente virtual/robô não conta);
 //   • RETORNO ATRASADO — o horário combinado passou e a dona não respondeu.
 // Cada caso vira uma ocorrência: a pessoa precisa dar "ciente" (tela
 // bloqueante), a diretoria é avisada se passar de 5 min, e tudo fica
@@ -74,7 +74,7 @@ async function clientesSemResposta(desdeMin: Date): Promise<LinhaEspera[]> {
       )
       AND m.body !~* '^\\s*(ok|okay|obrigad[oa]|obg|valeu|blz|beleza|certo|combinado|👍|🙏)[\\s.!]*$'
     LEFT JOIN humana h ON h."contactId" = c.id
-    WHERE c."chatStatus" IN ('WAITING_AGENT', 'IN_SERVICE') AND c."deletedAt" IS NULL
+    WHERE c."chatStatus" = 'WAITING_AGENT' AND c."deletedAt" IS NULL
       AND c."excludeFromReports" = false AND (h.em IS NULL OR m."createdAt" > h.em)
     GROUP BY c.id
     HAVING GREATEST(MIN(m."createdAt"), ${desdeMin}) <= ${new Date(Date.now() - TOLERANCIA_ESPERA_MS)}`)
@@ -180,7 +180,7 @@ async function resolverOcorrencias(): Promise<void> {
     if (resp) { fim = resp.createdAt; por = resp.agentId }
     else if (o.tipo === "ESPERA_CLIENTE" && retornosAbertos.some((r) => r.contactId === o.contactId && r.createdAt >= (mensagensEspera.get(o.refId) ?? o.desde))) fim = new Date()
     else if (o.tipo === "RETORNO_ATRASADO" && feitos.get(o.refId.split(":")[0])) fim = feitos.get(o.refId.split(":")[0]) ?? null
-    else if (!c || c.deletedAt || (o.tipo === "ESPERA_CLIENTE" && !["WAITING_AGENT", "IN_SERVICE"].includes(c.chatStatus))) fim = new Date()
+    else if (!c || c.deletedAt || (o.tipo === "ESPERA_CLIENTE" && c.chatStatus !== "WAITING_AGENT")) fim = new Date()
     else if (agora - o.abertaEm.getTime() > 24 * 60 * 60_000) fim = new Date()
     if (!fim) continue
     await prisma.gerenteOcorrencia.updateMany({
