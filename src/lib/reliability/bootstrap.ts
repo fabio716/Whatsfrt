@@ -17,6 +17,7 @@ import { startReaper } from "./reaper"
 import { startServiceReaper } from "./serviceReaper"
 import { startCampaignResumer } from "./campaignResumer"
 import { startReminderNotifier } from "./reminderNotifier"
+import { startGerenteVirtual } from "@/lib/gerenteVirtual"
 import { startPrecosSiteSync } from "@/lib/precosSite"
 import { handleInboundJob } from "./inboundHandler"
 
@@ -39,6 +40,7 @@ export async function startReliabilityWorkers(): Promise<void> {
   startReaper()
   startCampaignResumer()
   startReminderNotifier()
+  startGerenteVirtual()
   startPrecosSiteSync()
 
   // Service reaper (auto-encerrar atendimentos e pedidos de nota) esta

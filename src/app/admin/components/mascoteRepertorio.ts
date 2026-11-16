@@ -89,10 +89,10 @@ export const RESP_AGORA = [
   "Já estou até mais calmo! 😮‍💨",
 ]
 export const RESP_TELEFONE = [
-  "Anotado! Dica: manda um 'oi' no chat pro chefe ver que você falou com o cliente 😉",
-  "Boa, ligar também vale! Deixa uma observação no chat pra ficar registrado. 📝",
-  "Beleza! Só registra no chat, assim ninguém me cobra depois. 😅",
-  "Que bom! Conta no chat o que combinaram, fica tudo certinho. ✅",
+  "Boa! Conta aí como foi (canal e o que combinaram) pra gerência conferir. 📝",
+  "Beleza! Registra rapidinho como foi o retorno, assim fica tudo certinho. ✅",
+  "Que bom! Preenche como foi e o que conversaram, a gerência confere depois. 💬",
+  "Perfeito! Só falta registrar o relato do retorno. 😉",
 ]
 export const RESP_DEPOIS = [
   "Tá bom... mas não demora, hein? 😬",

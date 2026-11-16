@@ -7,6 +7,8 @@ import NotificationsPrompt from "./NotificationsPrompt"
 import VersaoNova from "./VersaoNova"
 import Novidades from "./Novidades"
 import RetornosObrigatorio from "./RetornosObrigatorio"
+import GerenteAlerta from "./GerenteAlerta"
+import ConcluirRetorno from "./ConcluirRetorno"
 import AlertaRetornosAtrasados from "./AlertaRetornosAtrasados"
 import ResumoAtendenteVirtual from "./ResumoAtendenteVirtual"
 import MeusRetornos from "./MeusRetornos"
@@ -65,6 +67,8 @@ export default function AdminShell({
 
       <Novidades />
       <RetornosObrigatorio />
+      <GerenteAlerta />
+      <ConcluirRetorno />
       {userRole === "ADMIN" && <ResumoAtendenteVirtual />}
       {userRole === "AGENT" && <MeusRetornos />}
       <MascoteVivo />

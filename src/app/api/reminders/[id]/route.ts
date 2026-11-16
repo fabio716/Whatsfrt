@@ -4,6 +4,8 @@ import { requireSession, isErrorResponse } from "@/lib/auth"
 
 export const dynamic = "force-dynamic"
 
+const CANAIS = ["WHATSAPP", "FRTWHATS", "TELEFONE", "EMAIL"]
+
 // PATCH /api/reminders/[id] { done?: true, dueAt?: ISO } — concluir ou adiar.
 // Só a dona do lembrete mexe nele.
 export async function PATCH(
@@ -19,15 +21,29 @@ export async function PATCH(
     return NextResponse.json({ error: "Lembrete não encontrado." }, { status: 404 })
   }
 
-  let body: { done?: boolean; dueAt?: string }
+  let body: { done?: boolean; dueAt?: string; canal?: string; relato?: string }
   try {
     body = (await request.json()) as typeof body
   } catch {
     return NextResponse.json({ error: "Corpo inválido" }, { status: 400 })
   }
 
-  const data: { doneAt?: Date; dueAt?: Date; notifiedAt?: null; escalonadoAt?: null } = {}
-  if (body.done === true) data.doneAt = new Date()
+  const data: {
+    doneAt?: Date; dueAt?: Date; notifiedAt?: null; escalonadoAt?: null
+    canal?: string; relato?: string; conferencia?: string; conferidaEm?: null; conferidaPorId?: null; conferenciaNota?: null
+  } = {}
+  if (body.done === true) {
+    // Concluir exige dizer COMO foi e o que foi conversado; o administrador confere depois.
+    const canal = typeof body.canal === "string" ? body.canal : ""
+    const relato = typeof body.relato === "string" ? body.relato.trim() : ""
+    if (!CANAIS.includes(canal)) return NextResponse.json({ error: "Informe por onde você falou com o cliente." }, { status: 400 })
+    if (relato.length < 10) return NextResponse.json({ error: "Conte o que foi conversado (pelo menos 10 letras)." }, { status: 400 })
+    data.doneAt = new Date()
+    data.canal = canal
+    data.relato = relato.slice(0, 500)
+    data.conferencia = "PENDENTE"
+    data.conferidaEm = null; data.conferidaPorId = null; data.conferenciaNota = null
+  }
   if (body.dueAt) {
     const nova = new Date(body.dueAt)
     if (Number.isNaN(nova.getTime()) || nova.getTime() < Date.now() - 5 * 60_000) {

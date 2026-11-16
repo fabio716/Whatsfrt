@@ -31,7 +31,7 @@ const hora = (iso: string): string => new Date(iso).toLocaleTimeString("pt-BR", 
 
 const OPCOES: TextoCobranca["opcoes"] = [
   { rotulo: "Vou agora! 🏃", id: "agora" },
-  { rotulo: "Liguei por telefone", id: "telefone" },
+  { rotulo: "Já fiz — registrar", id: "telefone" },
   { rotulo: "Daqui a 15 min", id: "depois" },
 ]
 

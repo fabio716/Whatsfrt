@@ -8,6 +8,7 @@ import { escolherConversa } from "./mascoteConversas"
 import {
   BOLINHA_CONVITE, BOLINHA_PEGOU, BOLINHA_PERDEU, ESPIAR_FALAS, SHOW_ABERTURA, SHOW_FINAL, preencher, sortear,
 } from "./mascoteRepertorio"
+import { pedirConclusaoRetorno } from "./ConcluirRetorno"
 import { FALAS, textoCobranca, textoFesta, type ItemCobranca } from "./mascoteTexto"
 
 // ─── Mascote vivo ────────────────────────────────────────────────────────────
@@ -299,7 +300,8 @@ export default function MascoteVivo() {
         await dizer(FALAS.agora, 1900)
       } else if (escolha === "telefone") {
         setHumor("feliz")
-        void fetch(`/api/reminders/${itens[0].id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ done: true }) }).catch(() => {})
+        // Concluir exige dizer como foi: abre a caixa de registro do retorno.
+        pedirConclusaoRetorno(itens[0].id, itens[0].cliente)
         await dizer(FALAS.telefone, 4200)
       } else if (escolha === "depois") {
         gravar(K.cobrancaAte, Date.now() + ADIAR_MS)

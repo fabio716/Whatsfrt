@@ -10,6 +10,7 @@ import { notifyDesktop } from "@/lib/notify"
 import { handleSessionExpired } from "@/lib/sessionGuard"
 import { LembreteModal, PainelRetornos, venceAteHoje, adiarParaAmanha, type Lembrete } from "./Lembretes"
 import Mascote from "@/components/ui/Mascote"
+import { EVENTO_CONCLUIDO, pedirConclusaoRetorno } from "../../components/ConcluirRetorno"
 
 type Agent = { id: string; name: string }
 
@@ -544,6 +545,12 @@ export default function ChatsClient({
       .catch(() => {})
     return () => { vivo = false }
   }, [])
+  // Concluído na caixa de "como foi o retorno": recarrega a lista.
+  useEffect(() => {
+    const aoConcluir = () => void carregarLembretes()
+    window.addEventListener(EVENTO_CONCLUIDO, aoConcluir)
+    return () => window.removeEventListener(EVENTO_CONCLUIDO, aoConcluir)
+  }, [carregarLembretes])
   // Lembrete que acabou de vencer — aviso no topo da tela.
   const [avisoLembrete, setAvisoLembrete] = useState<{ contactId: string; contactName: string; note: string } | null>(null)
   // Filtro rápido da lista ("Meu dia").
@@ -923,6 +930,11 @@ export default function ChatsClient({
   }
 
   const mexerLembrete = async (id: string, acao: "concluir" | "adiar" | "apagar") => {
+    if (acao === "concluir") {
+      // Concluir pede canal + relato (caixa global); a lista recarrega ao salvar.
+      pedirConclusaoRetorno(id, lembretes.find((l) => l.id === id)?.contact.name ?? "o cliente")
+      return
+    }
     // Otimista: some da lista na hora; se falhar, recarrega do servidor.
     if (acao !== "adiar") setLembretes((prev) => prev.filter((l) => l.id !== id))
     try {
@@ -931,7 +943,7 @@ export default function ChatsClient({
         : await fetch(`/api/reminders/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(acao === "concluir" ? { done: true } : { dueAt: adiarParaAmanha().toISOString() }),
+            body: JSON.stringify({ dueAt: adiarParaAmanha().toISOString() }),
           })
       if (!res.ok && !handleSessionExpired(res.status)) alert("Não foi possível atualizar o lembrete. Tente de novo.")
     } finally {

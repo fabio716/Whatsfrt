@@ -765,9 +765,50 @@ model ContactReminder {
   cienteAt   DateTime?
   // Quando o retorno atrasou e a diretoria foi avisada. null = não escalado.
   escalonadoAt DateTime?
+  // Como o retorno foi feito (obrigatório ao concluir): WHATSAPP | FRTWHATS |
+  // TELEFONE | EMAIL, mais o relato da pessoa. A conferência é do administrador:
+  // PENDENTE (aguardando) | CONCLUIDO | NAO_CONCLUIDO (volta pra pessoa refazer).
+  canal           String?
+  relato          String?
+  conferencia     String?
+  conferidaEm     DateTime?
+  conferidaPorId  String?
+  conferenciaNota String?
   createdAt  DateTime  @default(now())
 
+  @@index([conferencia])
   @@index([userId, doneAt, dueAt])
   @@index([contactId])
   @@map("contact_reminders")
+}
+
+// Ocorrências do gerente virtual: cliente esperando sem resposta de uma pessoa
+// (tolerância 1 min) ou retorno agendado atrasado. A pessoa precisa dar ciência;
+// fica registrado quando passou do prazo, quando deu ciência e quando resolveu.
+model GerenteOcorrencia {
+  id             String    @id @default(cuid())
+  tipo           String // ESPERA_CLIENTE | RETORNO_ATRASADO
+  // Mensagem do cliente (espera) ou lembrete (retorno): uma ocorrência por episódio.
+  refId          String
+  // Responsável. null = cliente na fila, sem dono.
+  userId         String?
+  contactId      String
+  // Quando começou a esperar (mensagem do cliente / horário combinado).
+  desde          DateTime
+  // Quando passou da tolerância e o alerta foi criado.
+  abertaEm       DateTime
+  cienteAt       DateTime?
+  cienteUserId   String?
+  // Diretoria avisada (ficou muito tempo sem atendimento).
+  escaladaEm     DateTime?
+  resolvidaEm    DateTime?
+  resolvidaPorId String?
+  // Minutos de espera até resolver.
+  esperaMin      Int?
+  createdAt      DateTime  @default(now())
+
+  @@unique([tipo, refId])
+  @@index([userId, resolvidaEm])
+  @@index([abertaEm])
+  @@map("gerente_ocorrencias")
 }

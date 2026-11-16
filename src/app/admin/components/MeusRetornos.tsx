@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { quandoTexto, venceAteHoje } from "../chats/components/Lembretes"
 import Mascote from "@/components/ui/Mascote"
+import { EVENTO_CONCLUIDO, pedirConclusaoRetorno } from "./ConcluirRetorno"
 
 // ─── Meus retornos (vendedoras) ─────────────────────────────────────────────
 // O mascote fica na tela lembrando dos retornos que vencem hoje ou já venceram,
@@ -20,7 +21,6 @@ export default function MeusRetornos() {
   const [itens, setItens] = useState<Item[]>([])
   const [agora, setAgora] = useState(0)
   const [aberto, setAberto] = useState(false)
-  const [ocupado, setOcupado] = useState("")
 
   const carregar = useCallback(async () => {
     try {
@@ -46,22 +46,12 @@ export default function MeusRetornos() {
     }
   }, [carregar])
 
-  const fiz = async (id: string) => {
-    if (ocupado) return
-    setOcupado(id)
-    try {
-      const res = await fetch(`/api/reminders/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ done: true }),
-      })
-      if (res.ok) setItens((antes) => antes.filter((i) => i.id !== id))
-    } catch {
-      // mantém na lista
-    } finally {
-      setOcupado("")
-    }
-  }
+  // Concluir pede canal + relato (caixa global). Quando salvar, a lista recarrega.
+  useEffect(() => {
+    const aoConcluir = () => void carregar()
+    window.addEventListener(EVENTO_CONCLUIDO, aoConcluir)
+    return () => window.removeEventListener(EVENTO_CONCLUIDO, aoConcluir)
+  }, [carregar])
 
   if (itens.length === 0) return null
   const atrasados = itens.filter((i) => Date.parse(i.dueAt) < agora - 5 * 60_000).length
@@ -87,11 +77,10 @@ export default function MeusRetornos() {
                   {i.note && <p className="mt-0.5 text-[11.5px] leading-snug text-zinc-600">{i.note}</p>}
                   <button
                     type="button"
-                    onClick={() => void fiz(i.id)}
-                    disabled={ocupado !== ""}
-                    className="mt-1.5 rounded-lg bg-[#002d6b] px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-[#0b3f8a] disabled:opacity-50"
+                    onClick={() => pedirConclusaoRetorno(i.id, i.contact.name)}
+                    className="mt-1.5 rounded-lg bg-[#002d6b] px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-[#0b3f8a]"
                   >
-                    {ocupado === i.id ? "Salvando…" : "Fiz o retorno"}
+                    Fiz o retorno
                   </button>
                 </li>
               )
