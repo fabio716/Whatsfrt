@@ -13,6 +13,7 @@ interface Pendente {
   id: string; contactId: string; cliente: string; atendente: string; dueAt: string; feitoEm: string | null
   atrasoMin: number; canal: string | null; relato: string | null; nota: string; evidencia: Evidencia
 }
+interface Parecer { veredito: "CONCLUIDO" | "AGUARDANDO_CLIENTE" | "NAO_CONCLUIDO"; motivo: string }
 interface Recente { id: string; decisao: string; em: string | null; motivo: string | null; canal: string | null; atendente: string; cliente: string }
 interface Resumo { nome: string; espera: number; retorno: number; semCiencia: number; abertas: number; esperaMediaMin: number }
 interface Ocorrencia { id: string; tipo: string; pessoa: string; cliente: string; desde: string; cienteAt: string | null; resolvidaEm: string | null; esperaMin: number | null; diretoriaAvisada: boolean }
@@ -31,6 +32,7 @@ export default function GerentePage() {
   const [ocupado, setOcupado] = useState("")
   const [recusando, setRecusando] = useState<string | null>(null)
   const [motivo, setMotivo] = useState("")
+  const [pareceres, setPareceres] = useState<Record<string, Parecer | "carregando" | "erro">>({})
 
   const carregar = useCallback(async () => {
     try {
@@ -50,6 +52,16 @@ export default function GerentePage() {
     const t = setInterval(() => void carregar(), 60_000)
     return () => clearInterval(t)
   }, [carregar])
+
+  const pedirParecer = async (id: string) => {
+    setPareceres((p) => ({ ...p, [id]: "carregando" }))
+    try {
+      const r = await fetch("/api/admin/gerente/parecer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+      if (!r.ok) throw new Error()
+      const dado = (await r.json()) as Parecer
+      setPareceres((p) => ({ ...p, [id]: dado }))
+    } catch { setPareceres((p) => ({ ...p, [id]: "erro" })) }
+  }
 
   const liberar = async (id: string) => {
     if (ocupado) return
@@ -112,6 +124,17 @@ export default function GerentePage() {
               <p className={`mt-2 text-[12px] font-medium ${p.evidencia.achou ? "text-emerald-700" : "text-amber-700"}`}>
                 {p.evidencia.achou ? `✅ Achei a mensagem dela no chat (${p.evidencia.em ? hora(p.evidencia.em) : ""}): “${p.evidencia.texto}”` : `⚠️ ${p.evidencia.motivo}`}
               </p>
+              {(() => {
+                const par = pareceres[p.id]
+                if (par === "carregando") return <p className="mt-2 text-[12px] text-zinc-500">🧑‍💼 O gerente virtual está analisando…</p>
+                if (par === "erro") return <p className="mt-2 text-[12px] text-red-600">Não consegui o parecer agora. <button type="button" className="underline" onClick={() => void pedirParecer(p.id)}>Tentar de novo</button></p>
+                if (par) {
+                  const cor = par.veredito === "CONCLUIDO" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : par.veredito === "AGUARDANDO_CLIENTE" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-red-200 bg-red-50 text-red-900"
+                  const rot = par.veredito === "CONCLUIDO" ? "✅ Sugere: Concluído" : par.veredito === "AGUARDANDO_CLIENTE" ? "⏳ Sugere: contato feito, aguardando o cliente" : "❌ Sugere: Não concluído"
+                  return <div className={`mt-2 rounded-lg border px-3 py-2 text-[12.5px] ${cor}`}><b>🧑‍💼 {rot}</b><br />{par.motivo}</div>
+                }
+                return <button type="button" onClick={() => void pedirParecer(p.id)} className="mt-2 rounded-lg border border-[#002d6b]/30 bg-[#002d6b]/5 px-3 py-1.5 text-[12.5px] font-semibold text-[#002d6b] hover:bg-[#002d6b]/10">🧑‍💼 Pedir parecer do gerente virtual</button>
+              })()}
               {recusando === p.id ? (
                 <div className="mt-3 space-y-2">
                   <textarea value={motivo} onChange={(e) => setMotivo(e.target.value.slice(0, 300))} rows={2} placeholder="O que faltou? A pessoa vai ver isso." className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-[13px]" />
