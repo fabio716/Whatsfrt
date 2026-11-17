@@ -17,6 +17,8 @@ import { getUraConfigCached, type UraConfigFull } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { idsOnline } from "@/lib/presence"
 import { PREFIXO_PEDIDO_NOTA, primeiraRespostaHumana } from "@/lib/retornoAtendido"
+import { redis } from "@/lib/redis"
+import { parecerDoRetorno, type Parecer } from "@/lib/gerenteParecer"
 
 export const TOLERANCIA_ESPERA_MS = 60_000 // cliente esperando: 1 min
 export const TOLERANCIA_RETORNO_MS = 5 * 60_000 // retorno agendado: 5 min depois do horário
@@ -194,7 +196,7 @@ export async function resolverOcorrencias(): Promise<void> {
 
 // Remetente das mensagens internas do gerente. Conta de sistema: inativa (não
 // entra no login nem nas listas de equipe), só existe para assinar a mensagem.
-const ID_GERENTE = "gerente-virtual-sistema"
+export const ID_GERENTE = "gerente-virtual-sistema"
 async function usuarioGerente(): Promise<string> {
   await prisma.user.upsert({
     where: { id: ID_GERENTE },
@@ -262,6 +264,69 @@ async function avisarDiretoria(): Promise<void> {
   }
 }
 
+// ─── Conferência automática dos retornos ────────────────────────────────────
+// Retorno marcado como feito (com canal + relato) é conferido sozinho pelo
+// gerente: certo → CONCLUÍDO; faltando algo → reabre com "o que falta" e avisa
+// a pessoa. Salvaguardas: espera 1 min após marcar; só 2 reprovações automáticas
+// por retorno (na 3ª vai para o administrador); se a IA falhar, tenta de novo
+// em 10 min e nunca decide no escuro.
+const ESPERA_CONFERIR_MS = 60_000
+const REABRIR_EM_MS = 30 * 60_000
+const MAX_REPROVACOES_AUTO = 2
+type Decisor = (id: string) => Promise<Parecer | "SEM_IA" | null>
+
+export async function conferirRetornosAutomatico(decidir: Decisor = parecerDoRetorno): Promise<{ aceitos: number; reabertos: number; manuais: number }> {
+  const total = { aceitos: 0, reabertos: 0, manuais: 0 }
+  const lista = await prisma.contactReminder.findMany({
+    where: { conferencia: "PENDENTE", doneAt: { not: null, lte: new Date(Date.now() - ESPERA_CONFERIR_MS) } },
+    orderBy: { doneAt: "asc" }, take: 5,
+    select: { id: true, userId: true, contact: { select: { id: true, name: true } } },
+  })
+  for (const r of lista) {
+    const travaTentativa = `gerente:auto:tentativa:${r.id}`
+    if (await redis.get(travaTentativa)) continue
+    const parecer = await decidir(r.id)
+    if (parecer === "SEM_IA") return total
+    if (!parecer) { await redis.set(travaTentativa, "1"); await redis.expire(travaTentativa, 10 * 60); continue }
+
+    const base = { conferidaEm: new Date(), conferidaPorId: ID_GERENTE }
+    if (parecer.veredito === "CONCLUIDO" || parecer.veredito === "AGUARDANDO_CLIENTE") {
+      const nota = `🤖 ${parecer.motivo}${parecer.veredito === "AGUARDANDO_CLIENTE" ? " (acompanhar a resposta do cliente)" : ""}`.slice(0, 300)
+      const ok = await prisma.contactReminder.updateMany({ where: { id: r.id, conferencia: "PENDENTE" }, data: { ...base, conferencia: "CONCLUIDO", conferenciaNota: nota } })
+      if (ok.count) total.aceitos++
+      continue
+    }
+
+    // NÃO CONCLUÍDO: escreve o que falta e devolve para a pessoa (até 2 vezes).
+    const chaveRep = `gerente:reprovacoes:${r.id}`
+    const vezes = await redis.incr(chaveRep)
+    await redis.expire(chaveRep, 7 * 24 * 3600)
+    const falta = (parecer.falta ?? parecer.motivo).slice(0, 300)
+    if (vezes > MAX_REPROVACOES_AUTO) {
+      // Já reprovado 2x: o administrador decide (fica na conferência manual).
+      await redis.set(travaTentativa, "1"); await redis.expire(travaTentativa, 24 * 3600)
+      const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
+      sendPushToUsers(admins, { title: "🧑‍💼 Retorno precisa da sua conferência", body: `${r.contact.name}: reprovado 2x pelo gerente. ${falta}`, tag: `gerente-manual-${r.id}`, url: "/admin/gerente" })
+        .catch((e: unknown) => console.error("[gerente] push manual falhou:", e instanceof Error ? e.message : e))
+      total.manuais++
+      continue
+    }
+    const novoPrazo = new Date(Date.now() + REABRIR_EM_MS)
+    const ok = await prisma.contactReminder.updateMany({
+      where: { id: r.id, conferencia: "PENDENTE" },
+      data: { ...base, conferencia: "NAO_CONCLUIDO", conferenciaNota: `🤖 ${falta}`.slice(0, 300), doneAt: null, dueAt: novoPrazo, notifiedAt: null, escalonadoAt: null, cienteAt: null },
+    })
+    if (!ok.count) continue
+    total.reabertos++
+    sendPushToUsers([r.userId], {
+      title: `❌ Retorno não aceito: ${r.contact.name}`,
+      body: `${falta} Refaça até ${horaBr(novoPrazo)}.`,
+      tag: `reaberto-${r.id}`, url: `/admin/chats?contact=${r.contact.id}`,
+    }).catch((e: unknown) => console.error("[gerente] push reabertura falhou:", e instanceof Error ? e.message : e))
+  }
+  return total
+}
+
 export async function verificarGerente(): Promise<void> {
   if (rodando) return
   rodando = true
@@ -271,6 +336,7 @@ export async function verificarGerente(): Promise<void> {
     if (cfg.isActive && isBusinessHour(cfg) !== "OPEN") return
     await abrirOcorrencias(cfg)
     await avisarDiretoria()
+    await conferirRetornosAutomatico()
   } catch (err) {
     console.error("[gerente] ciclo falhou:", err instanceof Error ? err.message : err)
   } finally {

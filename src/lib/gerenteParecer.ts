@@ -15,7 +15,7 @@ const MODELO = "claude-sonnet-5-5"
 const SEIS_HORAS = 6 * 60 * 60
 
 export type Veredito = "CONCLUIDO" | "AGUARDANDO_CLIENTE" | "NAO_CONCLUIDO"
-export interface Parecer { veredito: Veredito; motivo: string }
+export interface Parecer { veredito: Veredito; motivo: string; falta?: string }
 
 const REGRAS = `Você é o gerente virtual da FRT Automação. Confere se um RETORNO agendado a um cliente foi realmente feito, com base no que o atendente escreveu e no histórico do chat.
 
@@ -26,18 +26,21 @@ CLASSIFIQUE em UMA opção:
 
 CRITÉRIOS: compare o COMBINADO (o que o retorno devia resolver) com o RELATO e com as MENSAGENS. Relato vago ("ok", "feito") ou que só descreve o problema do cliente não prova nada. Contato antes do horário combinado é válido. Canal telefone/e-mail não deixa prova no chat: avalie só pela coerência do relato e diga que não dá para confirmar.
 
-RESPONDA exatamente em 2 linhas, sem mais nada:
+RESPONDA exatamente neste formato, sem mais nada:
 VEREDITO: CONCLUIDO | AGUARDANDO_CLIENTE | NAO_CONCLUIDO
-MOTIVO: uma frase curta, em português, falando com o administrador (máx. 220 caracteres).`
+MOTIVO: uma frase curta, em português, falando com o administrador (máx. 220 caracteres).
+FALTA: SÓ se o veredito for NAO_CONCLUIDO — o que a PESSOA precisa fazer ou registrar para o retorno ser aceito, falando diretamente com ela, de forma objetiva e educada (máx. 220 caracteres). Nos outros casos, escreva FALTA: -`
 
 const ROTULO: Record<string, string> = { WHATSAPP: "WhatsApp", FRTWHATS: "frtwhats", TELEFONE: "Telefone", EMAIL: "E-mail" }
 const corta = (t: string, n: number) => t.replace(/\s+/g, " ").trim().slice(0, n)
 
 export function lerParecer(texto: string): Parecer | null {
   const v = texto.match(/VEREDITO:\s*(CONCLUIDO|AGUARDANDO_CLIENTE|NAO_CONCLUIDO)/i)?.[1]?.toUpperCase()
-  const m = texto.match(/MOTIVO:\s*([\s\S]+)/i)?.[1]?.trim()
+  const m = texto.match(/MOTIVO:\s*([^\n]+)/i)?.[1]?.trim()
+  const f = texto.match(/FALTA:\s*([\s\S]+)/i)?.[1]?.trim()
   if (!v || !m) return null
-  return { veredito: v as Veredito, motivo: m.replace(/\s+/g, " ").slice(0, 260) }
+  const falta = f && f !== "-" ? f.replace(/\s+/g, " ").slice(0, 260) : undefined
+  return { veredito: v as Veredito, motivo: m.replace(/\s+/g, " ").slice(0, 260), ...(falta ? { falta } : {}) }
 }
 
 export async function parecerDoRetorno(id: string): Promise<Parecer | "SEM_IA" | null> {
@@ -71,7 +74,7 @@ export async function parecerDoRetorno(id: string): Promise<Parecer | "SEM_IA" |
   try {
     const client = new Anthropic()
     const resp = await client.messages.create({
-      model: MODELO, max_tokens: 250,
+      model: MODELO, max_tokens: 400,
       system: [{ type: "text", text: REGRAS, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: pedido }],
     })

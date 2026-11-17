@@ -26,7 +26,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     prisma.contactReminder.findMany({
       where: { conferencia: { in: ["CONCLUIDO", "NAO_CONCLUIDO"] }, conferidaEm: { gte: new Date(Date.now() - 7 * 86_400_000) } },
       orderBy: { conferidaEm: "desc" }, take: 30,
-      select: { id: true, conferencia: true, conferidaEm: true, conferenciaNota: true, canal: true,
+      select: { id: true, conferencia: true, conferidaEm: true, conferenciaNota: true, conferidaPorId: true, canal: true,
         user: { select: { name: true } }, contact: { select: { name: true } } },
     }),
   ])
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }),
     recentes: recentes.map((r) => ({
       id: r.id, decisao: r.conferencia, em: r.conferidaEm?.toISOString() ?? null, motivo: r.conferenciaNota,
-      canal: r.canal, atendente: r.user.name, cliente: r.contact.name,
+      canal: r.canal, atendente: r.user.name, cliente: r.contact.name, automatico: r.conferidaPorId === "gerente-virtual-sistema",
     })),
   })
 }

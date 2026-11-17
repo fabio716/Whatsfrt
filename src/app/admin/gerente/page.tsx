@@ -14,7 +14,7 @@ interface Pendente {
   atrasoMin: number; canal: string | null; relato: string | null; nota: string; evidencia: Evidencia; parecer?: Parecer | null
 }
 interface Parecer { veredito: "CONCLUIDO" | "AGUARDANDO_CLIENTE" | "NAO_CONCLUIDO"; motivo: string }
-interface Recente { id: string; decisao: string; em: string | null; motivo: string | null; canal: string | null; atendente: string; cliente: string }
+interface Recente { id: string; decisao: string; em: string | null; motivo: string | null; canal: string | null; atendente: string; cliente: string; automatico?: boolean }
 interface Resumo { nome: string; espera: number; retorno: number; semCiencia: number; abertas: number; esperaMediaMin: number }
 interface Ocorrencia { id: string; tipo: string; pessoa: string; cliente: string; desde: string; cienteAt: string | null; resolvidaEm: string | null; esperaMin: number | null; diretoriaAvisada: boolean }
 
@@ -156,10 +156,10 @@ export default function GerentePage() {
           ))}
           {recentes.length > 0 && (
             <details className="rounded-xl border border-zinc-200 p-3 text-sm">
-              <summary className="cursor-pointer font-semibold text-zinc-700">Conferidos nos últimos 7 dias ({recentes.length})</summary>
+              <summary className="cursor-pointer font-semibold text-zinc-700">Conferidos nos últimos 7 dias ({recentes.length}) · 🤖 = decidido pelo gerente virtual</summary>
               <ul className="mt-2 space-y-1 text-[12.5px] text-zinc-700">
                 {recentes.map((r) => (
-                  <li key={r.id}>{r.decisao === "CONCLUIDO" ? "✅" : "❌"} {r.cliente} · {r.atendente} · {ROTULO_CANAL[r.canal ?? ""] ?? "—"}{r.motivo ? ` — ${r.motivo}` : ""}</li>
+                  <li key={r.id}>{r.decisao === "CONCLUIDO" ? "✅" : "❌"} {r.automatico ? "🤖 " : ""}{r.cliente} · {r.atendente} · {ROTULO_CANAL[r.canal ?? ""] ?? "—"}{r.motivo ? ` — ${r.motivo}` : ""}</li>
                 ))}
               </ul>
             </details>
