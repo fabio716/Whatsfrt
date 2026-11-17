@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
 import { primeiraRespostaHumana } from "@/lib/retornoAtendido"
 import { sendPushToUsers } from "@/lib/push"
+import { parecerDoRetorno } from "@/lib/gerenteParecer"
 
 export const dynamic = "force-dynamic"
 
@@ -30,15 +31,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }),
   ])
   const respostas = await primeiraRespostaHumana(pendentes.map((p) => p.id))
+  // Parecer do gerente virtual já pronto em cada retorno (fica em cache 6 h, então
+  // só a primeira abertura gasta IA). Falhou ou sem IA: o cartão oferece o botão.
+  const pareceres = await Promise.all(pendentes.slice(0, 10).map(async (p) => {
+    const r = await parecerDoRetorno(p.id).catch(() => null)
+    return r && r !== "SEM_IA" ? r : null
+  }))
   return NextResponse.json({
-    pendentes: pendentes.map((p) => {
+    pendentes: pendentes.map((p, i) => {
       const dono = respostas.get(p.id)?.dono ?? null
       const noSistema = p.canal === "WHATSAPP" || p.canal === "FRTWHATS"
       return {
         id: p.id, contactId: p.contact.id, cliente: p.contact.name, atendente: p.user.name,
         dueAt: p.dueAt.toISOString(), feitoEm: p.doneAt?.toISOString() ?? null,
         atrasoMin: p.doneAt ? Math.round((p.doneAt.getTime() - p.dueAt.getTime()) / 60_000) : 0,
-        canal: p.canal, relato: p.relato, nota: p.note,
+        canal: p.canal, relato: p.relato, nota: p.note, parecer: pareceres[i] ?? null,
         // Só dá para conferir sozinho o que passou pelo chat do sistema.
         evidencia: dono ? { achou: true, em: dono.em.toISOString(), texto: dono.texto }
           : { achou: false, motivo: noSistema ? "Não achei mensagem dela para este cliente no chat." : "Canal fora do sistema: confira com a pessoa ou com o cliente." },

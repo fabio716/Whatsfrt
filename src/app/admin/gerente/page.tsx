@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from "react"
 interface Evidencia { achou: boolean; em?: string; texto?: string; motivo?: string }
 interface Pendente {
   id: string; contactId: string; cliente: string; atendente: string; dueAt: string; feitoEm: string | null
-  atrasoMin: number; canal: string | null; relato: string | null; nota: string; evidencia: Evidencia
+  atrasoMin: number; canal: string | null; relato: string | null; nota: string; evidencia: Evidencia; parecer?: Parecer | null
 }
 interface Parecer { veredito: "CONCLUIDO" | "AGUARDANDO_CLIENTE" | "NAO_CONCLUIDO"; motivo: string }
 interface Recente { id: string; decisao: string; em: string | null; motivo: string | null; canal: string | null; atendente: string; cliente: string }
@@ -43,7 +43,9 @@ export default function GerentePage() {
       if (!a.ok || !b.ok) throw new Error()
       const conf = (await a.json()) as { pendentes: Pendente[]; recentes: Recente[] }
       const oc = (await b.json()) as { resumo: Resumo[]; recentes: Ocorrencia[] }
-      setPendentes(conf.pendentes); setRecentes(conf.recentes); setResumo(oc.resumo); setOcorrencias(oc.recentes); setErro("")
+      setPendentes(conf.pendentes)
+      setPareceres((antes) => { const novo = { ...antes }; for (const p of conf.pendentes) if (p.parecer) novo[p.id] = p.parecer; return novo })
+       setRecentes(conf.recentes); setResumo(oc.resumo); setOcorrencias(oc.recentes); setErro("")
     } catch { setErro("Não consegui carregar. Recarregue a página.") }
   }, [dias])
 
