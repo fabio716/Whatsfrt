@@ -274,6 +274,53 @@ const ESPERA_CONFERIR_MS = 60_000
 const REABRIR_EM_MS = 30 * 60_000
 const MAX_REPROVACOES_AUTO = 2
 type Decisor = (id: string) => Promise<Parecer | "SEM_IA" | null>
+const ACOMPANHAR_EM_MS = 3 * 60 * 60_000 // quando o cliente não respondeu: novo retorno em 3 h úteis
+
+// Próximo instante dentro do horário de atendimento, a partir de `alvo`.
+export function proximoHorarioUtil(cfg: UraConfigFull, alvo: Date): Date {
+  const bh = cfg.businessHours
+  if (!bh?.length) return alvo
+  const minutosDe = (hhmm: string) => { const [h = "0", m = "0"] = hhmm.split(":"); return parseInt(h, 10) * 60 + parseInt(m, 10) }
+  const DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  for (let i = 0; i < 9; i++) {
+    const ref = new Date(alvo.getTime() + i * 86_400_000)
+    const data = ref.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+    const dow = DOW[new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" }).format(ref)] ?? 1
+    const d = bh.find((b) => b.dayOfWeek === dow)
+    if (!d || d.isClosed) continue
+    const abre = minutosDe(d.openTime), fecha = minutosDe(d.closeTime)
+    const almoco = d.hasLunchBreak ? [minutosDe(d.lunchStart), minutosDe(d.lunchEnd)] : null
+    const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`
+    let cand = i === 0 ? minutosDe(alvo.toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })) : abre
+    if (cand < abre) cand = abre
+    if (almoco && cand >= almoco[0] && cand < almoco[1]) cand = almoco[1]
+    if (cand < fecha) return new Date(`${data}T${hhmm(cand)}:00-03:00`)
+  }
+  return alvo
+}
+
+// Cliente ainda não respondeu: agenda um retorno de acompanhamento para a própria
+// pessoa (sujeito às mesmas cobranças: ciência, trava, conferência). Uma vez por retorno.
+async function agendarAcompanhamento(r: { id: string; userId: string; contact: { id: string; name: string } }, motivo: string): Promise<Date | null> {
+  const chave = `gerente:acompanhar:${r.id}`
+  if ((await redis.incr(chave)) !== 1) return null // já agendado para este retorno
+  await redis.expire(chave, 30 * 24 * 3600)
+  const jaTem = await prisma.contactReminder.findFirst({
+    where: { contactId: r.contact.id, userId: r.userId, doneAt: null, note: { startsWith: "🧑‍💼 Acompanhar" } }, select: { id: true },
+  })
+  if (jaTem) return null
+  const cfg = await getUraConfigCached()
+  const quando = proximoHorarioUtil(cfg, new Date(Date.now() + ACOMPANHAR_EM_MS))
+  await prisma.contactReminder.create({
+    data: { contactId: r.contact.id, userId: r.userId, dueAt: quando, cienteAt: new Date(), note: `🧑‍💼 Acompanhar: ${motivo}`.slice(0, 280) },
+  })
+  sendPushToUsers([r.userId], {
+    title: `📌 Retorno de acompanhamento: ${r.contact.name}`,
+    body: `O gerente virtual agendou para ${horaBr(quando)} ver se o cliente respondeu.`,
+    tag: `acompanhar-${r.id}`, url: `/admin/chats?contact=${r.contact.id}`,
+  }).catch((e: unknown) => console.error("[gerente] push acompanhamento falhou:", e instanceof Error ? e.message : e))
+  return quando
+}
 
 export async function conferirRetornosAutomatico(decidir: Decisor = parecerDoRetorno): Promise<{ aceitos: number; reabertos: number; manuais: number }> {
   const total = { aceitos: 0, reabertos: 0, manuais: 0 }
@@ -291,9 +338,18 @@ export async function conferirRetornosAutomatico(decidir: Decisor = parecerDoRet
 
     const base = { conferidaEm: new Date(), conferidaPorId: ID_GERENTE }
     if (parecer.veredito === "CONCLUIDO" || parecer.veredito === "AGUARDANDO_CLIENTE") {
-      const nota = `🤖 ${parecer.motivo}${parecer.veredito === "AGUARDANDO_CLIENTE" ? " (acompanhar a resposta do cliente)" : ""}`.slice(0, 300)
-      const ok = await prisma.contactReminder.updateMany({ where: { id: r.id, conferencia: "PENDENTE" }, data: { ...base, conferencia: "CONCLUIDO", conferenciaNota: nota } })
-      if (ok.count) total.aceitos++
+      const aguardando = parecer.veredito === "AGUARDANDO_CLIENTE"
+      const sufixo = aguardando ? " (acompanhar a resposta do cliente)" : ""
+      const ok = await prisma.contactReminder.updateMany({ where: { id: r.id, conferencia: "PENDENTE" }, data: { ...base, conferencia: "CONCLUIDO", conferenciaNota: `🤖 ${parecer.motivo}${sufixo}`.slice(0, 300) } })
+      if (!ok.count) continue
+      total.aceitos++
+      if (aguardando) {
+        // Autorizado pelo administrador: o gerente agenda o retorno de acompanhamento sozinho.
+        const quando = await agendarAcompanhamento(r, parecer.motivo.slice(0, 200))
+        if (quando) {
+          await prisma.contactReminder.update({ where: { id: r.id }, data: { conferenciaNota: `🤖 ${parecer.motivo} (retorno de acompanhamento agendado para ${horaBr(quando)})`.slice(0, 300) } })
+        }
+      }
       continue
     }
 
