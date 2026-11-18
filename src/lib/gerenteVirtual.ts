@@ -299,6 +299,28 @@ export function proximoHorarioUtil(cfg: UraConfigFull, alvo: Date): Date {
   return alvo
 }
 
+// Retornos que o gerente aceitou como "aguardando o cliente" ANTES de agendar o
+// acompanhamento automático (últimos 7 dias): cria o que faltou, uma vez cada.
+const MARCA_ACOMPANHAR = "(acompanhar a resposta do cliente)"
+async function acompanhamentosAtrasados(): Promise<void> {
+  const lista = await prisma.contactReminder.findMany({
+    where: {
+      conferencia: "CONCLUIDO", conferidaPorId: ID_GERENTE, conferenciaNota: { contains: MARCA_ACOMPANHAR },
+      conferidaEm: { gte: new Date(Date.now() - 7 * 24 * 3_600_000) }, contact: { deletedAt: null },
+    },
+    take: 20, select: { id: true, userId: true, conferenciaNota: true, contact: { select: { id: true, name: true } } },
+  })
+  for (const r of lista) {
+    const motivo = (r.conferenciaNota ?? "").replace(/^🤖\s*/, "").replace(MARCA_ACOMPANHAR, "").trim().slice(0, 200)
+    const quando = await agendarAcompanhamento(r, motivo)
+    // Mesmo sem agendar (já tinha um aberto), tira a marca para não reprocessar.
+    await prisma.contactReminder.update({
+      where: { id: r.id },
+      data: { conferenciaNota: `🤖 ${motivo} ${quando ? `(retorno de acompanhamento agendado para ${horaBr(quando)})` : "(acompanhamento já agendado)"}`.slice(0, 300) },
+    })
+  }
+}
+
 // Cliente ainda não respondeu: agenda um retorno de acompanhamento para a própria
 // pessoa (sujeito às mesmas cobranças: ciência, trava, conferência). Uma vez por retorno.
 async function agendarAcompanhamento(r: { id: string; userId: string; contact: { id: string; name: string } }, motivo: string): Promise<Date | null> {
@@ -324,6 +346,7 @@ async function agendarAcompanhamento(r: { id: string; userId: string; contact: {
 
 export async function conferirRetornosAutomatico(decidir: Decisor = parecerDoRetorno): Promise<{ aceitos: number; reabertos: number; manuais: number }> {
   const total = { aceitos: 0, reabertos: 0, manuais: 0 }
+  await acompanhamentosAtrasados()
   const lista = await prisma.contactReminder.findMany({
     where: { conferencia: "PENDENTE", doneAt: { not: null, lte: new Date(Date.now() - ESPERA_CONFERIR_MS) } },
     orderBy: { doneAt: "asc" }, take: 5,
