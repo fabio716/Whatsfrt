@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma"
 import { sendPushToUsers } from "@/lib/push"
 import { broadcastToUsers } from "@/lib/sse-emitter"
 import { acharOuCriarDM } from "@/lib/internalChat"
+import { fimDaUltimaAusencia, idsAusentes } from "@/lib/ausencia"
 import { getUraConfigCached, type UraConfigFull } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { idsOnline } from "@/lib/presence"
@@ -116,6 +117,15 @@ async function abrirOcorrencias(cfg: UraConfigFull): Promise<void> {
       if (contagemDesde > agora.getTime() - TOLERANCIA_RETORNO_MS) continue
       novas.push({ tipo: "RETORNO_ATRASADO", refId: `${a.id}:${a.dueAt.getTime()}`, userId: a.userId, contactId: a.contact.id, nome: a.contact.name, desde: new Date(contagemDesde) })
     }
+  }
+  // Ausente (botão "Ausente") não é cobrado enquanto está fora, e a contagem recomeça
+  // só depois que volta (com a mesma tolerância de sempre).
+  const ausentes = await idsAusentes()
+  for (let i = novas.length - 1; i >= 0; i--) {
+    const uid = novas[i].userId
+    if (!uid) continue
+    const tol = novas[i].tipo === "ESPERA_CLIENTE" ? TOLERANCIA_ESPERA_MS : TOLERANCIA_RETORNO_MS
+    if (ausentes.has(uid) || (await fimDaUltimaAusencia(uid)) > agora.getTime() - tol) novas.splice(i, 1)
   }
   if (novas.length === 0) return
 
@@ -240,6 +250,11 @@ async function avisarDiretoria(): Promise<void> {
   const pendentes = await prisma.gerenteOcorrencia.findMany({
     where: { resolvidaEm: null, escaladaEm: null, abertaEm: { lte: limite } }, take: 50,
   })
+  // Quem está "ausente" não gera aviso ao administrador enquanto estiver fora.
+  const ausentes = await idsAusentes()
+  const aEscalar = pendentes.filter((o) => !o.userId || !ausentes.has(o.userId))
+  pendentes.length = 0
+  pendentes.push(...aEscalar)
   if (pendentes.length === 0) return
   const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
   const ids = [...new Set([...pendentes.map((p) => p.userId).filter((x): x is string => Boolean(x)), ...pendentes.map((p) => p.contactId)])]

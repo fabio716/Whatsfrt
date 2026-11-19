@@ -27,6 +27,7 @@ import { sendZapiTyping } from "@/lib/zapi"
 import { aiConfigured } from "@/lib/ai"
 import { getUraConfigCached } from "@/lib/ura"
 import { assignAgent, markWaitingForAgent } from "@/lib/serviceTracking"
+import { idsAusentes } from "@/lib/ausencia"
 
 const MODEL = "claude-opus-5"
 
@@ -151,12 +152,17 @@ function estaNaListaDeTeste(whatsappId: string, lista: string): boolean {
 // ─── Rodízio das vendedoras ─────────────────────────────────────────────────
 // Cliente novo: a primeira é a Priscila, depois segue pelas outras, em ordem.
 async function proximaVendedora(): Promise<string | null> {
-  const vendedoras = await prisma.user.findMany({
+  const todas = await prisma.user.findMany({
     where: { role: "AGENT", isActive: true, department: "VENDAS" },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   })
-  if (vendedoras.length === 0) return null
+  if (todas.length === 0) return null
+  // Quem está "ausente" (banheiro, saiu da posição…) fica fora do rodízio por enquanto;
+  // se todas estiverem ausentes, segue com todas (ninguém fica sem dono).
+  const ausentes = await idsAusentes()
+  const presentes = todas.filter((v) => !ausentes.has(v.id))
+  const vendedoras = presentes.length > 0 ? presentes : todas
   const ehPriscila = (n: string) => n.trim().toLowerCase().startsWith("priscila")
   const fila = [...vendedoras.filter((v) => ehPriscila(v.name)), ...vendedoras.filter((v) => !ehPriscila(v.name))]
 

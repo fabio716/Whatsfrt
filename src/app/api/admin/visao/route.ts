@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
 import { getAtendenteConfig } from "@/lib/atendenteVirtual"
 import { idsOnline } from "@/lib/presence"
+import { idsAusentes, MOTIVOS } from "@/lib/ausencia"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 
@@ -121,6 +122,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     link: "/admin/copiloto",
   }
 
+  const ausentes = await idsAusentes()
+  const nomesAusentes = ausentes.size
+    ? (await prisma.user.findMany({ where: { id: { in: [...ausentes.keys()] } }, select: { id: true, name: true } }))
+        .map((u) => `${u.name.trim().split(/\s+/)[0]} (${MOTIVOS[ausentes.get(u.id)!.motivo].rotulo.replace(/^\S+\s/, "").toLowerCase()}, volta ${new Date(ausentes.get(u.id)!.ate).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })})`)
+    : []
   const onlineAgentes = online.size
   const nomesOnline = online.size
     ? (await prisma.user.findMany({ where: { id: { in: [...online] }, isActive: true }, select: { name: true }, take: 12 }))
@@ -133,6 +139,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     achou: [
       `${onlineAgentes} pessoa(s) online de ${agentes} atendentes ativos.`,
       nomesOnline.length ? `Trabalhando online agora: ${nomesOnline.join(", ")}.` : "Ninguém online agora.",
+      ...(nomesAusentes.length ? [`Ausentes por alguns minutos: ${nomesAusentes.join(", ")}.`] : []),
       `${emAtendimento} cliente(s) em atendimento agora.`,
       fila.length ? `${fila.length} cliente(s) na fila esperando alguém.` : "Fila vazia.",
     ],

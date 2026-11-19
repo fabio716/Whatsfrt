@@ -9,6 +9,7 @@ import Novidades from "./Novidades"
 import RetornosObrigatorio from "./RetornosObrigatorio"
 import GerenteAlerta from "./GerenteAlerta"
 import ConcluirRetorno from "./ConcluirRetorno"
+import AusenciaControle from "./AusenciaControle"
 import AlertaRetornosAtrasados from "./AlertaRetornosAtrasados"
 import ResumoAtendenteVirtual from "./ResumoAtendenteVirtual"
 import MeusRetornos from "./MeusRetornos"
@@ -69,6 +70,7 @@ export default function AdminShell({
       <RetornosObrigatorio />
       <GerenteAlerta />
       <ConcluirRetorno />
+      <AusenciaControle />
       {userRole === "ADMIN" && <ResumoAtendenteVirtual />}
       {userRole === "AGENT" && <MeusRetornos />}
       <MascoteVivo />

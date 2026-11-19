@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
 import { TOLERANCIA_ESPERA_MS, resolverOcorrencias } from "@/lib/gerenteVirtual"
+import { ausenciaDe } from "@/lib/ausencia"
 
 export const dynamic = "force-dynamic"
 
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
   if (auth.role === "ADMIN") return NextResponse.json([])
+  if (await ausenciaDe(auth.id)) return NextResponse.json([]) // ausente: sem aviso nem trava
 
   // Trava de segurança: depois de ciente, a tela só fica travada por 30 min da cobrança.
   // Passou disso, o caso segue no relatório e com o administrador, mas ela é liberada.

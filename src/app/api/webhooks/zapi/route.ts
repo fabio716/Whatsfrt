@@ -28,6 +28,7 @@ import { findOrCreateContact } from "@/lib/contactLookup"
 import { sendPushToUsers } from "@/lib/push"
 import { BusinessHoursValidator } from "@/lib/ura/businessHours"
 import { tentarAtendenteVirtual } from "@/lib/atendenteVirtual"
+import { ausenciaDe, primeiroRecado } from "@/lib/ausencia"
 
 export const dynamic = "force-dynamic"
 export const fetchCache = "force-no-store"
@@ -337,6 +338,33 @@ function isSiteLead(text: string): boolean {
 //
 // Manda UM aviso por período fechado: guardamos o horário da reabertura em
 // offHoursNoticeUntil, então cinco mensagens de madrugada geram um aviso só.
+// Cliente escreveu e a atendente dele está ausente por alguns minutos: UMA mensagem do
+// assistente virtual dizendo que ela já volta (nunca repete na mesma ausência).
+async function avisarAusencia(contact: {
+  id: string; whatsappId: string; name: string; profilePhotoUrl: string | null
+  chatStatus: ChatStatus; assignedUserId: string | null
+}): Promise<void> {
+  if (!contact.assignedUserId || !contact.whatsappId.endsWith("@s.whatsapp.net")) return
+  const aus = await ausenciaDe(contact.assignedUserId)
+  if (!aus) return
+  if (!(await primeiroRecado(contact.assignedUserId, contact.id, aus.ate))) return
+  const dona = await prisma.user.findUnique({ where: { id: contact.assignedUserId }, select: { name: true } })
+  const nome = (dona?.name ?? "").trim().split(/\s+/)[0] || "O atendimento"
+  const texto = `Olá! 😊 Aqui é o assistente virtual da FRT. ${nome} saiu por alguns minutos e já volta para falar com você. Pode deixar sua mensagem aqui: ela será vista assim que voltar!`
+  const ok = await sendTextOk(contact.whatsappId, texto)
+  const saved = await prisma.message.create({
+    data: { body: texto, direction: MessageDirection.OUTBOUND, status: ok ? MessageStatus.SENT : MessageStatus.FAILED, contactId: contact.id, viaAtendente: true },
+  })
+  broadcast({
+    type: "new_message",
+    data: {
+      id: saved.id, body: saved.body, direction: saved.direction, status: saved.status, createdAt: saved.createdAt.toISOString(),
+      agentId: null, contactId: contact.id,
+      contact: { id: contact.id, name: contact.name, whatsappId: contact.whatsappId, profilePhotoUrl: contact.profilePhotoUrl, chatStatus: contact.chatStatus, assignedUserId: contact.assignedUserId },
+    },
+  }, contact.assignedUserId)
+}
+
 async function avisarForaDoHorario(contact: {
   id: string
   whatsappId: string
@@ -669,6 +697,10 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     // O atendente virtual conversa no lugar do aviso; desligado ou com
     // falha, vale o aviso de sempre.
     const expediente = await BusinessHoursValidator.check()
+    // Atendente "ausente" (banheiro, saiu da posição…): o assistente avisa o cliente UMA vez.
+    if (expediente.isOpen && !expediente.isLunchTime) {
+      await avisarAusencia(contact).catch((e: unknown) => console.error("[ausência] aviso falhou:", e instanceof Error ? e.message : e))
+    }
     if (!expediente.isOpen || expediente.isLunchTime) {
       const assumiu = await tentarAtendenteVirtual(
         contact,
