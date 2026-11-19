@@ -57,12 +57,12 @@ const PASSOS: Passo[] = [
   },
   {
     titulo: "🚪 Precisou sair? Use o botão Ausente",
-    texto: "No topo da tela há o botão “🚪 Ausente”. Use quando for ao banheiro, sair da posição ou resolver algo:",
+    texto: "No topo da tela há o botão “🚪 Ausente”. Use sempre que precisar sair por alguns minutos — é um direito, não precisa pedir licença:",
     itens: [
-      { icone: "🚻", texto: "Escolha o motivo: banheiro (10 min), saí da posição (15 min) ou resolver algo (30 min)." },
+      { icone: "✍️", texto: "Escrever o motivo é opcional, e o que você escrever só o administrador vê. Não precisa informar nada de saúde." },
       { icone: "⏸️", texto: "Enquanto estiver ausente, o Gerente virtual não cobra nem trava a sua tela, e você não recebe clientes novos." },
       { icone: "🤖", texto: "O assistente virtual avisa uma vez cada cliente seu que escrever, dizendo que você já volta." },
-      { icone: "👋", texto: "Ao voltar, toque em “Voltei” (ou espere o prazo acabar). Você recebe um resumo de quem escreveu." },
+      { icone: "⏱️", texto: "O sistema registra o tempo entre “Ausente” e “Voltei” (até 30 minutos), para organizar o atendimento. Ao voltar, toque em “Voltei” e veja o resumo de quem escreveu." },
     ],
   },
   {

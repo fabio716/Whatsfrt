@@ -15,6 +15,8 @@ interface Pendente {
 }
 interface Parecer { veredito: "CONCLUIDO" | "AGUARDANDO_CLIENTE" | "NAO_CONCLUIDO"; motivo: string; falta?: string }
 interface Recente { id: string; decisao: string; em: string | null; motivo: string | null; canal: string | null; atendente: string; cliente: string; automatico?: boolean; contestacao?: string | null; contestada?: boolean }
+interface ResumoAus { nome: string; vezes: number; total: number; mediaMin: number; maior: number; semVoltei: number; emAndamento: number }
+interface RecenteAus { id: string; pessoa: string; inicio: string; duracaoMin: number | null; emAndamento: boolean; semVoltei: boolean; motivo: string | null }
 interface Resumo { nome: string; espera: number; retorno: number; semCiencia: number; abertas: number; esperaMediaMin: number }
 interface Ocorrencia { id: string; tipo: string; pessoa: string; cliente: string; desde: string; cienteAt: string | null; resolvidaEm: string | null; esperaMin: number | null; diretoriaAvisada: boolean; contestacao?: string | null; lembrete?: { combinadoPara: string; criadoEm: string; nota: string; feitoEm: string | null } | null }
 
@@ -22,12 +24,14 @@ const ROTULO_CANAL: Record<string, string> = { WHATSAPP: "WhatsApp", FRTWHATS: "
 const hora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 
 export default function GerentePage() {
-  const [aba, setAba] = useState<"conferir" | "atrasos">("conferir")
+  const [aba, setAba] = useState<"conferir" | "atrasos" | "ausencias">("conferir")
   const [pendentes, setPendentes] = useState<Pendente[]>([])
   const [recentes, setRecentes] = useState<Recente[]>([])
   const [resumo, setResumo] = useState<Resumo[]>([])
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([])
   const [dias, setDias] = useState(7)
+  const [resumoAus, setResumoAus] = useState<ResumoAus[]>([])
+  const [recentesAus, setRecentesAus] = useState<RecenteAus[]>([])
   const [erro, setErro] = useState("")
   const [ocupado, setOcupado] = useState("")
   const [recusando, setRecusando] = useState<string | null>(null)
@@ -36,11 +40,14 @@ export default function GerentePage() {
 
   const carregar = useCallback(async () => {
     try {
-      const [a, b] = await Promise.all([
+      const [a, b, c] = await Promise.all([
         fetch("/api/admin/gerente/conferencia", { cache: "no-store" }),
         fetch(`/api/admin/gerente/ocorrencias?dias=${dias}`, { cache: "no-store" }),
+        fetch(`/api/admin/gerente/ausencias?dias=${dias}`, { cache: "no-store" }),
       ])
-      if (!a.ok || !b.ok) throw new Error()
+      if (!a.ok || !b.ok || !c.ok) throw new Error()
+      const aus = (await c.json()) as { resumo: ResumoAus[]; recentes: RecenteAus[] }
+      setResumoAus(aus.resumo); setRecentesAus(aus.recentes)
       const conf = (await a.json()) as { pendentes: Pendente[]; recentes: Recente[] }
       const oc = (await b.json()) as { resumo: Resumo[]; recentes: Ocorrencia[] }
       setPendentes(conf.pendentes)
@@ -99,7 +106,7 @@ export default function GerentePage() {
       </p>
 
       <div className="mt-4 flex gap-2" role="tablist">
-        {([["conferir", `Conferir retornos${pendentes.length ? ` (${pendentes.length})` : ""}`], ["atrasos", "Registros de atendimento"]] as const).map(([id, rotulo]) => (
+        {([["conferir", `Conferir retornos${pendentes.length ? ` (${pendentes.length})` : ""}`], ["atrasos", "Registros de atendimento"], ["ausencias", "Ausências"]] as const).map(([id, rotulo]) => (
           <button key={id} type="button" role="tab" aria-selected={aba === id} onClick={() => setAba(id)}
             className={`rounded-full px-4 py-1.5 text-[13px] font-semibold ${aba === id ? "bg-[#002d6b] text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}>
             {rotulo}
@@ -220,6 +227,45 @@ export default function GerentePage() {
                 {o.diretoriaAvisada ? " · administrador informado" : ""}
                 {o.lembrete && <span className="mt-1 block text-[11.5px] text-zinc-500">Combinado para {hora(o.lembrete.combinadoPara)} · lembrete criado em {hora(o.lembrete.criadoEm)}{o.lembrete.nota ? ` · “${o.lembrete.nota.slice(0, 80)}”` : ""}</span>}
                 {o.contestacao && <span className="mt-1 block rounded bg-sky-50 px-2 py-1 text-sky-900">💬 Explicação da pessoa: “{o.contestacao}”</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {aba === "ausencias" && (
+        <section className="mt-4">
+          <div className="flex items-center gap-2 text-[13px] text-zinc-700">
+            Período:
+            {[1, 7, 30].map((d) => (
+              <button key={d} type="button" onClick={() => setDias(d)} className={`rounded-full px-3 py-1 font-semibold ${dias === d ? "bg-[#002d6b] text-white" : "bg-zinc-100 hover:bg-zinc-200"}`}>{d === 1 ? "Hoje" : `${d} dias`}</button>
+            ))}
+          </div>
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
+            ⚖️ Tempo entre “Ausente” e “Voltei”. É só para organizar o atendimento e orientar a equipe: pausas e idas ao banheiro são direito do trabalhador e não devem ser usadas, sozinhas, como medida disciplinar.
+            O motivo é opcional e escrito pela própria pessoa (não peça nem registre dados de saúde). Apagado após 90 dias.
+          </p>
+          <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-200">
+            <table className="w-full text-left text-[13px]">
+              <thead className="bg-zinc-50 text-[11.5px] uppercase text-zinc-500">
+                <tr><th className="px-3 py-2">Pessoa</th><th className="px-3 py-2">Vezes</th><th className="px-3 py-2">Tempo total</th><th className="px-3 py-2">Média</th><th className="px-3 py-2">Maior</th><th className="px-3 py-2">Sem “Voltei”</th></tr>
+              </thead>
+              <tbody>
+                {resumoAus.length === 0 && <tr><td colSpan={6} className="px-3 py-4 text-zinc-500">Nenhuma ausência no período.</td></tr>}
+                {resumoAus.map((r) => (
+                  <tr key={r.nome} className="border-t border-zinc-100">
+                    <td className="px-3 py-2 font-semibold text-zinc-900">{r.nome}</td><td className="px-3 py-2">{r.vezes}</td><td className="px-3 py-2">{r.total} min</td>
+                    <td className="px-3 py-2">{r.mediaMin} min</td><td className="px-3 py-2">{r.maior} min</td><td className="px-3 py-2">{r.semVoltei}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="mt-4 space-y-1.5 text-[12.5px] text-zinc-700">
+            {recentesAus.map((a) => (
+              <li key={a.id} className="rounded-lg bg-zinc-50 px-3 py-2">
+                🚪 <b>{a.pessoa}</b> · {hora(a.inicio)} ·{" "}
+                {a.emAndamento ? <b className="text-amber-700">ausente agora</b> : `${a.duracaoMin} min${a.semVoltei ? " (não tocou em “Voltei”; encerrou no prazo máximo)" : ""}`}
+                {a.motivo ? <span className="mt-0.5 block text-zinc-500">Motivo informado: “{a.motivo}”</span> : null}
               </li>
             ))}
           </ul>

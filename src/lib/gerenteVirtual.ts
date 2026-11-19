@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma"
 import { sendPushToUsers } from "@/lib/push"
 import { broadcastToUsers } from "@/lib/sse-emitter"
 import { acharOuCriarDM } from "@/lib/internalChat"
-import { fimDaUltimaAusencia, idsAusentes } from "@/lib/ausencia"
+import { fecharAusenciasVencidas, fimDaUltimaAusencia, idsAusentes } from "@/lib/ausencia"
 import { getUraConfigCached, type UraConfigFull } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 import { idsOnline } from "@/lib/presence"
@@ -454,17 +454,18 @@ export async function conferirRetornosAutomatico(decidir: Decisor = parecerDoRet
 // Apaga as ocorrências e as mensagens do gerente; nos retornos, limpa só os textos
 // avaliativos (relato, parecer, contestação) — o retorno em si é dado comercial.
 export const RETENCAO_DIAS = 90
-export async function limparRegistrosAntigos(): Promise<{ ocorrencias: number; retornos: number; mensagens: number }> {
+export async function limparRegistrosAntigos(): Promise<{ ocorrencias: number; retornos: number; mensagens: number; ausencias: number }> {
   const corte = new Date(Date.now() - RETENCAO_DIAS * 86_400_000)
-  const [oc, ret, msg] = await Promise.all([
+  const [oc, ret, msg, aus] = await Promise.all([
     prisma.gerenteOcorrencia.deleteMany({ where: { abertaEm: { lt: corte } } }),
     prisma.contactReminder.updateMany({
       where: { OR: [{ relato: { not: null } }, { conferenciaNota: { not: null } }, { contestacao: { not: null } }], createdAt: { lt: corte }, NOT: { doneAt: null, conferencia: "NAO_CONCLUIDO" } },
       data: { relato: null, conferenciaNota: null, contestacao: null, contestadaEm: null },
     }),
     prisma.internalMessage.deleteMany({ where: { senderId: ID_GERENTE, createdAt: { lt: corte } } }),
+    prisma.ausencia.deleteMany({ where: { inicio: { lt: corte } } }),
   ])
-  return { ocorrencias: oc.count, retornos: ret.count, mensagens: msg.count }
+  return { ocorrencias: oc.count, retornos: ret.count, mensagens: msg.count, ausencias: aus.count }
 }
 
 async function limpezaDiaria(): Promise<void> {
@@ -472,7 +473,7 @@ async function limpezaDiaria(): Promise<void> {
   if ((await redis.incr(chave)) !== 1) return
   await redis.expire(chave, 2 * 86_400)
   const r = await limparRegistrosAntigos()
-  if (r.ocorrencias || r.retornos || r.mensagens) console.log(`[gerente] retenção ${RETENCAO_DIAS} dias: ${JSON.stringify(r)}`)
+  if (r.ocorrencias || r.retornos || r.mensagens || r.ausencias) console.log(`[gerente] retenção ${RETENCAO_DIAS} dias: ${JSON.stringify(r)}`)
 }
 
 export async function verificarGerente(): Promise<void> {
@@ -480,6 +481,7 @@ export async function verificarGerente(): Promise<void> {
   rodando = true
   try {
     await resolverOcorrencias() // sempre: quem atendeu fora do horário também fecha
+    await fecharAusenciasVencidas()
     await limpezaDiaria()
     const cfg = await getUraConfigCached()
     if (cfg.isActive && isBusinessHour(cfg) !== "OPEN") return

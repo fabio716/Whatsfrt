@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { requireAdmin, isErrorResponse } from "@/lib/auth"
 import { getAtendenteConfig } from "@/lib/atendenteVirtual"
 import { idsOnline } from "@/lib/presence"
-import { idsAusentes, MOTIVOS } from "@/lib/ausencia"
+import { idsAusentes } from "@/lib/ausencia"
 import { getUraConfigCached } from "@/lib/ura"
 import { isBusinessHour } from "@/lib/businessHours"
 
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const ausentes = await idsAusentes()
   const nomesAusentes = ausentes.size
     ? (await prisma.user.findMany({ where: { id: { in: [...ausentes.keys()] } }, select: { id: true, name: true } }))
-        .map((u) => `${u.name.trim().split(/\s+/)[0]} (${MOTIVOS[ausentes.get(u.id)!.motivo].rotulo.replace(/^\S+\s/, "").toLowerCase()}, volta ${new Date(ausentes.get(u.id)!.ate).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })})`)
+        .map((u) => `${u.name.trim().split(/\s+/)[0]} (desde ${new Date(ausentes.get(u.id)!.desde).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })})`)
     : []
   const onlineAgentes = online.size
   const nomesOnline = online.size

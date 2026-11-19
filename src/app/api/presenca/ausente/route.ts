@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, isErrorResponse } from "@/lib/auth"
-import { MOTIVOS, ausenciaDe, encerrarAusencia, iniciarAusencia, type MotivoAusencia } from "@/lib/ausencia"
+import { ausenciaDe, encerrarAusencia, iniciarAusencia, PRAZO_MAXIMO_MIN } from "@/lib/ausencia"
 import { sendPushToUsers } from "@/lib/push"
 import { checkRateLimit } from "@/lib/rateLimit"
 
@@ -10,33 +10,32 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
   const a = await ausenciaDe(auth.id)
-  return NextResponse.json({ ausente: a !== null, ...(a ?? {}), motivos: Object.entries(MOTIVOS).map(([id, m]) => ({ id, rotulo: m.rotulo, minutos: m.minutos })) })
+  return NextResponse.json({ ausente: a !== null, desde: a?.desde ?? null, ate: a?.ate ?? null, prazoMin: PRAZO_MAXIMO_MIN })
 }
 
-// Sai por alguns minutos.
+// Saiu por alguns minutos. O motivo é um texto livre OPCIONAL (só o administrador vê);
+// não há limite de vezes por dia (só um freio contra clique repetido). O tempo até
+// voltar fica registrado.
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
+  const limite = await checkRateLimit(`rl:ausencia:${auth.id}`, 30, 3600)
+  if (!limite.allowed) return NextResponse.json({ erro: "Muitos toques em pouco tempo. Aguarde um instante." }, { status: 429 })
   const corpo = (await request.json().catch(() => null)) as { motivo?: unknown } | null
-  const motivo = corpo?.motivo as MotivoAusencia
-  if (!motivo || !(motivo in MOTIVOS)) return NextResponse.json({ erro: "Escolha o motivo." }, { status: 400 })
-  // Limite generoso: evita ficar "ausente" o dia todo apertando o botão de novo.
-  const limite = await checkRateLimit(`rl:ausencia:${auth.id}`, 8, 8 * 3600)
-  if (!limite.allowed) return NextResponse.json({ erro: "Você já usou a ausência várias vezes hoje. Fale com o administrador." }, { status: 429 })
-  const a = await iniciarAusencia(auth.id, motivo)
-  return NextResponse.json({ ausente: true, ...a })
+  const a = await iniciarAusencia(auth.id, typeof corpo?.motivo === "string" ? corpo.motivo : undefined)
+  return NextResponse.json({ ausente: true, desde: a.desde, ate: a.ate, prazoMin: PRAZO_MAXIMO_MIN })
 }
 
 // Voltei.
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
-  const recados = await encerrarAusencia(auth.id)
+  const { minutos, recados } = await encerrarAusencia(auth.id)
   if (recados > 0) {
     sendPushToUsers([auth.id], {
       title: "👋 Bem-vindo(a) de volta", body: `${recados} cliente(s) escreveram enquanto você estava ausente. Confira seus chats.`,
       tag: "ausencia-recap", url: "/admin/chats",
     }).catch(() => {})
   }
-  return NextResponse.json({ ausente: false, recados })
+  return NextResponse.json({ ausente: false, minutos, recados })
 }

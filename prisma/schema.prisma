@@ -818,3 +818,22 @@ model GerenteOcorrencia {
   @@index([abertaEm])
   @@map("gerente_ocorrencias")
 }
+
+// Ausências ("Ausente"): início, fim e duração. O motivo é um texto livre OPCIONAL
+// escrito pela própria pessoa (sem lista pronta); só o administrador vê. 90 dias.
+model Ausencia {
+  id            String    @id @default(cuid())
+  userId        String
+  inicio        DateTime
+  // Texto opcional escrito pela pessoa (até 80 caracteres). Não pedir dados de saúde.
+  motivo        String?
+  fim           DateTime?
+  duracaoMin    Int?
+  // Venceu o prazo máximo sem a pessoa tocar em "Voltei".
+  autoEncerrada Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  @@index([userId, inicio])
+  @@index([inicio])
+  @@map("ausencias")
+}
