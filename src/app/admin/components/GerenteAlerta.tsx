@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Mascote from "@/components/ui/Mascote"
+import { pedirConclusaoRetorno } from "./ConcluirRetorno"
 
 // ─── Gerente virtual: alerta com ciência obrigatória ─────────────────────────
 // Cliente esperando sem resposta de uma pessoa (tolerância 1 min) ou retorno
@@ -13,6 +14,7 @@ interface Item {
   id: string
   tipo: "ESPERA_CLIENTE" | "RETORNO_ATRASADO"
   fila: boolean
+  lembreteId?: string | null
   contactId: string
   cliente: string
   minutos: number
@@ -121,6 +123,9 @@ export default function GerenteAlerta() {
                 {i.fila ? " (cliente na fila, sem responsável)" : ""}
               </p>
               {i.diretoriaAvisada && <p className="mt-1 text-[12px] font-semibold text-zinc-600">ℹ️ O administrador também foi informado, para apoiar este atendimento.</p>}
+              {i.tipo === "RETORNO_ATRASADO" && i.lembreteId && (
+                <button type="button" onClick={() => pedirConclusaoRetorno(i.lembreteId as string, i.cliente)} className="mt-1.5 mr-3 text-[12px] font-semibold text-emerald-700 underline-offset-2 hover:underline">Já fiz esse retorno — registrar</button>
+              )}
               {contestando === i.id ? (
                 <div className="mt-2 space-y-1.5">
                   <textarea value={explicacao} onChange={(e) => setExplicacao(e.target.value.slice(0, 500))} rows={2} placeholder="Explique o que aconteceu (ex.: já respondi pelo celular)." className="w-full rounded-lg border border-zinc-300 px-2.5 py-1.5 text-[12.5px]" />

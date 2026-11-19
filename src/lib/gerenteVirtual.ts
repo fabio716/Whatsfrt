@@ -93,20 +93,28 @@ async function abrirOcorrencias(cfg: UraConfigFull): Promise<void> {
     novas.push({ tipo: "ESPERA_CLIENTE", refId: e.refId, userId: e.userId, contactId: e.contactId, nome: e.nome, desde: new Date(Math.max(e.desde.getTime(), inicio.getTime())) })
   }
 
-  // Retornos agendados que passaram do horário (+ tolerância) sem a dona responder.
+  // Retornos agendados que passaram do horário (+ tolerância) sem NINGUÉM da equipe
+  // responder o cliente. Regras de justiça (para não cobrar atraso que não é real):
+  //   • a contagem só começa no instante MAIS TARDIO entre o horário combinado, a criação
+  //     do lembrete e a abertura do expediente (lembrete criado em cima da hora, ou que
+  //     venceu de madrugada, não nasce atrasado);
+  //   • resposta de QUALQUER pessoa da equipe ao cliente conta como atendimento.
   const atrasados = await prisma.contactReminder.findMany({
     where: {
       doneAt: null, contact: { deletedAt: null },
       dueAt: { lte: new Date(agora.getTime() - TOLERANCIA_RETORNO_MS), gte: new Date(agora.getTime() - 24 * 60 * 60_000) },
     },
     take: 100, orderBy: { dueAt: "asc" },
-    select: { id: true, userId: true, dueAt: true, contact: { select: { id: true, name: true } } },
+    select: { id: true, userId: true, dueAt: true, createdAt: true, contact: { select: { id: true, name: true } } },
   })
   if (atrasados.length) {
     const respostas = await primeiraRespostaHumana(atrasados.map((a) => a.id))
     for (const a of atrasados) {
-      if (respostas.get(a.id)?.dono) continue
-      novas.push({ tipo: "RETORNO_ATRASADO", refId: `${a.id}:${a.dueAt.getTime()}`, userId: a.userId, contactId: a.contact.id, nome: a.contact.name, desde: new Date(Math.max(a.dueAt.getTime(), inicio.getTime())) })
+      const resp = respostas.get(a.id)
+      if (resp?.dono || resp?.outro) continue
+      const contagemDesde = Math.max(a.dueAt.getTime(), a.createdAt.getTime(), inicio.getTime())
+      if (contagemDesde > agora.getTime() - TOLERANCIA_RETORNO_MS) continue
+      novas.push({ tipo: "RETORNO_ATRASADO", refId: `${a.id}:${a.dueAt.getTime()}`, userId: a.userId, contactId: a.contact.id, nome: a.contact.name, desde: new Date(contagemDesde) })
     }
   }
   if (novas.length === 0) return

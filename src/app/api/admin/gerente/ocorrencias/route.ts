@@ -19,6 +19,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     prisma.user.findMany({ where: { id: { in: [...new Set(ocorrencias.map((o) => o.userId).filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true } }),
     prisma.contact.findMany({ where: { id: { in: [...new Set(ocorrencias.map((o) => o.contactId))] } }, select: { id: true, name: true } }),
   ])
+  const idsLembrete = ocorrencias.filter((o) => o.tipo === "RETORNO_ATRASADO").map((o) => o.refId.split(":")[0])
+  const lembretes = idsLembrete.length
+    ? await prisma.contactReminder.findMany({ where: { id: { in: idsLembrete } }, select: { id: true, dueAt: true, createdAt: true, note: true, canal: true, doneAt: true } })
+    : []
+  const porLembrete = new Map(lembretes.map((l) => [l.id, l]))
   const nomeU = new Map(usuarios.map((u) => [u.id, u.name]))
   const nomeC = new Map(contatos.map((c) => [c.id, c.name]))
 
@@ -40,6 +45,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       id: o.id, tipo: o.tipo, pessoa: o.userId ? (nomeU.get(o.userId) ?? "—") : "Fila (sem dono)",
       cliente: nomeC.get(o.contactId) ?? "Cliente", desde: o.desde.toISOString(), cienteAt: o.cienteAt?.toISOString() ?? null,
       resolvidaEm: o.resolvidaEm?.toISOString() ?? null, esperaMin: o.esperaMin, diretoriaAvisada: o.escaladaEm !== null, contestacao: o.contestacao,
+      // Para o admin conferir se o atraso é real: o que foi combinado, quando e por quê.
+      lembrete: o.tipo === "RETORNO_ATRASADO" ? (() => { const l = porLembrete.get(o.refId.split(":")[0]); return l ? { combinadoPara: l.dueAt.toISOString(), criadoEm: l.createdAt.toISOString(), nota: l.note, feitoEm: l.doneAt?.toISOString() ?? null } : null })() : null,
     })),
   })
 }

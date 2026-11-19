@@ -16,7 +16,7 @@ interface Pendente {
 interface Parecer { veredito: "CONCLUIDO" | "AGUARDANDO_CLIENTE" | "NAO_CONCLUIDO"; motivo: string; falta?: string }
 interface Recente { id: string; decisao: string; em: string | null; motivo: string | null; canal: string | null; atendente: string; cliente: string; automatico?: boolean; contestacao?: string | null; contestada?: boolean }
 interface Resumo { nome: string; espera: number; retorno: number; semCiencia: number; abertas: number; esperaMediaMin: number }
-interface Ocorrencia { id: string; tipo: string; pessoa: string; cliente: string; desde: string; cienteAt: string | null; resolvidaEm: string | null; esperaMin: number | null; diretoriaAvisada: boolean; contestacao?: string | null }
+interface Ocorrencia { id: string; tipo: string; pessoa: string; cliente: string; desde: string; cienteAt: string | null; resolvidaEm: string | null; esperaMin: number | null; diretoriaAvisada: boolean; contestacao?: string | null; lembrete?: { combinadoPara: string; criadoEm: string; nota: string; feitoEm: string | null } | null }
 
 const ROTULO_CANAL: Record<string, string> = { WHATSAPP: "WhatsApp", FRTWHATS: "frtwhats", TELEFONE: "Telefone", EMAIL: "E-mail" }
 const hora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
@@ -218,6 +218,7 @@ export default function GerentePage() {
                 )}
                 {o.cienteAt ? ` · ciente ${hora(o.cienteAt)}` : <b className="text-amber-700"> · sem ciência registrada</b>}
                 {o.diretoriaAvisada ? " · administrador informado" : ""}
+                {o.lembrete && <span className="mt-1 block text-[11.5px] text-zinc-500">Combinado para {hora(o.lembrete.combinadoPara)} · lembrete criado em {hora(o.lembrete.criadoEm)}{o.lembrete.nota ? ` · “${o.lembrete.nota.slice(0, 80)}”` : ""}</span>}
                 {o.contestacao && <span className="mt-1 block rounded bg-sky-50 px-2 py-1 text-sky-900">💬 Explicação da pessoa: “{o.contestacao}”</span>}
               </li>
             ))}

@@ -34,6 +34,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     id: o.id,
     tipo: o.tipo,
     fila: o.userId === null,
+    lembreteId: o.tipo === "RETORNO_ATRASADO" ? o.refId.split(":")[0] : null,
     contactId: o.contactId,
     cliente: nome.get(o.contactId) ?? "Cliente",
     desde: o.desde.toISOString(),
