@@ -491,6 +491,9 @@ function QuickReplyPanel({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+// Mensagens do cliente que só fecham a conversa e não pedem resposta.
+const MENSAGEM_DE_FECHAMENTO = /^\s*(ok|okay|obrigad[oa]|obg|valeu|show|top|blz|beleza|certo|combinado|perfeito|joia|jóia|👍|🙏|❤️?)[\s.!]*$/i
+
 export default function ChatsClient({
   contacts: initial,
   agents,
@@ -866,6 +869,10 @@ export default function ChatsClient({
     const last = c.messages.at(-1)
     if (!last || last.direction !== "INBOUND") return null
     if (c.chatStatus === "IDLE" && !c.assignedUserId) return null
+    // Atendimento já encerrado (só falta a nota) e mensagem de fechamento do cliente
+    // ("obrigado", "show", "ok"…) não são cliente esperando resposta (relato do Saymon).
+    if (c.chatStatus === "AWAITING_RATING") return null
+    if (MENSAGEM_DE_FECHAMENTO.test(last.body ?? "")) return null
     return new Date(last.createdAt).getTime()
   }
   const retornoPorContato = useMemo(() => {

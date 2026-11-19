@@ -76,7 +76,7 @@ async function clientesSemResposta(desdeMin: Date): Promise<LinhaEspera[]> {
         SELECT 1 FROM contact_reminders r
         WHERE r."contactId" = c.id AND r."doneAt" IS NULL AND r."createdAt" >= m."createdAt"
       )
-      AND m.body !~* '^\\s*(ok|okay|obrigad[oa]|obg|valeu|blz|beleza|certo|combinado|👍|🙏)[\\s.!]*$'
+      AND m.body !~* '^\\s*(ok|okay|obrigad[oa]|obg|valeu|show|top|blz|beleza|certo|combinado|perfeito|joia|jóia|👍|🙏)[\\s.!]*$'
     LEFT JOIN humana h ON h."contactId" = c.id
     WHERE c."chatStatus" = 'WAITING_AGENT' AND c."deletedAt" IS NULL
       AND c."excludeFromReports" = false AND (h.em IS NULL OR m."createdAt" > h.em)
