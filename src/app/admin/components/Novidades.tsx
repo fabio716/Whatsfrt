@@ -19,7 +19,7 @@ import Mascote from "@/components/ui/Mascote"
 // de exemplo — nunca use print com cliente de verdade).
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const VERSAO_NOVIDADES = "2026-10-31"
+export const VERSAO_NOVIDADES = "2026-11-20"
 const CHAVE = "whatsfrt.novidades.visto"
 export const EVENTO_ABRIR_NOVIDADES = "whatsfrt:abrir-novidades"
 
@@ -32,42 +32,44 @@ interface Passo {
 
 const PASSOS: Passo[] = [
   {
-    titulo: "⏳ Veja quem está esperando resposta",
+    titulo: "🧑‍💼 Conheça o Gerente virtual",
     texto:
-      "Na lista de Chats, cada cliente que mandou a última mensagem mostra há quanto tempo está esperando: cinza, amarelo depois de 15 min, vermelho depois de 1 hora. " +
-      "Os botões no topo filtram: ⏳ Esperando (quem espera há mais tempo aparece primeiro), ⏰ Retornos e 🔥 Quentes. Não some mais com F5.",
-    imagem: { src: "/novidades/meu-dia.webp", alt: "Lista de Chats com os filtros Esperando, Retornos e Quentes e o tempo de espera de cada cliente" },
+      "Para nenhum cliente ficar esperando, o sistema agora tem um Gerente virtual. Ele é um apoio para a equipe: avisa quando um cliente da fila está há mais de 1 minuto sem resposta, " +
+      "ou quando um retorno agendado passou do horário. Ele não envia nada ao cliente e não aplica punição: quem decide qualquer coisa é uma pessoa, o administrador. " +
+      "Os registros dele são apagados automaticamente depois de 90 dias.",
   },
   {
-    titulo: "⏰ Lembrete de retorno",
-    texto:
-      "Prometeu retornar amanhã? Na conversa, toque em ⏰ Retorno, escolha quando (amanhã 9h, em 3 dias, segunda…) e escreva o que fazer. " +
-      "No horário, o sistema avisa só você, na tela e no celular. Nada é enviado ao cliente: quem escreve é sempre você.",
-    imagem: { src: "/novidades/lembrete.webp", alt: "Janela Lembrar de retornar com atalhos de data e a nota Mandar orçamento" },
-  },
-  {
-    titulo: "⏰ Seus retornos do dia",
-    texto:
-      "O botão ⏰ Retornos mostra o que vence hoje e o que está atrasado. Toque no nome para abrir a conversa, em ✓ Feito quando resolver, ou adie para amanhã. " +
-      "Funciona até para cliente com atendimento já encerrado.",
-    imagem: { src: "/novidades/retornos.webp", alt: "Lista de retornos de hoje com botões Feito e Adiar" },
-  },
-  {
-    titulo: "⚡ Respostas rápidas com a barra /",
-    texto:
-      "No campo de mensagem, digite / e o começo do nome da resposta (ex.: /preço). Use as setas e Enter. " +
-      "O texto entra no campo já com o nome do cliente no lugar de {nome}, para você revisar antes de enviar. Mensagem personalizada também ajuda a não cair como spam.",
-    imagem: { src: "/novidades/respostas-barra.webp", alt: "Lista de respostas rápidas aberta ao digitar a barra no campo de mensagem" },
-  },
-  {
-    titulo: "🛡️ Proteção do número",
-    texto: "Para o WhatsApp não bloquear o nosso número de novo:",
+    titulo: "⏱️ Quando aparecer o aviso",
+    texto: "Você vai ver uma janela dizendo qual cliente está aguardando. O que fazer:",
     itens: [
-      { icone: "🚫", texto: "Cliente que responder \"SAIR\", \"parar\" ou \"não quero receber\" sai sozinho das transmissões. A conversa normal continua. Aparece \"Sem ofertas\" ao lado do nome." },
-      { icone: "🏷️", texto: "Na Ficha do cliente dá para marcar ou desmarcar \"Não recebe ofertas\" à mão (por exemplo, se ele pediu por telefone)." },
-      { icone: "📣", texto: "Transmissões: até 50 pessoas por vez e 100 por dia, só para quem conversou nos últimos 30 dias, com intervalo entre os envios." },
-      { icone: "✨", texto: "O Copiloto agora também sugere o 🧭 próximo passo da venda, com um botão para criar o lembrete de retorno." },
+      { icone: "✅", texto: "Clique em “Ciente — vou atender”. Isso registra que você viu e abre a conversa do cliente." },
+      { icone: "💬", texto: "Responda o cliente. O sistema libera sozinho assim que você responde (e, por segurança, no máximo 30 minutos depois do aviso)." },
+      { icone: "🙋", texto: "Algo não está certo (por exemplo, você já respondeu pelo celular)? Use “Isso não está certo? Explicar”. A sua explicação vai para o administrador." },
+      { icone: "ℹ️", texto: "Se o cliente continuar sem resposta depois de 5 minutos, o administrador é informado para apoiar o atendimento." },
     ],
+  },
+  {
+    titulo: "📝 Ao concluir um retorno",
+    texto:
+      "Ao tocar em “Fiz o retorno”, o sistema pede por onde você falou com o cliente (WhatsApp, frtwhats, telefone ou e-mail) e o que foi conversado. " +
+      "O Gerente virtual confere e, estando certo, já aceita. Se achar que falta algo, ele só sugere um ajuste ao administrador, que fala com você — e você pode explicar o que aconteceu. " +
+      "Se o cliente ainda não respondeu, o Gerente agenda para você um retorno de acompanhamento, para ninguém ser esquecido.",
+  },
+  {
+    titulo: "🚪 Precisou sair? Use o botão Ausente",
+    texto: "No topo da tela há o botão “🚪 Ausente”. Use quando for ao banheiro, sair da posição ou resolver algo:",
+    itens: [
+      { icone: "🚻", texto: "Escolha o motivo: banheiro (10 min), saí da posição (15 min) ou resolver algo (30 min)." },
+      { icone: "⏸️", texto: "Enquanto estiver ausente, o Gerente virtual não cobra nem trava a sua tela, e você não recebe clientes novos." },
+      { icone: "🤖", texto: "O assistente virtual avisa uma vez cada cliente seu que escrever, dizendo que você já volta." },
+      { icone: "👋", texto: "Ao voltar, toque em “Voltei” (ou espere o prazo acabar). Você recebe um resumo de quem escreveu." },
+    ],
+  },
+  {
+    titulo: "🤖 O mascote agora conversa com você",
+    texto:
+      "O mascote aparece de vez em quando para puxar um papo: relaxar, dar uma força, tirar uma dúvida ou lembrar de um retorno. Você pode responder digitando no balãozinho, " +
+      "ou tocar em “Agora não, valeu!” para ele ir embora. Ele não envia nada a clientes e não avisa ninguém do que você escreve para ele.",
   },
 ]
 
