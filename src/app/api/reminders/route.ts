@@ -23,14 +23,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     orderBy: { dueAt: "asc" },
     take: 300,
     select: {
-      id: true, dueAt: true, note: true, createdAt: true,
+      id: true, dueAt: true, note: true, createdAt: true, conferencia: true, conferenciaNota: true, contestadaEm: true,
       contact: { select: { id: true, name: true, empresa: true, assignedUserId: true } },
     },
   })
-  return NextResponse.json(lembretes.map((l) => ({
+  return NextResponse.json(lembretes.map(({ conferencia, conferenciaNota, contestadaEm, ...l }) => ({
     ...l,
     dueAt: l.dueAt.toISOString(),
     createdAt: l.createdAt.toISOString(),
+    // Sugestão de ajuste feita na conferência (a pessoa pode contestar).
+    ajuste: conferencia === "NAO_CONCLUIDO" ? conferenciaNota : null,
+    contestado: contestadaEm !== null,
   })))
 }
 

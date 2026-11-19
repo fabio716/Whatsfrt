@@ -132,10 +132,10 @@ async function avisarPessoa(tipo: TipoOcorrencia, userId: string | null, contact
   if (alvo.length === 0) return
   const espera = tipo === "ESPERA_CLIENTE"
   await sendPushToUsers(alvo, {
-    title: espera ? `⏱️ Cliente esperando: ${nome}` : `⏰ Retorno atrasado: ${nome}`,
+    title: espera ? `⏱️ Cliente aguardando: ${nome}` : `⏰ Retorno pendente: ${nome}`,
     body: espera
-      ? `Há ${minutos(Date.now() - desde.getTime())} min sem atendimento (nossa tolerância é 1 min). Atenda agora.`
-      : `Combinado para ${horaBr(desde)} e ainda sem retorno. Faça agora.`,
+      ? `Há ${minutos(Date.now() - desde.getTime())} min sem resposta (nossa meta é 1 min). Quando puder, atenda.`
+      : `Combinado para ${horaBr(desde)}. Quando puder, faça o retorno.`,
     tag: `gerente-${tipo}-${contactId}`,
     url: `/admin/chats?contact=${contactId}`,
   }).catch((e: unknown) => console.error("[gerente] push falhou:", e instanceof Error ? e.message : e))
@@ -225,8 +225,8 @@ async function mensagemAosAdmins(adminIds: string[], corpo: string): Promise<voi
   }
 }
 
-// Cobrou e a pessoa continua sem atender depois de 5 min → manda ao admin
-// (chat interno + notificação) e avisa a própria pessoa de que foi enviado.
+// Depois do aviso, 5 min sem atendimento → informa o admin (chat interno +
+// notificação) para APOIAR, e avisa a própria pessoa de que ele foi informado.
 async function avisarDiretoria(): Promise<void> {
   const limite = new Date(Date.now() - ESCALA_DIRETORIA_MS)
   const pendentes = await prisma.gerenteOcorrencia.findMany({
@@ -250,14 +250,14 @@ async function avisarDiretoria(): Promise<void> {
     const motivo = o.tipo === "ESPERA_CLIENTE"
       ? `${cliente} está há ${min} min sem atendimento`
       : `o retorno de ${cliente} (combinado para ${horaBr(o.desde)}) está atrasado há ${min} min`
-    await mensagemAosAdmins(admins, `⚠️ Gerente virtual: cobrei ${quem}, mas ${motivo}. Ela(e) já foi avisada(o) e não atendeu. Abra a conversa: /admin/chats?contact=${o.contactId}`)
+    await mensagemAosAdmins(admins, `ℹ️ Gerente virtual: ${motivo}. ${quem} já foi avisada(o) há ${Math.round(ESCALA_DIRETORIA_MS / 60_000)} min e pode precisar de apoio. Conversa: /admin/chats?contact=${o.contactId}`)
     sendPushToUsers(admins, {
-      title: `⚠️ ${quem} não atendeu depois da cobrança`, body: `${cliente}: ${motivo}.`,
+      title: `ℹ️ ${cliente} continua aguardando`, body: `${quem} já foi avisada(o) e pode precisar de apoio. ${motivo}.`,
       tag: `gerente-adm-${o.id}`, url: `/admin/chats?contact=${o.contactId}`,
     }).catch((e: unknown) => console.error("[gerente] push diretoria falhou:", e instanceof Error ? e.message : e))
     if (o.userId) {
       sendPushToUsers([o.userId], {
-        title: "📨 Enviado ao administrador", body: `${cliente} continua sem atendimento: o administrador foi avisado. Atenda agora.`,
+        title: "ℹ️ Aviso ao administrador", body: `${cliente} continua aguardando. O administrador foi informado para apoiar o atendimento.`,
         tag: `gerente-pessoa-${o.id}`, url: `/admin/chats?contact=${o.contactId}`,
       }).catch((e: unknown) => console.error("[gerente] push pessoa falhou:", e instanceof Error ? e.message : e))
     }
@@ -266,13 +266,12 @@ async function avisarDiretoria(): Promise<void> {
 
 // ─── Conferência automática dos retornos ────────────────────────────────────
 // Retorno marcado como feito (com canal + relato) é conferido sozinho pelo
-// gerente: certo → CONCLUÍDO; faltando algo → reabre com "o que falta" e avisa
-// a pessoa. Salvaguardas: espera 1 min após marcar; só 2 reprovações automáticas
-// por retorno (na 3ª vai para o administrador); se a IA falhar, tenta de novo
-// em 10 min e nunca decide no escuro.
+// gerente: certo → CONCLUÍDO; faltando algo → sugestão ao administrador (nunca
+// reabre nem cobra a pessoa sozinho).
+// a pessoa. Salvaguardas: espera 1 min após marcar; o gerente só ACEITA sozinho —
+// quando acha que falta algo, apenas sugere ao administrador, que decide; se a IA
+// falhar, tenta de novo em 10 min e nunca decide no escuro.
 const ESPERA_CONFERIR_MS = 60_000
-const REABRIR_EM_MS = 30 * 60_000
-const MAX_REPROVACOES_AUTO = 2
 type Decisor = (id: string, opcoes?: { feitoEm?: Date }) => Promise<Parecer | "SEM_IA" | null>
 const ACOMPANHAR_EM_MS = 3 * 60 * 60_000 // quando o cliente não respondeu: novo retorno em 3 h úteis
 
@@ -413,34 +412,44 @@ export async function conferirRetornosAutomatico(decidir: Decisor = parecerDoRet
       continue
     }
 
-    // NÃO CONCLUÍDO: escreve o que falta e devolve para a pessoa (até 2 vezes).
-    const chaveRep = `gerente:reprovacoes:${r.id}`
-    const vezes = await redis.incr(chaveRep)
-    await redis.expire(chaveRep, 7 * 24 * 3600)
+    // NÃO CONCLUÍDO: NUNCA reabre nem cobra a pessoa sozinho. O gerente deixa o retorno
+    // na conferência com a sugestão ("o que falta") e avisa o administrador, que decide
+    // (revisão humana antes de qualquer consequência para a pessoa).
     const falta = (parecer.falta ?? parecer.motivo).slice(0, 300)
-    if (vezes > MAX_REPROVACOES_AUTO) {
-      // Já reprovado 2x: o administrador decide (fica na conferência manual).
-      await redis.set(travaTentativa, "1"); await redis.expire(travaTentativa, 24 * 3600)
-      const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
-      sendPushToUsers(admins, { title: "🧑‍💼 Retorno precisa da sua conferência", body: `${r.contact.name}: reprovado 2x pelo gerente. ${falta}`, tag: `gerente-manual-${r.id}`, url: "/admin/gerente" })
-        .catch((e: unknown) => console.error("[gerente] push manual falhou:", e instanceof Error ? e.message : e))
-      total.manuais++
-      continue
-    }
-    const novoPrazo = new Date(Date.now() + REABRIR_EM_MS)
-    const ok = await prisma.contactReminder.updateMany({
-      where: { id: r.id, conferencia: "PENDENTE" },
-      data: { ...base, conferencia: "NAO_CONCLUIDO", conferenciaNota: `🤖 ${falta}`.slice(0, 300), doneAt: null, dueAt: novoPrazo, notifiedAt: null, escalonadoAt: null, cienteAt: null },
-    })
-    if (!ok.count) continue
-    total.reabertos++
-    sendPushToUsers([r.userId], {
-      title: `❌ Retorno não aceito: ${r.contact.name}`,
-      body: `${falta} Refaça até ${horaBr(novoPrazo)}.`,
-      tag: `reaberto-${r.id}`, url: `/admin/chats?contact=${r.contact.id}`,
-    }).catch((e: unknown) => console.error("[gerente] push reabertura falhou:", e instanceof Error ? e.message : e))
+    await redis.set(travaTentativa, "1"); await redis.expire(travaTentativa, 24 * 3600)
+    const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
+    sendPushToUsers(admins, {
+      title: "🧑‍💼 Retorno com sugestão de ajuste", body: `${r.contact.name}: ${falta}`,
+      tag: `gerente-sugestao-${r.id}`, url: "/admin/gerente",
+    }).catch((e: unknown) => console.error("[gerente] push sugestão falhou:", e instanceof Error ? e.message : e))
+    total.manuais++
   }
   return total
+}
+
+// ─── Retenção: registros do gerente guardados por 90 dias ────────────────────
+// Apaga as ocorrências e as mensagens do gerente; nos retornos, limpa só os textos
+// avaliativos (relato, parecer, contestação) — o retorno em si é dado comercial.
+export const RETENCAO_DIAS = 90
+export async function limparRegistrosAntigos(): Promise<{ ocorrencias: number; retornos: number; mensagens: number }> {
+  const corte = new Date(Date.now() - RETENCAO_DIAS * 86_400_000)
+  const [oc, ret, msg] = await Promise.all([
+    prisma.gerenteOcorrencia.deleteMany({ where: { abertaEm: { lt: corte } } }),
+    prisma.contactReminder.updateMany({
+      where: { OR: [{ relato: { not: null } }, { conferenciaNota: { not: null } }, { contestacao: { not: null } }], createdAt: { lt: corte }, NOT: { doneAt: null, conferencia: "NAO_CONCLUIDO" } },
+      data: { relato: null, conferenciaNota: null, contestacao: null, contestadaEm: null },
+    }),
+    prisma.internalMessage.deleteMany({ where: { senderId: ID_GERENTE, createdAt: { lt: corte } } }),
+  ])
+  return { ocorrencias: oc.count, retornos: ret.count, mensagens: msg.count }
+}
+
+async function limpezaDiaria(): Promise<void> {
+  const chave = `gerente:limpeza:${new Date().toISOString().slice(0, 10)}`
+  if ((await redis.incr(chave)) !== 1) return
+  await redis.expire(chave, 2 * 86_400)
+  const r = await limparRegistrosAntigos()
+  if (r.ocorrencias || r.retornos || r.mensagens) console.log(`[gerente] retenção ${RETENCAO_DIAS} dias: ${JSON.stringify(r)}`)
 }
 
 export async function verificarGerente(): Promise<void> {
@@ -448,6 +457,7 @@ export async function verificarGerente(): Promise<void> {
   rodando = true
   try {
     await resolverOcorrencias() // sempre: quem atendeu fora do horário também fecha
+    await limpezaDiaria()
     const cfg = await getUraConfigCached()
     if (cfg.isActive && isBusinessHour(cfg) !== "OPEN") return
     await abrirOcorrencias(cfg)

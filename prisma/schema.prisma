@@ -774,6 +774,9 @@ model ContactReminder {
   conferidaEm     DateTime?
   conferidaPorId  String?
   conferenciaNota String?
+  // A pessoa discordou da conferência/reabertura e explicou (revisão humana).
+  contestadaEm    DateTime?
+  contestacao     String?
   createdAt  DateTime  @default(now())
 
   @@index([conferencia])
@@ -805,6 +808,9 @@ model GerenteOcorrencia {
   resolvidaPorId String?
   // Minutos de espera até resolver.
   esperaMin      Int?
+  // A pessoa discordou do registro e explicou (revisão humana pelo administrador).
+  contestadaEm   DateTime?
+  contestacao    String?
   createdAt      DateTime  @default(now())
 
   @@unique([tipo, refId])

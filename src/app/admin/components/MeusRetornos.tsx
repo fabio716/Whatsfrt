@@ -15,12 +15,16 @@ interface Item {
   dueAt: string
   note: string
   contact: { id: string; name: string; empresa: string | null }
+  ajuste?: string | null
+  contestado?: boolean
 }
 
 export default function MeusRetornos() {
   const [itens, setItens] = useState<Item[]>([])
   const [agora, setAgora] = useState(0)
   const [aberto, setAberto] = useState(false)
+  const [contestando, setContestando] = useState<string | null>(null)
+  const [explicacao, setExplicacao] = useState("")
 
   const carregar = useCallback(async () => {
     try {
@@ -53,6 +57,14 @@ export default function MeusRetornos() {
     return () => window.removeEventListener(EVENTO_CONCLUIDO, aoConcluir)
   }, [carregar])
 
+  const contestar = async (id: string) => {
+    if (explicacao.trim().length < 10) return
+    try {
+      const res = await fetch("/api/gerente/contestar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: "RETORNO", id, texto: explicacao.trim() }) })
+      if (res.ok) { setItens((antes) => antes.map((i) => (i.id === id ? { ...i, contestado: true } : i))); setContestando(null); setExplicacao("") }
+    } catch { /* tenta de novo */ }
+  }
+
   if (itens.length === 0) return null
   const atrasados = itens.filter((i) => Date.parse(i.dueAt) < agora - 5 * 60_000).length
 
@@ -75,6 +87,19 @@ export default function MeusRetornos() {
                     </span>
                   </div>
                   {i.note && <p className="mt-0.5 text-[11.5px] leading-snug text-zinc-600">{i.note}</p>}
+                  {i.ajuste && (
+                    <div className="mt-1 rounded-lg bg-amber-50 px-2 py-1.5 text-[11.5px] leading-snug text-amber-900">
+                      📝 Sugestão da gerência: {i.ajuste.replace(/^🤖\s*/, "")}
+                      {i.contestado ? <span className="block font-semibold">💬 Você já explicou; o administrador vai analisar.</span> : contestando === i.id ? (
+                        <span className="mt-1 block space-y-1">
+                          <textarea value={explicacao} onChange={(e) => setExplicacao(e.target.value.slice(0, 500))} rows={2} placeholder="Explique o que aconteceu." className="w-full rounded border border-amber-300 px-2 py-1 text-[12px] text-zinc-800" />
+                          <button type="button" onClick={() => void contestar(i.id)} disabled={explicacao.trim().length < 10} className="rounded bg-[#002d6b] px-2.5 py-1 text-[11.5px] font-semibold text-white disabled:opacity-40">Enviar ao administrador</button>
+                        </span>
+                      ) : (
+                        <button type="button" onClick={() => { setContestando(i.id); setExplicacao("") }} className="mt-0.5 block font-semibold underline">Isso não está certo? Explicar</button>
+                      )}
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => pedirConclusaoRetorno(i.id, i.contact.name)}

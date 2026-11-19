@@ -34,11 +34,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     dias,
     resumo: [...porPessoa.values()].map((p) => ({ nome: p.nome, espera: p.espera, retorno: p.retorno, semCiencia: p.semCiencia, abertas: p.abertas, esperaMediaMin: p.resolvidas ? Math.round(p.somaMin / p.resolvidas) : 0 }))
-      .sort((a, b) => (b.espera + b.retorno) - (a.espera + a.retorno)),
+      // Ordem alfabética (não "pior primeiro"): o relatório é para orientar, não para expor ninguém.
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
     recentes: ocorrencias.slice(0, 60).map((o) => ({
       id: o.id, tipo: o.tipo, pessoa: o.userId ? (nomeU.get(o.userId) ?? "—") : "Fila (sem dono)",
       cliente: nomeC.get(o.contactId) ?? "Cliente", desde: o.desde.toISOString(), cienteAt: o.cienteAt?.toISOString() ?? null,
-      resolvidaEm: o.resolvidaEm?.toISOString() ?? null, esperaMin: o.esperaMin, diretoriaAvisada: o.escaladaEm !== null,
+      resolvidaEm: o.resolvidaEm?.toISOString() ?? null, esperaMin: o.esperaMin, diretoriaAvisada: o.escaladaEm !== null, contestacao: o.contestacao,
     })),
   })
 }

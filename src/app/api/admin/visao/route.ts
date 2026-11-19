@@ -60,13 +60,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const semCiencia = abertas.filter((o) => !o.cienteAt).length
 
   const agenteEspera: Agente = {
-    id: "espera", nome: "Cliente esperando", icone: "⏱️",
+    id: "espera", nome: "Cliente aguardando", icone: "⏱️",
     estado: !aberto ? "OCIOSO" : esperaAbertas.length === 0 ? "OK" : maiorEspera >= 5 ? "CRITICO" : "ATENCAO",
     resumo: !aberto ? "FORA DO HORÁRIO" : esperaAbertas.length === 0 ? "EM DIA" : `${esperaAbertas.length} SEM RESPOSTA`,
     achou: [
       !aberto ? "Fora do horário de atendimento: não cobro ninguém agora." : esperaAbertas.length === 0 ? "Nenhum cliente na fila além da tolerância de 1 min." : `${esperaAbertas.length} cliente(s) na fila de espera além da tolerância de 1 min; o mais antigo há ${maiorEspera} min.`,
       `Hoje: ${esperaHoje.length} atraso(s) de espera, média de ${media} min até atender.`,
-      semCiencia > 0 ? `${semCiencia} alerta(s) ainda sem ciência da equipe.` : "Todos os alertas abertos já têm ciência.",
+      semCiencia > 0 ? `${semCiencia} aviso(s) ainda sem ciência registrada.` : "Todos os alertas abertos já têm ciência.",
       `Fila de espera agora (sem atendente): ${fila.length}.`,
     ],
     proximo: esperaAbertas.length ? "Assuma os clientes da lista abaixo na Fila de espera." : "Nada a fazer: acompanhe o relatório de atrasos.",

@@ -29,6 +29,8 @@ export default function GerenteAlerta() {
   const [itens, setItens] = useState<Item[]>([])
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState("")
+  const [contestando, setContestando] = useState<string | null>(null)
+  const [explicacao, setExplicacao] = useState("")
 
   const carregar = useCallback(async () => {
     try {
@@ -64,6 +66,18 @@ export default function GerenteAlerta() {
     } finally { setEnviando(false) }
   }
 
+  const contestar = async (id: string) => {
+    if (enviando || explicacao.trim().length < 10) return
+    setEnviando(true); setErro("")
+    try {
+      const res = await fetch("/api/gerente/contestar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: "OCORRENCIA", id, texto: explicacao.trim() }) })
+      const d = (await res.json().catch(() => ({}))) as { erro?: string }
+      if (!res.ok) { setErro(d.erro ?? "Não foi possível enviar."); return }
+      setContestando(null); setExplicacao("")
+      setItens((antes) => antes.map((i) => (i.id === id ? { ...i, ciente: true } : i)))
+    } catch { setErro("Sem conexão. Tente de novo.") } finally { setEnviando(false) }
+  }
+
   if (itens.length === 0) return null
   const primeiro = itens[0]
   const faltaCiencia = itens.some((i) => !i.ciente)
@@ -73,7 +87,6 @@ export default function GerenteAlerta() {
     return (
       <div role="status" className="fixed inset-x-0 top-0 z-[119] bg-red-600 px-4 py-2 text-center text-[13px] font-semibold text-white shadow-lg">
         ⏱️ Responda {primeiro.cliente}{itens.length > 1 ? ` (e mais ${itens.length - 1})` : ""} para liberar o sistema · {primeiro.minutos} min de espera
-        {itens.some((i) => i.diretoriaAvisada) ? " · o administrador já foi avisado" : ""}
       </div>
     )
   }
@@ -85,11 +98,11 @@ export default function GerenteAlerta() {
           <div className="flex items-start gap-3">
             <Mascote className="h-14 w-14 shrink-0 rounded-2xl" title="Gerente virtual" humor="preocupado" />
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-red-700">Gerente virtual · aviso obrigatório</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-red-700">Gerente virtual · aviso de atendimento</p>
               <h2 id="gerente-titulo" className="mt-0.5 text-[17px] font-semibold leading-snug text-zinc-900">
                 {faltaCiencia
-                  ? (itens.length === 1 ? "Você tem um atraso a resolver" : `Você tem ${itens.length} atrasos a resolver`)
-                  : "Atenda o cliente para continuar usando o sistema"}
+                  ? (itens.length === 1 ? "Há um atendimento aguardando você" : `Há ${itens.length} atendimentos aguardando você`)
+                  : "Atenda o cliente para liberar o sistema"}
               </h2>
             </div>
           </div>
@@ -99,15 +112,26 @@ export default function GerenteAlerta() {
           {itens.map((i) => (
             <li key={i.id} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-3">
               <p className="text-[13.5px] font-semibold text-zinc-900">
-                {i.tipo === "ESPERA_CLIENTE" ? "⏱️ Cliente esperando: " : "⏰ Retorno atrasado: "}{i.cliente}
+                {i.tipo === "ESPERA_CLIENTE" ? "⏱️ Cliente aguardando: " : "⏰ Retorno pendente: "}{i.cliente}
               </p>
               <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-700">
                 {i.tipo === "ESPERA_CLIENTE"
-                  ? `Está há ${i.minutos} min sem atendimento. Nossa tolerância é de ${i.toleranciaMin} min.`
-                  : `O horário combinado passou há ${i.minutos} min e o cliente ainda não teve retorno.`}
+                  ? `Está há ${i.minutos} min sem resposta. Nossa meta é responder em até ${i.toleranciaMin} min.`
+                  : `O horário combinado passou há ${i.minutos} min; o cliente ainda aguarda o retorno.`}
                 {i.fila ? " (cliente na fila, sem responsável)" : ""}
               </p>
-              {i.diretoriaAvisada && <p className="mt-1 text-[12px] font-semibold text-red-700">📨 Enviado ao administrador: você não atendeu depois da cobrança.</p>}
+              {i.diretoriaAvisada && <p className="mt-1 text-[12px] font-semibold text-zinc-600">ℹ️ O administrador também foi informado, para apoiar este atendimento.</p>}
+              {contestando === i.id ? (
+                <div className="mt-2 space-y-1.5">
+                  <textarea value={explicacao} onChange={(e) => setExplicacao(e.target.value.slice(0, 500))} rows={2} placeholder="Explique o que aconteceu (ex.: já respondi pelo celular)." className="w-full rounded-lg border border-zinc-300 px-2.5 py-1.5 text-[12.5px]" />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => void contestar(i.id)} disabled={enviando || explicacao.trim().length < 10} className="rounded-lg bg-[#002d6b] px-3 py-1 text-[12px] font-semibold text-white disabled:opacity-40">Enviar ao administrador</button>
+                    <button type="button" onClick={() => { setContestando(null); setExplicacao("") }} className="rounded-lg border border-zinc-300 px-3 py-1 text-[12px] font-semibold text-zinc-700">Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => { setContestando(i.id); setExplicacao("") }} className="mt-1.5 text-[12px] font-semibold text-[#002d6b] underline-offset-2 hover:underline">Isso não está certo? Explicar</button>
+              )}
             </li>
           ))}
         </ul>
@@ -120,10 +144,10 @@ export default function GerenteAlerta() {
             disabled={enviando}
             className="w-full rounded-xl bg-[#002d6b] px-4 py-2.5 text-[13.5px] font-semibold text-white hover:bg-[#0b3f8a] disabled:opacity-50"
           >
-            {enviando ? "Registrando…" : faltaCiencia ? "Estou ciente — vou atender agora" : "Ir para a conversa"}
+            {enviando ? "Registrando…" : faltaCiencia ? "Ciente — vou atender" : "Ir para a conversa"}
           </button>
           <p className="mt-2 text-center text-[11px] text-zinc-500">
-            {faltaCiencia ? "O seu aceite fica registrado com data e hora." : "O sistema libera sozinho quando você responder o cliente."}
+            {faltaCiencia ? "Registramos a sua ciência (data e hora). Se algo não está certo, use “Isso não está certo?”." : "O sistema libera sozinho quando você responder o cliente."}
           </p>
         </div>
       </div>

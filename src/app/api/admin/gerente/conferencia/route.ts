@@ -20,13 +20,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     prisma.contactReminder.findMany({
       where: { conferencia: "PENDENTE", doneAt: { not: null } },
       orderBy: { doneAt: "asc" }, take: 100,
-      select: { id: true, dueAt: true, doneAt: true, canal: true, relato: true, note: true,
+      select: { id: true, dueAt: true, doneAt: true, canal: true, relato: true, note: true, contestacao: true,
         user: { select: { name: true } }, contact: { select: { id: true, name: true } } },
     }),
     prisma.contactReminder.findMany({
       where: { conferencia: { in: ["CONCLUIDO", "NAO_CONCLUIDO"] }, conferidaEm: { gte: new Date(Date.now() - 7 * 86_400_000) } },
       orderBy: { conferidaEm: "desc" }, take: 30,
-      select: { id: true, conferencia: true, conferidaEm: true, conferenciaNota: true, conferidaPorId: true, canal: true,
+      select: { id: true, conferencia: true, conferidaEm: true, conferenciaNota: true, conferidaPorId: true, canal: true, contestacao: true, contestadaEm: true,
         user: { select: { name: true } }, contact: { select: { name: true } } },
     }),
   ])
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         id: p.id, contactId: p.contact.id, cliente: p.contact.name, atendente: p.user.name,
         dueAt: p.dueAt.toISOString(), feitoEm: p.doneAt?.toISOString() ?? null,
         atrasoMin: p.doneAt ? Math.round((p.doneAt.getTime() - p.dueAt.getTime()) / 60_000) : 0,
-        canal: p.canal, relato: p.relato, nota: p.note, parecer: pareceres[i] ?? null,
+        canal: p.canal, relato: p.relato, nota: p.note, contestacao: p.contestacao, parecer: pareceres[i] ?? null,
         // Só dá para conferir sozinho o que passou pelo chat do sistema.
         evidencia: dono ? { achou: true, em: dono.em.toISOString(), texto: dono.texto }
           : { achou: false, motivo: noSistema ? "Não achei mensagem dela para este cliente no chat." : "Canal fora do sistema: confira com a pessoa ou com o cliente." },
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }),
     recentes: recentes.map((r) => ({
       id: r.id, decisao: r.conferencia, em: r.conferidaEm?.toISOString() ?? null, motivo: r.conferenciaNota,
-      canal: r.canal, atendente: r.user.name, cliente: r.contact.name, automatico: r.conferidaPorId === "gerente-virtual-sistema",
+      canal: r.canal, atendente: r.user.name, cliente: r.contact.name, automatico: r.conferidaPorId === "gerente-virtual-sistema", contestacao: r.contestacao, contestada: r.contestadaEm !== null,
     })),
   })
 }
@@ -71,8 +71,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (decisao === "NAO_CONCLUIDO" && nota.length < 5) return NextResponse.json({ erro: "Explique o que faltou (para a pessoa saber o que refazer)." }, { status: 400 })
 
   const r = await prisma.contactReminder.findUnique({
-    where: { id }, select: { userId: true, conferencia: true, contact: { select: { id: true, name: true } } },
+    where: { id }, select: { userId: true, conferencia: true, conferidaEm: true, contestadaEm: true, doneAt: true, contact: { select: { id: true, name: true } } },
   })
+  // Contestação aceita: retorno reaberto que a pessoa contestou volta a Concluído.
+  if (r && r.conferencia === "NAO_CONCLUIDO" && r.contestadaEm && decisao === "CONCLUIDO" && r.doneAt === null) {
+    await prisma.contactReminder.updateMany({
+      where: { id, conferencia: "NAO_CONCLUIDO", doneAt: null },
+      data: { conferencia: "CONCLUIDO", doneAt: r.conferidaEm ?? new Date(), conferidaEm: new Date(), conferidaPorId: auth.id, conferenciaNota: nota || "Contestação aceita pelo administrador." },
+    })
+    sendPushToUsers([r.userId], { title: `✅ Contestação aceita: ${r.contact.name}`, body: "O administrador aceitou a sua explicação. Você não precisa refazer.", tag: `contestacao-ok-${id}`, url: `/admin/chats?contact=${r.contact.id}` })
+      .catch((e: unknown) => console.error("[gerente] push contestação aceita falhou:", e instanceof Error ? e.message : e))
+    return NextResponse.json({ ok: true })
+  }
   if (!r || r.conferencia !== "PENDENTE") return NextResponse.json({ erro: "Este retorno já foi conferido." }, { status: 409 })
 
   const base = { conferidaEm: new Date(), conferidaPorId: auth.id, conferenciaNota: nota || null }
@@ -85,8 +95,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       data: { ...base, conferencia: "NAO_CONCLUIDO", doneAt: null, dueAt: novoPrazo, notifiedAt: null, escalonadoAt: null, cienteAt: null },
     })
     sendPushToUsers([r.userId], {
-      title: `❌ Retorno não aceito: ${r.contact.name}`,
-      body: `A gerência não deu como concluído: ${nota}. Refaça até ${novoPrazo.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}.`,
+      title: `📝 Retorno precisa de ajuste: ${r.contact.name}`,
+      body: `Sugestão da gerência: ${nota}. Se puder, ajuste até ${novoPrazo.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}.`,
       tag: `reaberto-${id}`, url: `/admin/chats?contact=${r.contact.id}`,
     }).catch((e: unknown) => console.error("[gerente] push reabertura falhou:", e instanceof Error ? e.message : e))
   }
