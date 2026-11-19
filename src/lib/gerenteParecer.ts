@@ -24,7 +24,8 @@ CLASSIFIQUE em UMA opção:
 - AGUARDANDO_CLIENTE: a pessoa FEZ o contato (há mensagem dela no chat), mas o assunto ainda depende da resposta do cliente. O retorno em si foi feito; falta acompanhar. Recomende agendar novo lembrete.
 - NAO_CONCLUIDO: não há prova de contato, o relato não corresponde ao combinado, não diz o que foi feito (só repete o que o cliente disse), ou o chat contradiz o relato.
 
-CRITÉRIOS: compare o COMBINADO (o que o retorno devia resolver) com o RELATO e com as MENSAGENS. Relato vago ("ok", "feito") ou que só descreve o problema do cliente não prova nada. Contato antes do horário combinado é válido. Canal telefone/e-mail não deixa prova no chat: avalie só pela coerência do relato e diga que não dá para confirmar.
+CRITÉRIOS: compare o COMBINADO (o que o retorno devia resolver) com o RELATO e com as MENSAGENS. Relato vago ("ok", "feito") ou que só descreve o problema do cliente não prova nada. Contato antes do horário combinado é válido. Relato que remete a uma conversa anterior ("falei com ele ontem") vale se essa conversa aparece no <chat> e atende ao combinado. Em retorno de ACOMPANHAMENTO ("Acompanhar: ..."), se o cliente não escreveu nada novo e a pessoa já tinha informado tudo, aceite.
+ANTES de dizer que falta prazo, informação ou próximo passo, PROCURE no <chat> inteiro (as mensagens da pessoa estão todas ali): só afirme que falta se realmente NÃO estiver em nenhuma mensagem. Na dúvida entre CONCLUIDO e NAO_CONCLUIDO por falta de contexto, prefira CONCLUIDO ou AGUARDANDO_CLIENTE — reprovar sem certeza prejudica a equipe. Canal telefone/e-mail não deixa prova no chat: avalie só pela coerência do relato e diga que não dá para confirmar.
 
 RESPONDA exatamente neste formato, sem mais nada:
 VEREDITO: CONCLUIDO | AGUARDANDO_CLIENTE | NAO_CONCLUIDO
@@ -53,23 +54,35 @@ export async function parecerDoRetorno(id: string): Promise<Parecer | "SEM_IA" |
     },
   })
   if (!r || !r.doneAt) return null
-  const chave = `gerente:parecer:${id}:${r.doneAt.getTime()}`
+  const chave = `gerente:parecer:v2:${id}:${r.doneAt.getTime()}`
   const guardado = await redis.get(chave)
   if (guardado) { try { return JSON.parse(guardado) as Parecer } catch { /* refaz */ } }
 
-  const mensagens = (await prisma.message.findMany({
-    where: { contactId: r.contactId, isBroadcast: false, createdAt: { gte: new Date(r.createdAt.getTime() - 24 * 3_600_000) } },
-    orderBy: { createdAt: "desc" }, take: 12,
-    select: { body: true, direction: true, viaAtendente: true, createdAt: true, agent: { select: { name: true } } },
-  })).reverse()
+  // Contexto: tudo o que a PESSOA escreveu nos últimos 4 dias (é a prova do retorno)
+  // + as últimas mensagens de qualquer lado (para ver o que o cliente respondeu).
+  // Antes eram só as últimas 12 e a resposta decisiva podia ficar de fora.
+  const desde = new Date(Math.min(r.createdAt.getTime(), r.doneAt.getTime()) - 4 * 24 * 3_600_000)
+  const campos = { id: true, body: true, direction: true, viaAtendente: true, createdAt: true, agent: { select: { name: true } } } as const
+  const [pessoa, recentes] = await Promise.all([
+    prisma.message.findMany({
+      where: { contactId: r.contactId, isBroadcast: false, direction: "OUTBOUND", agentId: { not: null }, viaAtendente: false, createdAt: { gte: desde } },
+      orderBy: { createdAt: "desc" }, take: 25, select: campos,
+    }),
+    prisma.message.findMany({
+      where: { contactId: r.contactId, isBroadcast: false, createdAt: { gte: desde } },
+      orderBy: { createdAt: "desc" }, take: 15, select: campos,
+    }),
+  ])
+  const unicas = new Map([...pessoa, ...recentes].map((m) => [m.id, m]))
+  const mensagens = [...unicas.values()].sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())
   const hora = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
   const chat = mensagens.map((m) =>
-    `[${hora(m.createdAt)}] ${m.direction === "INBOUND" ? "CLIENTE" : m.viaAtendente ? "ROBÔ" : `ATENDENTE(${(m.agent?.name ?? "equipe").split(" ")[0]})`}: ${corta(m.body || "(anexo)", 160)}`).join("\n")
+    `[${hora(m.createdAt)}] ${m.direction === "INBOUND" ? "CLIENTE" : m.viaAtendente ? "ROBÔ" : `ATENDENTE(${(m.agent?.name ?? "equipe").split(" ")[0]})`}: ${corta(m.body || "(anexo)", 300)}`).join("\n")
 
   const pedido =
     `CLIENTE: ${r.contact.name}\nATENDENTE RESPONSÁVEL: ${r.user.name}\nCOMBINADO: ${corta(r.note || "(sem descrição)", 300)}\n` +
     `HORÁRIO COMBINADO: ${hora(r.dueAt)} · MARCADO COMO FEITO: ${hora(r.doneAt)}\nCANAL INFORMADO: ${ROTULO[r.canal ?? ""] ?? "—"}\n` +
-    `RELATO DA PESSOA: ${corta(r.relato ?? "", 500)}\n\n<chat> (últimas mensagens, da mais antiga para a mais recente)\n${chat || "(sem mensagens)"}\n</chat>`
+    `RELATO DA PESSOA: ${corta(r.relato ?? "", 500)}\n\n<chat> (mensagens dos últimos dias, da mais antiga para a mais recente; inclui tudo o que a pessoa escreveu)\n${chat || "(sem mensagens)"}\n</chat>`
 
   try {
     const client = new Anthropic()
