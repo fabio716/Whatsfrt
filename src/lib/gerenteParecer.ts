@@ -44,7 +44,7 @@ export function lerParecer(texto: string): Parecer | null {
   return { veredito: v as Veredito, motivo: m.replace(/\s+/g, " ").slice(0, 260), ...(falta ? { falta } : {}) }
 }
 
-export async function parecerDoRetorno(id: string): Promise<Parecer | "SEM_IA" | null> {
+export async function parecerDoRetorno(id: string, opcoes?: { feitoEm?: Date }): Promise<Parecer | "SEM_IA" | null> {
   if (!aiConfigured()) return "SEM_IA"
   const r = await prisma.contactReminder.findUnique({
     where: { id },
@@ -53,15 +53,16 @@ export async function parecerDoRetorno(id: string): Promise<Parecer | "SEM_IA" |
       user: { select: { name: true } }, contact: { select: { name: true } },
     },
   })
-  if (!r || !r.doneAt) return null
-  const chave = `gerente:parecer:v2:${id}:${r.doneAt.getTime()}`
+  const feito = r?.doneAt ?? opcoes?.feitoEm
+  if (!r || !feito) return null
+  const chave = `gerente:parecer:v2:${id}:${feito.getTime()}`
   const guardado = await redis.get(chave)
   if (guardado) { try { return JSON.parse(guardado) as Parecer } catch { /* refaz */ } }
 
   // Contexto: tudo o que a PESSOA escreveu nos últimos 4 dias (é a prova do retorno)
   // + as últimas mensagens de qualquer lado (para ver o que o cliente respondeu).
   // Antes eram só as últimas 12 e a resposta decisiva podia ficar de fora.
-  const desde = new Date(Math.min(r.createdAt.getTime(), r.doneAt.getTime()) - 4 * 24 * 3_600_000)
+  const desde = new Date(Math.min(r.createdAt.getTime(), feito.getTime()) - 4 * 24 * 3_600_000)
   const campos = { id: true, body: true, direction: true, viaAtendente: true, createdAt: true, agent: { select: { name: true } } } as const
   const [pessoa, recentes] = await Promise.all([
     prisma.message.findMany({
@@ -81,7 +82,7 @@ export async function parecerDoRetorno(id: string): Promise<Parecer | "SEM_IA" |
 
   const pedido =
     `CLIENTE: ${r.contact.name}\nATENDENTE RESPONSÁVEL: ${r.user.name}\nCOMBINADO: ${corta(r.note || "(sem descrição)", 300)}\n` +
-    `HORÁRIO COMBINADO: ${hora(r.dueAt)} · MARCADO COMO FEITO: ${hora(r.doneAt)}\nCANAL INFORMADO: ${ROTULO[r.canal ?? ""] ?? "—"}\n` +
+    `HORÁRIO COMBINADO: ${hora(r.dueAt)} · MARCADO COMO FEITO: ${hora(feito)}\nCANAL INFORMADO: ${ROTULO[r.canal ?? ""] ?? "—"}\n` +
     `RELATO DA PESSOA: ${corta(r.relato ?? "", 500)}\n\n<chat> (mensagens dos últimos dias, da mais antiga para a mais recente; inclui tudo o que a pessoa escreveu)\n${chat || "(sem mensagens)"}\n</chat>`
 
   try {

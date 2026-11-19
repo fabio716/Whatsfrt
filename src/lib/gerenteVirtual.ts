@@ -273,7 +273,7 @@ async function avisarDiretoria(): Promise<void> {
 const ESPERA_CONFERIR_MS = 60_000
 const REABRIR_EM_MS = 30 * 60_000
 const MAX_REPROVACOES_AUTO = 2
-type Decisor = (id: string) => Promise<Parecer | "SEM_IA" | null>
+type Decisor = (id: string, opcoes?: { feitoEm?: Date }) => Promise<Parecer | "SEM_IA" | null>
 const ACOMPANHAR_EM_MS = 3 * 60 * 60_000 // quando o cliente não respondeu: novo retorno em 3 h úteis
 
 // Próximo instante dentro do horário de atendimento, a partir de `alvo`.
@@ -321,6 +321,42 @@ async function acompanhamentosAtrasados(): Promise<void> {
   }
 }
 
+// Revisão das reprovações automáticas anteriores ao critério v2 (últimos 3 dias,
+// ainda reabertas): o gerente olha de novo com o chat inteiro e, se a pessoa tinha
+// razão, aceita o retorno e avisa. Uma revisão por retorno.
+async function reverReprovacoes(decidir: Decisor): Promise<void> {
+  const lista = await prisma.contactReminder.findMany({
+    where: {
+      conferencia: "NAO_CONCLUIDO", conferidaPorId: ID_GERENTE, doneAt: null, canal: { not: null },
+      conferidaEm: { gte: new Date(Date.now() - 3 * 24 * 3_600_000) }, contact: { deletedAt: null },
+    },
+    orderBy: { conferidaEm: "asc" }, take: 5,
+    select: { id: true, userId: true, conferidaEm: true, contact: { select: { id: true, name: true } } },
+  })
+  for (const r of lista) {
+    const chave = `gerente:revisao:v2:${r.id}`
+    if ((await redis.incr(chave)) !== 1) continue
+    await redis.expire(chave, 7 * 24 * 3600)
+    if (!r.conferidaEm) continue
+    const parecer = await decidir(r.id, { feitoEm: r.conferidaEm })
+    if (parecer === "SEM_IA") return
+    if (!parecer) { await redis.del(chave); continue } // IA falhou: tenta no próximo ciclo
+    if (parecer.veredito === "NAO_CONCLUIDO") continue // continua reprovado, agora com mais contexto
+    const aguardando = parecer.veredito === "AGUARDANDO_CLIENTE"
+    const ok = await prisma.contactReminder.updateMany({
+      where: { id: r.id, conferencia: "NAO_CONCLUIDO", doneAt: null },
+      data: { conferencia: "CONCLUIDO", doneAt: r.conferidaEm, conferidaEm: new Date(), conferenciaNota: `🤖 Revisado: ${parecer.motivo}${aguardando ? " (acompanhar a resposta do cliente)" : ""}`.slice(0, 300) },
+    })
+    if (!ok.count) continue
+    if (aguardando) await agendarAcompanhamento({ id: r.id, userId: r.userId, contact: r.contact }, parecer.motivo.slice(0, 200))
+    sendPushToUsers([r.userId], {
+      title: `✅ Retorno aceito após revisão: ${r.contact.name}`,
+      body: "O gerente virtual reviu o chat e aceitou o seu retorno. Você não precisa refazer.",
+      tag: `revisado-${r.id}`, url: `/admin/chats?contact=${r.contact.id}`,
+    }).catch((e: unknown) => console.error("[gerente] push revisão falhou:", e instanceof Error ? e.message : e))
+  }
+}
+
 // Cliente ainda não respondeu: agenda um retorno de acompanhamento para a própria
 // pessoa (sujeito às mesmas cobranças: ciência, trava, conferência). Uma vez por retorno.
 async function agendarAcompanhamento(r: { id: string; userId: string; contact: { id: string; name: string } }, motivo: string): Promise<Date | null> {
@@ -347,6 +383,7 @@ async function agendarAcompanhamento(r: { id: string; userId: string; contact: {
 export async function conferirRetornosAutomatico(decidir: Decisor = parecerDoRetorno): Promise<{ aceitos: number; reabertos: number; manuais: number }> {
   const total = { aceitos: 0, reabertos: 0, manuais: 0 }
   await acompanhamentosAtrasados()
+  await reverReprovacoes(decidir)
   const lista = await prisma.contactReminder.findMany({
     where: { conferencia: "PENDENTE", doneAt: { not: null, lte: new Date(Date.now() - ESPERA_CONFERIR_MS) } },
     orderBy: { doneAt: "asc" }, take: 5,
