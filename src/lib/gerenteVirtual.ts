@@ -505,8 +505,8 @@ const quandoBr = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao
 
 // Avisa a pessoa de uma tarefa nova (chat interno + push).
 export async function avisarNovaTarefa(paraUserId: string, titulo: string, prazoEm: Date, deNome: string): Promise<void> {
-  await mensagemAosAdmins([paraUserId], `📝 Nova tarefa de ${primeiroNome(deNome)}: “${titulo}”. Prazo: ${quandoBr(prazoEm)}. Abra Minhas tarefas (/admin/tarefas), dê o ciente e, ao terminar, escreva o feedback.`)
-  sendPushToUsers([paraUserId], { title: "📝 Nova tarefa", body: `${titulo} — prazo ${quandoBr(prazoEm)}`, tag: `tarefa-${paraUserId}`, url: "/admin/tarefas" })
+  await mensagemAosAdmins([paraUserId], `📝 Nova tarefa de ${primeiroNome(deNome)}: “${titulo}”. Prazo para resolver: ${quandoBr(prazoEm)}. Você pode aceitar o prazo ou, se não der, propor outro com justificativa. Ao terminar, escreva o feedback em Minhas tarefas (/admin/tarefas).`)
+  sendPushToUsers([paraUserId], { title: "📝 Nova tarefa para você", body: `${titulo} — prazo para resolver: ${quandoBr(prazoEm)}`, tag: `tarefa-${paraUserId}`, url: "/admin/tarefas" })
     .catch((e: unknown) => console.error("[tarefas] push falhou:", e instanceof Error ? e.message : e))
 }
 
@@ -522,6 +522,10 @@ async function cobrarTarefasAtrasadas(): Promise<void> {
   const nomes = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(vencidas.map((t) => t.paraUserId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
   for (const t of vencidas) {
     if (ausentes.has(t.paraUserId)) continue
+    // Pediu outro prazo e o administrador ainda não decidiu: não cobra enquanto isso.
+    if (t.propostaStatus === "PENDENTE") continue
+    // Depois de uma decisão do administrador a contagem recomeça dali.
+    if (t.decididaEm && t.decididaEm.getTime() > agora - TOLERANCIA_RETORNO_MS) continue
     if (!t.avisadaAt) {
       const m = await prisma.tarefa.updateMany({ where: { id: t.id, avisadaAt: null, concluidaAt: null }, data: { avisadaAt: new Date() } })
       if (m.count === 0) continue
@@ -535,6 +539,24 @@ async function cobrarTarefasAtrasadas(): Promise<void> {
       await mensagemAosAdmins(admins, `ℹ️ Gerente virtual: a tarefa “${t.titulo}” de ${primeiroNome(nomes.get(t.paraUserId))} (prazo ${quandoBr(t.prazoEm)}) continua sem feedback. Ela já foi avisada. Veja em /admin/tarefas`)
     }
   }
+}
+
+// Avisa o administrador de que a pessoa pediu outro prazo (e o motivo).
+export async function avisarPropostaDePrazo(tarefaId: string, quemNome: string, titulo: string, prazoOriginal: Date, proposto: Date, justificativa: string): Promise<void> {
+  const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
+  await mensagemAosAdmins(admins, `🗓️ ${primeiroNome(quemNome)} pediu outro prazo para “${titulo}”: de ${quandoBr(prazoOriginal)} para ${quandoBr(proposto)}. Motivo: ${justificativa}. Aprove ou mantenha em /admin/tarefas`)
+  sendPushToUsers(admins, { title: "🗓️ Pedido de novo prazo", body: `${primeiroNome(quemNome)}: ${titulo} → ${quandoBr(proposto)}`, tag: `tarefa-prazo-${tarefaId}`, url: "/admin/tarefas" })
+    .catch((e: unknown) => console.error("[tarefas] push proposta falhou:", e instanceof Error ? e.message : e))
+}
+
+// Avisa a pessoa da decisão do administrador sobre o prazo.
+export async function avisarDecisaoDePrazo(paraUserId: string, titulo: string, aprovada: boolean, prazo: Date, nota: string | null): Promise<void> {
+  const texto = aprovada
+    ? `✅ Seu novo prazo para “${titulo}” foi aprovado: ${quandoBr(prazo)}.`
+    : `ℹ️ O prazo de “${titulo}” foi mantido: ${quandoBr(prazo)}.${nota ? ` Observação: ${nota}` : ""}`
+  await mensagemAosAdmins([paraUserId], texto)
+  sendPushToUsers([paraUserId], { title: aprovada ? "✅ Novo prazo aprovado" : "ℹ️ Prazo mantido", body: texto, tag: `tarefa-decisao-${paraUserId}`, url: "/admin/tarefas" })
+    .catch((e: unknown) => console.error("[tarefas] push decisão falhou:", e instanceof Error ? e.message : e))
 }
 
 export async function verificarGerente(): Promise<void> {

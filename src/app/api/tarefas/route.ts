@@ -10,8 +10,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
   const todas = auth.role === "ADMIN" && request.nextUrl.searchParams.get("todas") === "1"
+  // ?aresponder=1: só as minhas que ainda esperam eu aceitar o prazo ou propor outro.
+  const aResponder = request.nextUrl.searchParams.get("aresponder") === "1"
   const tarefas = await prisma.tarefa.findMany({
-    where: todas ? {} : { paraUserId: auth.id },
+    where: aResponder ? { paraUserId: auth.id, concluidaAt: null, cienteAt: null, propostaStatus: null } : todas ? {} : { paraUserId: auth.id },
     orderBy: [{ concluidaAt: { sort: "asc", nulls: "first" } }, { prazoEm: "asc" }], take: 300,
   })
   const ids = [...new Set(tarefas.flatMap((t) => [t.paraUserId, t.criadaPorId]))]
@@ -20,7 +22,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     tarefas: tarefas.map((t) => ({
       id: t.id, titulo: t.titulo, detalhes: t.detalhes, prazoEm: t.prazoEm.toISOString(),
       cienteAt: t.cienteAt?.toISOString() ?? null, concluidaAt: t.concluidaAt?.toISOString() ?? null,
-      feedback: t.feedback, criadaEm: t.createdAt.toISOString(),
+      feedback: t.feedback, prazoProposto: t.prazoProposto?.toISOString() ?? null, justificativa: t.justificativa,
+      propostaStatus: t.propostaStatus, notaDecisao: t.notaDecisao, criadaEm: t.createdAt.toISOString(),
       paraId: t.paraUserId, paraNome: nomes.get(t.paraUserId) ?? "—", deNome: nomes.get(t.criadaPorId) ?? "—",
       atrasada: !t.concluidaAt && t.prazoEm.getTime() < Date.now(),
     })),

@@ -853,6 +853,14 @@ model Tarefa {
   // Gerente virtual: quando cobrou a pessoa e quando avisou o administrador.
   avisadaAt    DateTime?
   escaladaEm   DateTime?
+  // A pessoa pode NÃO aceitar o prazo: propõe outro (horas ou dias depois) com
+  // justificativa; o administrador aprova ou mantém o original.
+  prazoProposto  DateTime?
+  justificativa  String?
+  propostaEm     DateTime?
+  propostaStatus String?   // PENDENTE | APROVADA | RECUSADA
+  decididaEm     DateTime?
+  notaDecisao    String?
   createdAt    DateTime  @default(now())
 
   @@index([paraUserId, concluidaAt])

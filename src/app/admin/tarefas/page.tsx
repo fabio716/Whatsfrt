@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react"
 interface Tarefa {
   id: string; titulo: string; detalhes: string | null; prazoEm: string; cienteAt: string | null
   concluidaAt: string | null; feedback: string | null; criadaEm: string
+  prazoProposto: string | null; justificativa: string | null; propostaStatus: string | null; notaDecisao: string | null
   paraId: string; paraNome: string; deNome: string; atrasada: boolean
 }
 interface Pessoa { id: string; name: string }
@@ -83,6 +84,18 @@ export default function TarefasPage() {
     } catch { setErro("Falha de conexão. Tente de novo.") }
   }
 
+  async function decidir(id: string, aprovar: boolean) {
+    setErro(""); setOk("")
+    const nota = aprovar ? "" : (window.prompt("Observação para a pessoa (opcional):") ?? "")
+    try {
+      const r = await fetch(`/api/tarefas/${id}/decidir`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ aprovar, nota }) })
+      const d = (await r.json().catch(() => ({}))) as { erro?: string }
+      if (!r.ok) { setErro(d.erro ?? "Não foi possível registrar a decisão."); return }
+      setOk(aprovar ? "Novo prazo aprovado." : "Prazo original mantido.")
+      await carregar(true)
+    } catch { setErro("Falha de conexão. Tente de novo.") }
+  }
+
   async function cancelar(id: string) {
     if (!window.confirm("Cancelar (apagar) esta tarefa?")) return
     const r = await fetch(`/api/tarefas/${id}`, { method: "DELETE" })
@@ -133,6 +146,20 @@ export default function TarefasPage() {
                   {ehAdmin && <button onClick={() => void cancelar(t.id)} className="text-[12px] text-zinc-400 hover:text-red-600">Cancelar</button>}
                 </div>
                 {t.detalhes && <p className="mt-2 whitespace-pre-wrap text-[13px] text-zinc-600">{t.detalhes}</p>}
+                {t.propostaStatus === "PENDENTE" && t.prazoProposto && (
+                  <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[13px] text-amber-900">
+                    🗓️ {ehAdmin ? `${t.paraNome} pediu` : "Você pediu"} novo prazo: <b>{quando(t.prazoProposto)}</b>. Motivo: {t.justificativa}
+                    {ehAdmin ? (
+                      <div className="mt-2 flex gap-2">
+                        <button onClick={() => void decidir(t.id, true)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12px] font-semibold text-white">Aprovar novo prazo</button>
+                        <button onClick={() => void decidir(t.id, false)} className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700">Manter prazo original</button>
+                      </div>
+                    ) : <p className="mt-1 text-[12px]">Aguardando a decisão do administrador. Enquanto isso você não é cobrado por este prazo.</p>}
+                  </div>
+                )}
+                {t.propostaStatus === "APROVADA" && <p className="mt-2 text-[12px] text-emerald-700">✅ Novo prazo aprovado. Motivo do pedido: {t.justificativa}</p>}
+                {t.propostaStatus === "RECUSADA" && <p className="mt-2 text-[12px] text-zinc-500">ℹ️ Pedido de novo prazo não aprovado; vale o prazo original.{t.notaDecisao ? ` Observação: ${t.notaDecisao}` : ""}</p>}
+                {!ehAdmin && !t.cienteAt && !t.propostaStatus && <p className="mt-2 text-[12px] font-medium text-amber-700">⚠️ Responda ao prazo: aceite ou proponha outro (a janela aparece na tela).</p>}
                 {!ehAdmin && (
                   <div className="mt-3 space-y-2">
                     {!t.cienteAt && <button onClick={() => void agir(t.id, "ciente")} className="rounded-lg border border-zinc-300 px-3 py-1.5 text-[13px] font-medium text-zinc-700">Estou ciente</button>}

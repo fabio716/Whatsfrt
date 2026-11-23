@@ -8,6 +8,7 @@ import VersaoNova from "./VersaoNova"
 import Novidades from "./Novidades"
 import RetornosObrigatorio from "./RetornosObrigatorio"
 import GerenteAlerta from "./GerenteAlerta"
+import TarefaAlerta from "./TarefaAlerta"
 import ConcluirRetorno from "./ConcluirRetorno"
 import AusenciaControle from "./AusenciaControle"
 import AlertaRetornosAtrasados from "./AlertaRetornosAtrasados"
@@ -69,6 +70,7 @@ export default function AdminShell({
       <Novidades />
       <RetornosObrigatorio />
       <GerenteAlerta />
+      <TarefaAlerta />
       <ConcluirRetorno />
       <AusenciaControle />
       {userRole === "ADMIN" && <ResumoAtendenteVirtual />}
