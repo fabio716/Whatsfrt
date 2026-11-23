@@ -488,6 +488,7 @@ export async function limparRegistrosAntigos(): Promise<{ ocorrencias: number; r
     prisma.internalMessage.deleteMany({ where: { senderId: ID_GERENTE, createdAt: { lt: corte } } }),
     prisma.ausencia.deleteMany({ where: { inicio: { lt: corte } } }),
   ])
+  await prisma.tarefa.deleteMany({ where: { concluidaAt: { lt: corte } } })
   return { ocorrencias: oc.count, retornos: ret.count, mensagens: msg.count, ausencias: aus.count }
 }
 
@@ -497,6 +498,43 @@ async function limpezaDiaria(): Promise<void> {
   await redis.expire(chave, 2 * 86_400)
   const r = await limparRegistrosAntigos()
   if (r.ocorrencias || r.retornos || r.mensagens || r.ausencias) console.log(`[gerente] retenção ${RETENCAO_DIAS} dias: ${JSON.stringify(r)}`)
+}
+
+// ─── Tarefas do administrador ───────────────────────────────────────────────
+const quandoBr = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+
+// Avisa a pessoa de uma tarefa nova (chat interno + push).
+export async function avisarNovaTarefa(paraUserId: string, titulo: string, prazoEm: Date, deNome: string): Promise<void> {
+  await mensagemAosAdmins([paraUserId], `📝 Nova tarefa de ${primeiroNome(deNome)}: “${titulo}”. Prazo: ${quandoBr(prazoEm)}. Abra Minhas tarefas (/admin/tarefas), dê o ciente e, ao terminar, escreva o feedback.`)
+  sendPushToUsers([paraUserId], { title: "📝 Nova tarefa", body: `${titulo} — prazo ${quandoBr(prazoEm)}`, tag: `tarefa-${paraUserId}`, url: "/admin/tarefas" })
+    .catch((e: unknown) => console.error("[tarefas] push falhou:", e instanceof Error ? e.message : e))
+}
+
+// Tarefa vencida sem feedback: 5 min depois do prazo cobra a pessoa; 5 min depois
+// disso informa o administrador. Quem está "ausente" não é cobrado.
+async function cobrarTarefasAtrasadas(): Promise<void> {
+  const agora = Date.now()
+  const vencidas = await prisma.tarefa.findMany({
+    where: { concluidaAt: null, prazoEm: { lte: new Date(agora - TOLERANCIA_RETORNO_MS) } }, take: 50, orderBy: { prazoEm: "asc" },
+  })
+  if (vencidas.length === 0) return
+  const ausentes = await idsAusentes()
+  const nomes = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(vencidas.map((t) => t.paraUserId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
+  for (const t of vencidas) {
+    if (ausentes.has(t.paraUserId)) continue
+    if (!t.avisadaAt) {
+      const m = await prisma.tarefa.updateMany({ where: { id: t.id, avisadaAt: null, concluidaAt: null }, data: { avisadaAt: new Date() } })
+      if (m.count === 0) continue
+      await mensagemAosAdmins([t.paraUserId], `⏰ A tarefa “${t.titulo}” (prazo ${quandoBr(t.prazoEm)}) ainda não tem feedback. Quando puder, conclua em Minhas tarefas (/admin/tarefas) e escreva o que foi feito.`)
+      sendPushToUsers([t.paraUserId], { title: "⏰ Tarefa pendente", body: `${t.titulo} — prazo ${quandoBr(t.prazoEm)}`, tag: `tarefa-atraso-${t.id}`, url: "/admin/tarefas" })
+        .catch((e: unknown) => console.error("[tarefas] push atraso falhou:", e instanceof Error ? e.message : e))
+    } else if (!t.escaladaEm && agora - t.avisadaAt.getTime() >= ESCALA_DIRETORIA_MS) {
+      const m = await prisma.tarefa.updateMany({ where: { id: t.id, escaladaEm: null, concluidaAt: null }, data: { escaladaEm: new Date() } })
+      if (m.count === 0) continue
+      const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
+      await mensagemAosAdmins(admins, `ℹ️ Gerente virtual: a tarefa “${t.titulo}” de ${primeiroNome(nomes.get(t.paraUserId))} (prazo ${quandoBr(t.prazoEm)}) continua sem feedback. Ela já foi avisada. Veja em /admin/tarefas`)
+    }
+  }
 }
 
 export async function verificarGerente(): Promise<void> {
@@ -511,6 +549,7 @@ export async function verificarGerente(): Promise<void> {
     await abrirOcorrencias(cfg)
     await avisarDiretoria()
     await conferirRetornosAutomatico()
+    await cobrarTarefasAtrasadas()
   } catch (err) {
     console.error("[gerente] ciclo falhou:", err instanceof Error ? err.message : err)
   } finally {

@@ -837,3 +837,25 @@ model Ausencia {
   @@index([inicio])
   @@map("ausencias")
 }
+
+// Tarefas do administrador para a equipe. Só conclui com FEEDBACK escrito; o
+// gerente virtual cobra o atraso. Registros concluídos: 90 dias.
+model Tarefa {
+  id           String    @id @default(cuid())
+  titulo       String
+  detalhes     String?
+  criadaPorId  String
+  paraUserId   String
+  prazoEm      DateTime
+  cienteAt     DateTime?
+  concluidaAt  DateTime?
+  feedback     String?
+  // Gerente virtual: quando cobrou a pessoa e quando avisou o administrador.
+  avisadaAt    DateTime?
+  escaladaEm   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([paraUserId, concluidaAt])
+  @@index([concluidaAt, prazoEm])
+  @@map("tarefas")
+}

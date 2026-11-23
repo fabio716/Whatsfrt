@@ -86,6 +86,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <span aria-hidden className="flex h-4 w-4 items-center justify-center text-[13px] leading-none">🛰️</span>,
       },
       {
+        href: "/admin/tarefas",
+        label: "Tarefas",
+        roles: ["ADMIN", "AGENT"],
+        icon: <span aria-hidden className="flex h-4 w-4 items-center justify-center text-[13px] leading-none">📝</span>,
+      },
+      {
         href: "/admin/gerente",
         label: "Gerente virtual",
         roles: ["ADMIN"],
