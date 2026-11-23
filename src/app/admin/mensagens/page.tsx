@@ -70,6 +70,14 @@ function hhmm(iso: string) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
+// Hora da mensagem; se não for de hoje, mostra também o dia (evita achar que um
+// aviso antigo é de agora).
+function quando(iso: string) {
+  const d = new Date(iso)
+  if (d.toDateString() === new Date().toDateString()) return hhmm(iso)
+  return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${hhmm(iso)}`
+}
+
 // ─── Álbum de imagens (igual WhatsApp) ────────────────────────────────────────
 // Imagens seguidas do mesmo remetente, sem legenda, com no máx. 3 min de
 // intervalo entre elas, viram UM bloco só (grade de miniaturas + baixar tudo).
@@ -1109,7 +1117,7 @@ export default function MensagensPage() {
                             </svg>
                             Baixar todas ({item.msgs.length})
                           </button>
-                          <span className="text-[10px] text-zinc-400">{hhmm(item.msgs[item.msgs.length - 1].createdAt)}</span>
+                          <span className="text-[10px] text-zinc-400">{quando(item.msgs[item.msgs.length - 1].createdAt)}</span>
                         </div>
                       </div>
                     </div>
@@ -1293,7 +1301,7 @@ export default function MensagensPage() {
                                 </svg>
                               </button>
                             )}
-                            <span className="text-[10px] text-zinc-400">{hhmm(m.createdAt)}</span>
+                            <span className="text-[10px] text-zinc-400">{quando(m.createdAt)}</span>
                           </div>
                         </>
                       )}

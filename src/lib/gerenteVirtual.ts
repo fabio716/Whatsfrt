@@ -205,10 +205,33 @@ export async function resolverOcorrencias(): Promise<void> {
     else if (!c || c.deletedAt || (o.tipo === "ESPERA_CLIENTE" && c.chatStatus !== "WAITING_AGENT")) fim = new Date()
     else if (agora - o.abertaEm.getTime() > 24 * 60 * 60_000) fim = new Date()
     if (!fim) continue
-    await prisma.gerenteOcorrencia.updateMany({
+    const fechou = await prisma.gerenteOcorrencia.updateMany({
       where: { id: o.id, resolvidaEm: null },
       data: { resolvidaEm: fim, resolvidaPorId: por, esperaMin: Math.max(0, Math.round((fim.getTime() - o.desde.getTime()) / 60_000)) },
     })
+    if (fechou.count > 0 && o.escaladaEm) await marcarAvisoResolvido(o.contactId, o.escaladaEm, fim)
+  }
+}
+
+// O aviso enviado ao administrador não fica com cara de pendente depois que o
+// cliente é atendido: troca o ℹ️ por ✅ e informa a hora da resolução.
+async function marcarAvisoResolvido(contactId: string, escaladaEm: Date, fim: Date): Promise<void> {
+  try {
+    const avisos = await prisma.internalMessage.findMany({
+      where: {
+        senderId: ID_GERENTE, createdAt: { gte: new Date(escaladaEm.getTime() - 60_000) },
+        body: { startsWith: "ℹ️ Gerente virtual:", contains: `contact=${contactId}` },
+      },
+      select: { id: true, body: true }, take: 10,
+    })
+    for (const a of avisos) {
+      await prisma.internalMessage.update({
+        where: { id: a.id },
+        data: { body: `✅ ${a.body.slice("ℹ️ ".length)} — Resolvido às ${horaBr(fim)}.` },
+      })
+    }
+  } catch (err) {
+    console.error("[gerente] marcar aviso resolvido falhou:", err instanceof Error ? err.message : err)
   }
 }
 
@@ -267,15 +290,15 @@ async function avisarDiretoria(): Promise<void> {
   for (const o of pendentes) {
     const marcou = await prisma.gerenteOcorrencia.updateMany({ where: { id: o.id, escaladaEm: null, resolvidaEm: null }, data: { escaladaEm: new Date() } })
     if (marcou.count === 0) continue
-    const quem = o.userId ? primeiroNome(nomeUsuario.get(o.userId)) : "Fila (sem dono)"
+    const quem = o.userId ? primeiroNome(nomeUsuario.get(o.userId)) : null
     const cliente = nomeContato.get(o.contactId) ?? "cliente"
     const min = minutos(Date.now() - o.desde.getTime())
     const motivo = o.tipo === "ESPERA_CLIENTE"
       ? `${cliente} está há ${min} min sem atendimento`
       : `o retorno de ${cliente} (combinado para ${horaBr(o.desde)}) está atrasado há ${min} min`
-    await mensagemAosAdmins(admins, `ℹ️ Gerente virtual: ${motivo}. ${quem} já foi avisada(o) há ${Math.round(ESCALA_DIRETORIA_MS / 60_000)} min e pode precisar de apoio. Conversa: /admin/chats?contact=${o.contactId}`)
+    await mensagemAosAdmins(admins, `ℹ️ Gerente virtual: ${motivo}. ${quem ? `${quem} já foi avisada(o) há ${Math.round(ESCALA_DIRETORIA_MS / 60_000)} min e pode precisar de apoio` : "Ninguém assumiu ainda (cliente sem responsável) e a equipe online já foi avisada"}. Conversa: /admin/chats?contact=${o.contactId}`)
     sendPushToUsers(admins, {
-      title: `ℹ️ ${cliente} continua aguardando`, body: `${quem} já foi avisada(o) e pode precisar de apoio. ${motivo}.`,
+      title: `ℹ️ ${cliente} continua aguardando`, body: `${quem ? `${quem} já foi avisada(o) e pode precisar de apoio` : "Ninguém assumiu ainda"}. ${motivo}.`,
       tag: `gerente-adm-${o.id}`, url: `/admin/chats?contact=${o.contactId}`,
     }).catch((e: unknown) => console.error("[gerente] push diretoria falhou:", e instanceof Error ? e.message : e))
     if (o.userId) {
