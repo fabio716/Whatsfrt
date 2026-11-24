@@ -19,7 +19,7 @@ import Mascote from "@/components/ui/Mascote"
 // de exemplo — nunca use print com cliente de verdade).
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const VERSAO_NOVIDADES = "2026-11-20"
+export const VERSAO_NOVIDADES = "2026-11-24"
 const CHAVE = "whatsfrt.novidades.visto"
 export const EVENTO_ABRIR_NOVIDADES = "whatsfrt:abrir-novidades"
 
@@ -28,50 +28,61 @@ interface Passo {
   texto: string
   imagem?: { src: string; alt: string }
   itens?: { icone: string; texto: string }[]
+  // Desenho de exemplo (dados fictícios) de como a janela aparece na tela.
+  exemplo?: "tarefa"
 }
 
 const PASSOS: Passo[] = [
   {
-    titulo: "🧑‍💼 Conheça o Gerente virtual",
+    titulo: "📝 Novo menu: Tarefas",
     texto:
-      "Para nenhum cliente ficar esperando, o sistema agora tem um Gerente virtual. Ele é um apoio para a equipe: avisa quando um cliente da fila está há mais de 1 minuto sem resposta, " +
-      "ou quando um retorno agendado passou do horário. Ele não envia nada ao cliente e não aplica punição: quem decide qualquer coisa é uma pessoa, o administrador. " +
-      "Os registros dele são apagados automaticamente depois de 90 dias.",
+      "Agora o administrador pode passar tarefas para você pelo próprio WhatsFRT, sempre com um prazo para resolver. " +
+      "Quando uma tarefa for enviada, ela aparece NA HORA no meio da sua tela, como no exemplo abaixo, e você também recebe uma notificação e uma mensagem no chat interno. " +
+      "Todas as suas tarefas ficam no menu “📝 Tarefas”.",
+    exemplo: "tarefa",
   },
   {
-    titulo: "⏱️ Quando aparecer o aviso",
-    texto: "Você vai ver uma janela dizendo qual cliente está aguardando. O que fazer:",
+    titulo: "⏰ Quando a janela da tarefa aparecer",
+    texto: "Leia o prazo em destaque e escolha uma das opções:",
     itens: [
-      { icone: "✅", texto: "Clique em “Ciente — vou atender”. Isso registra que você viu e abre a conversa do cliente." },
-      { icone: "💬", texto: "Responda o cliente. O sistema libera sozinho assim que você responde (e, por segurança, no máximo 30 minutos depois do aviso)." },
-      { icone: "🙋", texto: "Algo não está certo (por exemplo, você já respondeu pelo celular)? Use “Isso não está certo? Explicar”. A sua explicação vai para o administrador." },
-      { icone: "ℹ️", texto: "Se o cliente continuar sem resposta depois de 5 minutos, o administrador é informado para apoiar o atendimento." },
+      { icone: "✅", texto: "“Aceito o prazo”: você confirma que viu a tarefa e que consegue fazer até aquele horário." },
+      { icone: "🗓️", texto: "“Não consigo nesse prazo”: você propõe outro prazo, em horas ou até dias depois (há atalhos de +2 h, +4 h, +1 dia e +2 dias) e escreve o motivo. O administrador aprova ou mantém o prazo original e você é avisado da decisão." },
+      { icone: "⏸️", texto: "Enquanto o seu pedido de novo prazo espera a decisão, você não é cobrado por essa tarefa." },
+      { icone: "🕒", texto: "“Responder depois”: a janela some por 10 minutos e volta a perguntar. Ela não trava o seu atendimento." },
     ],
   },
   {
-    titulo: "📝 Ao concluir um retorno",
-    texto:
-      "Ao tocar em “Fiz o retorno”, o sistema pede por onde você falou com o cliente (WhatsApp, frtwhats, telefone ou e-mail) e o que foi conversado. " +
-      "O Gerente virtual confere e, estando certo, já aceita. Se achar que falta algo, ele só sugere um ajuste ao administrador, que fala com você — e você pode explicar o que aconteceu. " +
-      "Se o cliente ainda não respondeu, o Gerente agenda para você um retorno de acompanhamento, para ninguém ser esquecido.",
-  },
-  {
-    titulo: "🚪 Precisou sair? Use o botão Ausente",
-    texto: "No topo da tela há o botão “🚪 Ausente”. Use sempre que precisar sair por alguns minutos — é um direito, não precisa pedir licença:",
+    titulo: "✍️ Terminou? Conclua com feedback",
+    texto: "Ao terminar, abra o menu “📝 Tarefas”, toque em “Concluir” e escreva o feedback: o que foi feito e qual foi o resultado. Sem o feedback, a tarefa não fecha — assim o administrador sabe que foi resolvida, sem precisar perguntar.",
     itens: [
-      { icone: "✍️", texto: "Escrever o motivo é opcional, e o que você escrever só o administrador vê. Não precisa informar nada de saúde." },
-      { icone: "⏸️", texto: "Enquanto estiver ausente, o Gerente virtual não cobra nem trava a sua tela, e você não recebe clientes novos." },
-      { icone: "🤖", texto: "O assistente virtual avisa uma vez cada cliente seu que escrever, dizendo que você já volta." },
-      { icone: "⏱️", texto: "O sistema registra o tempo entre “Ausente” e “Voltei” (até 30 minutos), para organizar o atendimento. Ao voltar, toque em “Voltei” e veja o resumo de quem escreveu." },
+      { icone: "⏰", texto: "Se o prazo passar sem o feedback, o Gerente virtual manda um lembrete e, depois de mais 5 minutos, informa o administrador. Ele não envia nada a clientes." },
+      { icone: "🚪", texto: "Quem está com o botão “Ausente” ligado não é cobrado." },
+      { icone: "🗂️", texto: "Os feedbacks das tarefas concluídas são apagados automaticamente depois de 90 dias." },
     ],
-  },
-  {
-    titulo: "🤖 O mascote agora conversa com você",
-    texto:
-      "O mascote aparece de vez em quando para puxar um papo: relaxar, dar uma força, tirar uma dúvida ou lembrar de um retorno. Você pode responder digitando no balãozinho, " +
-      "ou tocar em “Agora não, valeu!” para ele ir embora. Ele não envia nada a clientes e não avisa ninguém do que você escreve para ele.",
   },
 ]
+
+// Exemplo (dados fictícios) da janela que aparece quando chega uma tarefa.
+function ExemploTarefa() {
+  return (
+    <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-100 p-3" aria-label="Exemplo da janela de tarefa">
+      <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Exemplo de como aparece na sua tela</p>
+      <div className="mx-auto max-w-sm rounded-2xl bg-white p-4 shadow-xl">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">📝 Nova tarefa de Fábio</p>
+        <p className="mt-1 text-[15px] font-bold text-zinc-800">Enviar proposta para o cliente Exemplo Ltda</p>
+        <div className="mt-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-2.5">
+          <p className="text-[11px] font-semibold text-amber-800">⏰ PRAZO PARA RESOLVER</p>
+          <p className="text-[16px] font-bold text-amber-900">sex., 27/11, 15:30</p>
+          <p className="text-[12px] text-amber-800">daqui a 2 h 10 min</p>
+        </div>
+        <div className="mt-3 space-y-1.5">
+          <div className="rounded-lg bg-emerald-600 py-2 text-center text-[13px] font-semibold text-white">✅ Aceito o prazo</div>
+          <div className="rounded-lg border border-zinc-300 py-2 text-center text-[12px] font-medium text-zinc-700">Não consigo nesse prazo — propor outro</div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // Segundos mínimos em cada tela antes de liberar o "Próximo" (leitura
 // obrigatória). Texto maior pede mais tempo.
@@ -196,6 +207,7 @@ export default function Novidades() {
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <h2 id="novidades-titulo" className="text-[17px] font-semibold text-zinc-900">{p.titulo}</h2>
           <p className="mt-1.5 text-[13.5px] leading-relaxed text-zinc-600">{p.texto}</p>
+          {p.exemplo === "tarefa" && <ExemploTarefa />}
           {p.imagem && (
             <div className="mt-4 max-h-[46vh] overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
               {/* eslint-disable-next-line @next/next/no-img-element -- imagem estática pequena, sem ganho com next/image */}
