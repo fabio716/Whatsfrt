@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
-import { TOLERANCIA_ESPERA_MS, resolverOcorrencias } from "@/lib/gerenteVirtual"
+import { TOLERANCIA_ESPERA_MS, filtrarFilaDoSetor, resolverOcorrencias } from "@/lib/gerenteVirtual"
 import { ausenciaDe } from "@/lib/ausencia"
 
 export const dynamic = "force-dynamic"
@@ -25,7 +25,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   // Se ela acabou de responder, libera na hora (sem esperar o ciclo de 20 s).
   if (await prisma.gerenteOcorrencia.count({ where: abertas }) > 0) await resolverOcorrencias()
-  const lista = await prisma.gerenteOcorrencia.findMany({ where: abertas, orderBy: { desde: "asc" }, take: 20 })
+  const todas = await prisma.gerenteOcorrencia.findMany({ where: abertas, orderBy: { desde: "asc" }, take: 40 })
+  // Cliente da fila: só a equipe do setor dele vê (mesma regra da página Fila de espera).
+  const daFila = new Set((await filtrarFilaDoSetor(auth.id, todas.filter((o) => o.userId === null))).map((o) => o.id))
+  const lista = todas.filter((o) => o.userId !== null || daFila.has(o.id)).slice(0, 20)
   if (lista.length === 0) return NextResponse.json([])
   const contatos = await prisma.contact.findMany({
     where: { id: { in: lista.map((o) => o.contactId) } }, select: { id: true, name: true },

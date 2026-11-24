@@ -145,8 +145,44 @@ async function abrirOcorrencias(cfg: UraConfigFull): Promise<void> {
   }
 }
 
+// A fila é por SETOR (a URA grava o setor escolhido em pendingDepartment e a página
+// Fila de espera mostra o cliente só para quem é do setor). O gerente segue a mesma
+// regra: cliente da fila do Financeiro só interessa à equipe do Financeiro.
+// Sem setor (entrada fora da URA) ou setor sem ninguém cadastrado: vale para todos.
+const rotuloSetor = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ")
+
+async function setoresComPessoas(): Promise<Set<string>> {
+  const linhas = await prisma.user.groupBy({ by: ["department"], where: { role: "AGENT", isActive: true, department: { not: null } } })
+  return new Set(linhas.map((l) => String(l.department)))
+}
+
+// Mantém só os itens da fila que a pessoa deve ver/confirmar (itens com dono não passam por aqui).
+export async function filtrarFilaDoSetor<T extends { contactId: string }>(userId: string, itens: T[]): Promise<T[]> {
+  if (itens.length === 0) return itens
+  const [eu, contatos, setores] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { department: true } }),
+    prisma.contact.findMany({ where: { id: { in: itens.map((i) => i.contactId) } }, select: { id: true, pendingDepartment: true } }),
+    setoresComPessoas(),
+  ])
+  const setorDe = new Map(contatos.map((c) => [c.id, c.pendingDepartment]))
+  return itens.filter((i) => {
+    const pd = setorDe.get(i.contactId)
+    return !pd || !setores.has(pd) || String(eu?.department ?? "") === pd
+  })
+}
+
 async function avisarPessoa(tipo: TipoOcorrencia, userId: string | null, contactId: string, nome: string, desde: Date): Promise<void> {
-  const alvo = userId ? [userId] : [...(await idsOnline())]
+  let alvo: string[]
+  if (userId) alvo = [userId]
+  else {
+    const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { pendingDepartment: true } })
+    const pd = c?.pendingDepartment ?? null
+    const equipe = pd && (await setoresComPessoas()).has(pd)
+      ? (await prisma.user.findMany({ where: { role: "AGENT", isActive: true, department: pd as never }, select: { id: true } })).map((u) => u.id)
+      : null
+    const ausentes = await idsAusentes()
+    alvo = (equipe ?? [...(await idsOnline())]).filter((id) => !ausentes.has(id))
+  }
   if (alvo.length === 0) return
   const espera = tipo === "ESPERA_CLIENTE"
   await sendPushToUsers(alvo, {
@@ -283,8 +319,10 @@ async function avisarDiretoria(): Promise<void> {
   const ids = [...new Set([...pendentes.map((p) => p.userId).filter((x): x is string => Boolean(x)), ...pendentes.map((p) => p.contactId)])]
   const [usuarios, contatos] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
-    prisma.contact.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
+    prisma.contact.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, pendingDepartment: true } }),
   ])
+  const setoresOk = await setoresComPessoas()
+  const setorDoContato = new Map(contatos.map((c) => [c.id, c.pendingDepartment && setoresOk.has(c.pendingDepartment) ? c.pendingDepartment : null]))
   const nomeUsuario = new Map(usuarios.map((u) => [u.id, u.name]))
   const nomeContato = new Map(contatos.map((c) => [c.id, c.name]))
   for (const o of pendentes) {
@@ -296,7 +334,7 @@ async function avisarDiretoria(): Promise<void> {
     const motivo = o.tipo === "ESPERA_CLIENTE"
       ? `${cliente} está há ${min} min sem atendimento`
       : `o retorno de ${cliente} (combinado para ${horaBr(o.desde)}) está atrasado há ${min} min`
-    await mensagemAosAdmins(admins, `ℹ️ Gerente virtual: ${motivo}. ${quem ? `${quem} já foi avisada(o) há ${Math.round(ESCALA_DIRETORIA_MS / 60_000)} min e pode precisar de apoio` : "Ninguém assumiu ainda (cliente sem responsável) e a equipe online já foi avisada"}. Conversa: /admin/chats?contact=${o.contactId}`)
+    await mensagemAosAdmins(admins, `ℹ️ Gerente virtual: ${motivo}. ${quem ? `${quem} já foi avisada(o) há ${Math.round(ESCALA_DIRETORIA_MS / 60_000)} min e pode precisar de apoio` : setorDoContato.get(o.contactId) ? `Ninguém assumiu ainda: cliente na fila do setor ${rotuloSetor(setorDoContato.get(o.contactId) as string)}, e a equipe desse setor já foi avisada` : "Ninguém assumiu ainda (cliente sem responsável) e a equipe online já foi avisada"}. Conversa: /admin/chats?contact=${o.contactId}`)
     sendPushToUsers(admins, {
       title: `ℹ️ ${cliente} continua aguardando`, body: `${quem ? `${quem} já foi avisada(o) e pode precisar de apoio` : "Ninguém assumiu ainda"}. ${motivo}.`,
       tag: `gerente-adm-${o.id}`, url: `/admin/chats?contact=${o.contactId}`,
