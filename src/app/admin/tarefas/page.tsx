@@ -110,6 +110,7 @@ export default function TarefasPage() {
       <div>
         <h1 className="text-xl font-bold text-zinc-800">📝 {ehAdmin ? "Tarefas da equipe" : "Minhas tarefas"}</h1>
         <p className="text-[13px] text-zinc-500">Toda tarefa tem prazo e só é concluída com um feedback escrito do que foi feito.</p>
+        {ehAdmin && <a href="/admin/tarefas/dashboard" className="mt-1 inline-block text-[13px] font-medium text-emerald-700 underline">📊 Ver dashboard das tarefas</a>}
       </div>
 
       {erro && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">{erro}</p>}
