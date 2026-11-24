@@ -489,6 +489,7 @@ export async function limparRegistrosAntigos(): Promise<{ ocorrencias: number; r
     prisma.ausencia.deleteMany({ where: { inicio: { lt: corte } } }),
   ])
   await prisma.tarefa.deleteMany({ where: { concluidaAt: { lt: corte } } })
+  await prisma.aviso.deleteMany({ where: { createdAt: { lt: corte } } })
   return { ocorrencias: oc.count, retornos: ret.count, mensagens: msg.count, ausencias: aus.count }
 }
 
@@ -577,6 +578,15 @@ export async function avisarRecebimento(paraUserId: string, tarefaId: string, ad
   await mensagemAosAdmins([paraUserId], texto)
   sendPushToUsers([paraUserId], { title: "✅ Feedback recebido", body: texto, tag: `tarefa-recebida-${tarefaId}`, url: "/admin/tarefas" })
     .catch((e: unknown) => console.error("[tarefas] push recebimento falhou:", e instanceof Error ? e.message : e))
+}
+
+// Avisa as pessoas escolhidas de que há um aviso novo (chat interno + push).
+// "lembrete" = reenvio para quem ainda não deu ciência.
+export async function avisarNovoAviso(userIds: string[], avisoId: string, titulo: string, deNome: string, lembrete = false): Promise<void> {
+  if (userIds.length === 0) return
+  await mensagemAosAdmins(userIds, `${lembrete ? "🔔 Lembrete — aviso" : "📢 Aviso"} de ${primeiroNome(deNome)}: “${titulo}”. Leia e dê o ciente na janela que aparece na tela (ou em Avisos, /admin/avisos).`)
+  sendPushToUsers(userIds, { title: lembrete ? "🔔 Aviso aguardando ciência" : "📢 Novo aviso", body: titulo, tag: `aviso-${avisoId}`, url: "/admin/avisos" })
+    .catch((e: unknown) => console.error("[avisos] push falhou:", e instanceof Error ? e.message : e))
 }
 
 export async function verificarGerente(): Promise<void> {

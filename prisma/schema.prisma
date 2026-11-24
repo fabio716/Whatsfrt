@@ -871,3 +871,29 @@ model Tarefa {
   @@index([concluidaAt, prazoEm])
   @@map("tarefas")
 }
+
+// Avisos do administrador para uma ou várias pessoas, com CIÊNCIA registrada
+// (quem deu ciente e quando). Registros: 90 dias.
+model Aviso {
+  id           String   @id @default(cuid())
+  titulo       String
+  texto        String
+  criadoPorId  String
+  createdAt    DateTime @default(now())
+  destinatarios AvisoDestinatario[]
+
+  @@index([createdAt])
+  @@map("avisos")
+}
+
+model AvisoDestinatario {
+  id       String    @id @default(cuid())
+  avisoId  String
+  userId   String
+  cienteAt DateTime?
+  aviso    Aviso     @relation(fields: [avisoId], references: [id], onDelete: Cascade)
+
+  @@unique([avisoId, userId])
+  @@index([userId, cienteAt])
+  @@map("aviso_destinatarios")
+}
