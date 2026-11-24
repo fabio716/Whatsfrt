@@ -44,6 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // O que precisa de ação do administrador agora.
   const atencao = [
     ...abertas.filter((t) => t.propostaStatus === "PENDENTE").map((t) => ({ t, motivo: "PEDIDO_DE_PRAZO" as const })),
+    ...tarefas.filter((t) => t.concluidaAt && !t.recebidaEm).map((t) => ({ t, motivo: "FEEDBACK_NOVO" as const })),
     ...atrasadas.filter((t) => t.propostaStatus !== "PENDENTE").map((t) => ({ t, motivo: "ATRASADA" as const })),
     ...abertas.filter((t) => !t.cienteAt && !t.propostaStatus && agora - t.createdAt.getTime() > 30 * 60_000 && t.prazoEm.getTime() >= agora).map((t) => ({ t, motivo: "SEM_CIENTE" as const })),
   ].slice(0, 30).map(({ t, motivo }) => ({
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     totais: {
       abertas: abertas.length, atrasadas: atrasadas.length,
       aguardandoDecisao: abertas.filter((t) => t.propostaStatus === "PENDENTE").length,
+      aguardandoRecebimento: tarefas.filter((t) => t.concluidaAt && !t.recebidaEm).length,
       semCiente: abertas.filter((t) => !t.cienteAt && !t.propostaStatus).length,
       criadas: noPeriodo.length, concluidas: concluidas.length, noPrazo: noPrazo.length, foraPrazo: concluidas.length - noPrazo.length,
       pctNoPrazo: concluidas.length ? Math.round((noPrazo.length / concluidas.length) * 100) : null,

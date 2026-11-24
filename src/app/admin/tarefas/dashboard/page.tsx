@@ -9,14 +9,14 @@ import Link from "next/link"
 
 interface Resumo {
   dias: number; atualizadoEm: string
-  totais: { abertas: number; atrasadas: number; aguardandoDecisao: number; semCiente: number; criadas: number; concluidas: number; noPrazo: number; foraPrazo: number; pctNoPrazo: number | null; tempoMedioH: number | null; pedidosPrazo: number; pedidosAprovados: number; pedidosRecusados: number }
+  totais: { abertas: number; atrasadas: number; aguardandoDecisao: number; aguardandoRecebimento: number; semCiente: number; criadas: number; concluidas: number; noPrazo: number; foraPrazo: number; pctNoPrazo: number | null; tempoMedioH: number | null; pedidosPrazo: number; pedidosAprovados: number; pedidosRecusados: number }
   porPessoa: { id: string; nome: string; abertas: number; atrasadas: number; concluidas: number; noPrazo: number; foraPrazo: number; pctNoPrazo: number | null; tempoMedioH: number | null; pedidosPrazo: number }[]
-  atencao: { id: string; titulo: string; paraNome: string; prazoEm: string; motivo: "PEDIDO_DE_PRAZO" | "ATRASADA" | "SEM_CIENTE"; prazoProposto: string | null; justificativa: string | null }[]
+  atencao: { id: string; titulo: string; paraNome: string; prazoEm: string; motivo: "PEDIDO_DE_PRAZO" | "ATRASADA" | "SEM_CIENTE" | "FEEDBACK_NOVO"; prazoProposto: string | null; justificativa: string | null }[]
 }
 
 const quando = (iso: string) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 const duracao = (h: number | null) => (h === null ? "—" : h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${h.toLocaleString("pt-BR")} h` : `${(h / 24).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} dias`)
-const MOTIVO = { PEDIDO_DE_PRAZO: { r: "Pediu outro prazo", c: "bg-amber-100 text-amber-800" }, ATRASADA: { r: "Atrasada", c: "bg-red-100 text-red-700" }, SEM_CIENTE: { r: "Sem resposta ao prazo", c: "bg-zinc-200 text-zinc-700" } }
+const MOTIVO = { FEEDBACK_NOVO: { r: "Feedback para confirmar", c: "bg-emerald-100 text-emerald-800" }, PEDIDO_DE_PRAZO: { r: "Pediu outro prazo", c: "bg-amber-100 text-amber-800" }, ATRASADA: { r: "Atrasada", c: "bg-red-100 text-red-700" }, SEM_CIENTE: { r: "Sem resposta ao prazo", c: "bg-zinc-200 text-zinc-700" } }
 
 function Cartao({ titulo, valor, nota, cor }: { titulo: string; valor: string | number; nota?: string; cor?: string }) {
   return (
@@ -67,10 +67,11 @@ export default function DashboardTarefas() {
         <>
           <section aria-label="Situação agora">
             <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-zinc-500">Situação agora</h2>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
               <Cartao titulo="Em aberto" valor={t.abertas} />
               <Cartao titulo="Atrasadas" valor={t.atrasadas} cor={t.atrasadas ? "text-red-600" : "text-emerald-600"} nota={t.atrasadas ? "passaram do prazo" : "nenhuma atrasada"} />
               <Cartao titulo="Pedidos de novo prazo" valor={t.aguardandoDecisao} cor={t.aguardandoDecisao ? "text-amber-600" : undefined} nota="aguardando sua decisão" />
+              <Cartao titulo="Feedbacks a confirmar" valor={t.aguardandoRecebimento} cor={t.aguardandoRecebimento ? "text-emerald-600" : undefined} nota="tarefas concluídas sem o seu “Recebi”" />
               <Cartao titulo="Sem resposta ao prazo" valor={t.semCiente} nota="ainda não aceitaram nem propuseram" />
             </div>
           </section>

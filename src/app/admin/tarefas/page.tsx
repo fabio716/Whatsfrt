@@ -10,6 +10,7 @@ interface Tarefa {
   id: string; titulo: string; detalhes: string | null; prazoEm: string; cienteAt: string | null
   concluidaAt: string | null; feedback: string | null; criadaEm: string
   prazoProposto: string | null; justificativa: string | null; propostaStatus: string | null; notaDecisao: string | null
+  recebidaEm: string | null; recebidaPorNome: string | null; notaRecebimento: string | null
   paraId: string; paraNome: string; deNome: string; atrasada: boolean
 }
 interface Pessoa { id: string; name: string }
@@ -92,6 +93,18 @@ export default function TarefasPage() {
       const d = (await r.json().catch(() => ({}))) as { erro?: string }
       if (!r.ok) { setErro(d.erro ?? "Não foi possível registrar a decisão."); return }
       setOk(aprovar ? "Novo prazo aprovado." : "Prazo original mantido.")
+      await carregar(true)
+    } catch { setErro("Falha de conexão. Tente de novo.") }
+  }
+
+  async function receber(id: string) {
+    setErro(""); setOk("")
+    const nota = window.prompt("Observação para a pessoa (opcional):") ?? ""
+    try {
+      const r = await fetch(`/api/tarefas/${id}/receber`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nota }) })
+      const d = (await r.json().catch(() => ({}))) as { erro?: string }
+      if (!r.ok) { setErro(d.erro ?? "Não foi possível confirmar."); return }
+      setOk("Recebimento confirmado. A pessoa foi avisada.")
       await carregar(true)
     } catch { setErro("Falha de conexão. Tente de novo.") }
   }
@@ -185,6 +198,11 @@ export default function TarefasPage() {
                 <p className="text-[14px] font-medium text-zinc-700">✅ {t.titulo}</p>
                 <p className="text-[12px] text-zinc-500">{ehAdmin ? `${t.paraNome} · ` : ""}concluída {quando(t.concluidaAt as string)} (prazo {quando(t.prazoEm)})</p>
                 {t.feedback && <p className="mt-1 whitespace-pre-wrap rounded-lg bg-white px-2 py-1.5 text-[13px] text-zinc-600">{t.feedback}</p>}
+                {t.recebidaEm ? (
+                  <p className="mt-1.5 text-[12px] text-emerald-700">✅ Recebido{t.recebidaPorNome ? ` por ${t.recebidaPorNome}` : ""} em {quando(t.recebidaEm)}{t.notaRecebimento ? ` — ${t.notaRecebimento}` : ""}</p>
+                ) : ehAdmin ? (
+                  <button onClick={() => void receber(t.id)} className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-[12px] font-semibold text-white">✅ Recebi o feedback</button>
+                ) : <p className="mt-1.5 text-[12px] text-zinc-400">Aguardando o administrador confirmar o recebimento.</p>}
               </div>
             ))}
           </section>

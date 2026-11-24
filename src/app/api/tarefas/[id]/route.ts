@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession, isErrorResponse } from "@/lib/auth"
-import { avisarPropostaDePrazo } from "@/lib/gerenteVirtual"
+import { avisarPropostaDePrazo, avisarTarefaConcluida } from "@/lib/gerenteVirtual"
 
 export const dynamic = "force-dynamic"
 
@@ -39,7 +39,8 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const feedback = typeof c.feedback === "string" ? c.feedback.trim() : ""
     if (feedback.length < 10) return NextResponse.json({ erro: "Para concluir, escreva o feedback: o que foi feito e o resultado (mínimo 10 caracteres)." }, { status: 400 })
     const agora = new Date()
-    await prisma.tarefa.updateMany({ where: { id, concluidaAt: null }, data: { concluidaAt: agora, feedback: feedback.slice(0, 1000), cienteAt: t.cienteAt ?? agora } })
+    const m = await prisma.tarefa.updateMany({ where: { id, concluidaAt: null }, data: { concluidaAt: agora, feedback: feedback.slice(0, 1000), cienteAt: t.cienteAt ?? agora } })
+    if (m.count > 0) await avisarTarefaConcluida(id, t.criadaPorId, auth.name, t.titulo, feedback.slice(0, 1000), agora.getTime() <= t.prazoEm.getTime())
     return NextResponse.json({ ok: true })
   }
   return NextResponse.json({ erro: "Pedido inválido." }, { status: 400 })

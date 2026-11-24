@@ -861,6 +861,10 @@ model Tarefa {
   propostaStatus String?   // PENDENTE | APROVADA | RECUSADA
   decididaEm     DateTime?
   notaDecisao    String?
+  // Administrador confirma que recebeu o feedback (a pessoa vê "Recebido").
+  recebidaEm     DateTime?
+  recebidaPorId  String?
+  notaRecebimento String?
   createdAt    DateTime  @default(now())
 
   @@index([paraUserId, concluidaAt])

@@ -559,6 +559,26 @@ export async function avisarDecisaoDePrazo(paraUserId: string, titulo: string, a
     .catch((e: unknown) => console.error("[tarefas] push decisão falhou:", e instanceof Error ? e.message : e))
 }
 
+// Avisa quem criou a tarefa (ou, se não puder, os administradores) de que a pessoa
+// concluiu com feedback — para ele confirmar o recebimento ("Recebi").
+export async function avisarTarefaConcluida(tarefaId: string, criadaPorId: string, quemNome: string, titulo: string, feedback: string, noPrazo: boolean): Promise<void> {
+  const criador = await prisma.user.findFirst({ where: { id: criadaPorId, isActive: true, role: "ADMIN" }, select: { id: true } })
+  const alvo = criador ? [criador.id] : (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
+  if (alvo.length === 0) return
+  const resumo = feedback.length > 140 ? `${feedback.slice(0, 140)}…` : feedback
+  await mensagemAosAdmins(alvo, `✅ ${primeiroNome(quemNome)} concluiu “${titulo}”${noPrazo ? "" : " (fora do prazo)"}. Feedback: ${resumo} — Confirme que recebeu em /admin/tarefas`)
+  sendPushToUsers(alvo, { title: "✅ Tarefa concluída", body: `${primeiroNome(quemNome)}: ${titulo}. Confirme o recebimento.`, tag: `tarefa-concluida-${tarefaId}`, url: "/admin/tarefas" })
+    .catch((e: unknown) => console.error("[tarefas] push conclusão falhou:", e instanceof Error ? e.message : e))
+}
+
+// Avisa a pessoa de que o administrador recebeu o feedback.
+export async function avisarRecebimento(paraUserId: string, tarefaId: string, adminNome: string, titulo: string, nota: string | null): Promise<void> {
+  const texto = `✅ ${primeiroNome(adminNome)} recebeu o seu feedback da tarefa “${titulo}”.${nota ? ` Observação: ${nota}` : ""}`
+  await mensagemAosAdmins([paraUserId], texto)
+  sendPushToUsers([paraUserId], { title: "✅ Feedback recebido", body: texto, tag: `tarefa-recebida-${tarefaId}`, url: "/admin/tarefas" })
+    .catch((e: unknown) => console.error("[tarefas] push recebimento falhou:", e instanceof Error ? e.message : e))
+}
+
 export async function verificarGerente(): Promise<void> {
   if (rodando) return
   rodando = true

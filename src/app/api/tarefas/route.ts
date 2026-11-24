@@ -16,14 +16,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     where: aResponder ? { paraUserId: auth.id, concluidaAt: null, cienteAt: null, propostaStatus: null } : todas ? {} : { paraUserId: auth.id },
     orderBy: [{ concluidaAt: { sort: "asc", nulls: "first" } }, { prazoEm: "asc" }], take: 300,
   })
-  const ids = [...new Set(tarefas.flatMap((t) => [t.paraUserId, t.criadaPorId]))]
+  const ids = [...new Set(tarefas.flatMap((t) => [t.paraUserId, t.criadaPorId, ...(t.recebidaPorId ? [t.recebidaPorId] : [])]))]
   const nomes = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
   return NextResponse.json({
     tarefas: tarefas.map((t) => ({
       id: t.id, titulo: t.titulo, detalhes: t.detalhes, prazoEm: t.prazoEm.toISOString(),
       cienteAt: t.cienteAt?.toISOString() ?? null, concluidaAt: t.concluidaAt?.toISOString() ?? null,
       feedback: t.feedback, prazoProposto: t.prazoProposto?.toISOString() ?? null, justificativa: t.justificativa,
-      propostaStatus: t.propostaStatus, notaDecisao: t.notaDecisao, criadaEm: t.createdAt.toISOString(),
+      propostaStatus: t.propostaStatus, notaDecisao: t.notaDecisao,
+      recebidaEm: t.recebidaEm?.toISOString() ?? null, recebidaPorNome: t.recebidaPorId ? nomes.get(t.recebidaPorId) ?? null : null, notaRecebimento: t.notaRecebimento, criadaEm: t.createdAt.toISOString(),
       paraId: t.paraUserId, paraNome: nomes.get(t.paraUserId) ?? "—", deNome: nomes.get(t.criadaPorId) ?? "—",
       atrasada: !t.concluidaAt && t.prazoEm.getTime() < Date.now(),
     })),
