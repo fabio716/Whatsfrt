@@ -879,6 +879,8 @@ model Aviso {
   titulo       String
   texto        String
   criadoPorId  String
+  // Imagem anexada (colada ou enviada): /api/media/<arquivo>. Opcional.
+  imagemUrl    String?
   createdAt    DateTime @default(now())
   destinatarios AvisoDestinatario[]
 

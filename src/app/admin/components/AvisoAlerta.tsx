@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react"
 // servidor grava quem e quando. "Ver depois" esconde por 10 min (não trava o
 // atendimento).
 
-interface Item { id: string; titulo: string; texto: string; deNome: string; criadoEm: string }
+interface Item { id: string; titulo: string; texto: string; imagemUrl: string | null; deNome: string; criadoEm: string }
 
 const CHECAR_A_CADA_MS = 15_000 // aba escondida não pergunta (menos carga no servidor)
 const ADIAR_MS = 10 * 60_000
@@ -57,6 +57,12 @@ export default function AvisoAlerta() {
         <p className="text-[12px] font-semibold uppercase tracking-wide text-sky-700">📢 Aviso de {atual.deNome}{visiveis.length > 1 ? ` · ${visiveis.length} avisos para ler` : ""}</p>
         <h2 className="mt-1 text-xl font-bold text-zinc-900">{atual.titulo}</h2>
         <p className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-700">{atual.texto}</p>
+        {atual.imagemUrl && (
+          <a href={atual.imagemUrl} target="_blank" rel="noreferrer" className="mt-3 block overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50" title="Abrir a imagem em tamanho grande">
+            {/* eslint-disable-next-line @next/next/no-img-element -- imagem privada do aviso, sem ganho com next/image */}
+            <img src={atual.imagemUrl} alt="Imagem do aviso" className="max-h-[42vh] w-full object-contain" />
+          </a>
+        )}
         <button disabled={enviando} onClick={() => void ciente()} className="mt-5 w-full rounded-xl bg-sky-600 px-4 py-3 text-[15px] font-semibold text-white disabled:opacity-60">
           {enviando ? "Registrando…" : "✅ Ciente — li e entendi"}
         </button>

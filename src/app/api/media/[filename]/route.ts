@@ -100,6 +100,14 @@ export async function GET(
         }
       }
       if (!authorized) {
+        // Imagem de um aviso: quem foi escolhido para receber o aviso pode ver.
+        const aviso = await prisma.aviso.findFirst({
+          where: { imagemUrl: `/api/media/${filename}`, destinatarios: { some: { userId: session.id } } },
+          select: { id: true },
+        })
+        authorized = Boolean(aviso)
+      }
+      if (!authorized) {
         return NextResponse.json({ error: "Sem permissão para esta mídia" }, { status: 403 })
       }
     }
