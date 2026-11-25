@@ -78,6 +78,12 @@ async function clientesSemResposta(desdeMin: Date): Promise<LinhaEspera[]> {
         SELECT 1 FROM contact_reminders r
         WHERE r."contactId" = c.id AND r."doneAt" IS NULL AND r."createdAt" >= m."createdAt"
       )
+      -- Retorno CONCLUÍDO depois da mensagem, com canal e relato (telefone, e-mail, WhatsApp do
+      -- celular…): a pessoa já falou com o cliente, mesmo sem resposta registrada no chat.
+      AND NOT EXISTS (
+        SELECT 1 FROM contact_reminders r
+        WHERE r."contactId" = c.id AND r."doneAt" IS NOT NULL AND r.canal IS NOT NULL AND r."doneAt" >= m."createdAt"
+      )
       AND m.body !~* '^\\s*(ok|okay|obrigad[oa]|obg|valeu|show|top|blz|beleza|certo|combinado|perfeito|joia|jóia|👍|🙏)[\\s.!]*$'
     LEFT JOIN humana h ON h."contactId" = c.id
     WHERE c."chatStatus" = 'WAITING_AGENT' AND c."deletedAt" IS NULL
@@ -269,6 +275,10 @@ export async function resolverOcorrencias(): Promise<void> {
   const retornosAbertos = esperas.length
     ? await prisma.contactReminder.findMany({ where: { contactId: { in: [...new Set(esperas.map((e) => e.contactId))] }, doneAt: null }, select: { contactId: true, createdAt: true } })
     : []
+  // Retorno concluído (com canal) depois da mensagem do cliente = ele foi atendido por outro canal.
+  const retornosFeitos = esperas.length
+    ? await prisma.contactReminder.findMany({ where: { contactId: { in: [...new Set(esperas.map((e) => e.contactId))] }, doneAt: { not: null }, canal: { not: null } }, select: { contactId: true, doneAt: true } })
+    : []
   const lembretes = abertas.filter((a) => a.tipo === "RETORNO_ATRASADO").map((a) => a.refId.split(":")[0])
   const lembretesAtuais = new Map((await prisma.contactReminder.findMany({
     where: { id: { in: lembretes } }, select: { id: true, doneAt: true, dueAt: true },
@@ -289,6 +299,7 @@ export async function resolverOcorrencias(): Promise<void> {
     let por: string | null = null
     if (resp) { fim = resp.createdAt; por = resp.agentId }
     else if (o.tipo === "ESPERA_CLIENTE" && retornosAbertos.some((r) => r.contactId === o.contactId && r.createdAt >= (mensagensEspera.get(o.refId) ?? o.desde))) fim = new Date()
+    else if (o.tipo === "ESPERA_CLIENTE" && retornosFeitos.some((r) => r.contactId === o.contactId && r.doneAt && r.doneAt.getTime() >= (mensagensEspera.get(o.refId) ?? o.desde).getTime())) fim = new Date()
     else if (o.tipo === "RETORNO_ATRASADO" && feitos.get(o.refId.split(":")[0])) fim = feitos.get(o.refId.split(":")[0]) ?? null
     else if (naoVale(o)) fim = new Date()
     else if (!c || c.deletedAt || (o.tipo === "ESPERA_CLIENTE" && c.chatStatus !== "WAITING_AGENT")) fim = new Date()
