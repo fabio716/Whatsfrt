@@ -31,7 +31,8 @@ import { idsAusentes } from "@/lib/ausencia"
 
 const MODEL = "claude-opus-5"
 
-export type Periodo = "NOITE" | "ALMOCO"
+// AUSENCIA = equipe no expediente, mas o setor ou a atendente escolhida está ausente (botão Ausente).
+export type Periodo = "NOITE" | "ALMOCO" | "AUSENCIA"
 
 // ─── Limites ────────────────────────────────────────────────────────────────
 const ESPERA_AGRUPAR_MS = 8_000 // cliente manda 3 mensagens seguidas → 1 resposta
@@ -179,11 +180,12 @@ async function proximaVendedora(): Promise<string | null> {
 }
 
 // ─── IA ─────────────────────────────────────────────────────────────────────
-const REGRAS = `Você é o atendente virtual da FRT Automação Comercial e Bancária (Brasil) no WhatsApp. Você atende SOMENTE quando a equipe humana está fora (noite, fim de semana ou almoço). Você tem só duas funções, descritas abaixo. Não faça nada além delas.
+const REGRAS = `Você é o atendente virtual da FRT Automação Comercial e Bancária (Brasil) no WhatsApp. Você atende SOMENTE quando a equipe humana está fora (noite, fim de semana ou almoço) ou quando quem atenderia o cliente está AUSENTE por alguns minutos (motivo AUSENCIA, no meio do expediente). Você tem só duas funções, descritas abaixo. Não faça nada além delas.
 
 COMO SE COMPORTAR
 - Na sua primeira mensagem da conversa, diga que é o assistente virtual da FRT e que a equipe está fora agora (diga quando ela volta). Não repita isso depois. Nunca finja ser uma pessoa.
 - Português do Brasil, simpático, direto e curto: mensagem de WhatsApp (até uns 500 caracteres). No máximo uma pergunta por mensagem.
+- SE O MOTIVO FOR AUSENCIA: a empresa está funcionando, só quem atenderia o cliente (a pessoa ou o setor da FICHA) está indisponível por alguns minutos. NUNCA diga que a equipe está fora do horário. Diga que é o assistente virtual, que o setor/atendente está ausente agora, peça o assunto em poucas palavras se ainda não souber, e combine um retorno AINDA HOJE (dentro de JANELA DE ATENDIMENTO). Se o cliente não escolher horário, diga que a equipe retorna em breve. Não resolva o assunto.
 - Você não ouve áudio nem vê imagem, vídeo ou documento. Se o cliente mandar, peça com gentileza que escreva.
 
 FUNÇÃO 1 — CLIENTE QUER COMPRAR (SETOR VENDAS)
@@ -277,7 +279,7 @@ async function perguntarIa(dados: {
       {
         role: "user",
         content:
-          `AGORA: ${dados.agoraTxt} (horário de Brasília). Motivo de você estar atendendo: ${dados.periodo === "ALMOCO" ? "equipe em horário de almoço" : "fora do horário de atendimento"}.\n` +
+          `AGORA: ${dados.agoraTxt} (horário de Brasília). Motivo de você estar atendendo: ${dados.periodo === "ALMOCO" ? "equipe em horário de almoço" : dados.periodo === "AUSENCIA" ? "AUSENCIA (a equipe está no expediente, mas quem atenderia este cliente está ausente por alguns minutos)" : "fora do horário de atendimento"}.\n` +
           `JANELA DE ATENDIMENTO (quando a equipe volta e pode ligar): ${dados.janelaTxt}\n\n\n` +
           `VENDEDORAS DE VENDAS (nomes exatos): ${dados.vendedoras.join(", ") || "(nenhuma cadastrada)"}\n\n` +
           `<ficha>\n${dados.ficha}\n</ficha>\n\n` +
@@ -320,7 +322,8 @@ export async function tentarAtendenteVirtual(
     if (soDigitos(contato.whatsappId.split("@")[0]).length > 13) return false
 
     const cfg = await getAtendenteConfig()
-    if (periodo === "NOITE" ? !cfg.ativoNoite : !cfg.ativoAlmoco) return false
+    // AUSENCIA vale quando o assistente está ligado (noite ou almoço) e respeita a lista de teste.
+    if (periodo === "NOITE" ? !cfg.ativoNoite : periodo === "ALMOCO" ? !cfg.ativoAlmoco : !(cfg.ativoNoite || cfg.ativoAlmoco)) return false
     if (cfg.numerosTeste.trim() && !estaNaListaDeTeste(contato.whatsappId, cfg.numerosTeste)) return false
 
     // Vendedora trabalhando até mais tarde: a conversa é dela.
@@ -443,7 +446,7 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
     where: { id: contactId },
     select: {
       id: true, whatsappId: true, name: true, profilePhotoUrl: true, chatStatus: true,
-      assignedUserId: true, lastAgentUserId: true, empresa: true, cidade: true, temperature: true,
+      assignedUserId: true, lastAgentUserId: true, empresa: true, cidade: true, temperature: true, pendingDepartment: true,
       assignedUser: { select: { name: true } },
     },
   })
@@ -453,8 +456,8 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
   const dias = ura.businessHours as DiaExpediente[]
   const agora = new Date()
   // Abriu enquanto esperávamos? A equipe assume — a IA não fala em horário comercial.
-  if (dias.length > 0 && dentroDoExpediente(agora, dias)) return true
-  const janela = proximaJanela(agora, dias)
+  if (periodo !== "AUSENCIA" && dias.length > 0 && dentroDoExpediente(agora, dias)) return true
+  const janela = periodo === "AUSENCIA" ? null : proximaJanela(agora, dias)
 
   const [site, mensagens] = await Promise.all([
     prisma.aiKnowledge.findUnique({ where: { id: "site" }, select: { content: true } }),
@@ -490,6 +493,7 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
     `Nome no WhatsApp: ${contato.name}`,
     contato.empresa ? `Empresa: ${contato.empresa}` : null,
     contato.cidade ? `Cidade: ${contato.cidade}` : null,
+    periodo === "AUSENCIA" && contato.pendingDepartment ? `Setor que o cliente escolheu: ${contato.pendingDepartment}` : null,
     contato.assignedUser
       ? `Vendedora responsável: ${contato.assignedUser.name}`
       : anterior
@@ -503,7 +507,7 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
     conversa,
     periodo,
     agoraTxt: formatar(agora),
-    janelaTxt: janela?.texto ?? "a equipe retorna no próximo dia útil",
+    janelaTxt: periodo === "AUSENCIA" ? "ainda hoje, dentro do horário de atendimento (por exemplo, daqui a cerca de 1 hora)" : janela?.texto ?? "a equipe retorna no próximo dia útil",
     vendedoras: vendedoras.map((v) => v.name),
   })
   if (!saida) return false
@@ -544,11 +548,14 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
   if ((await redis.incr(`av:cli:${contactId}`)) === 1) await redis.expire(`av:cli:${contactId}`, 12 * 60 * 60)
   if ((await redis.incr(chaveDia())) === 1) await redis.expire(chaveDia(), 26 * 60 * 60)
 
+  // Na ausência, o setor que o cliente escolheu na URA vale quando a IA não conseguiu classificar.
+  const setorFinal: string = saida.setor === "INDEFINIDO" && periodo === "AUSENCIA" && contato.pendingDepartment ? contato.pendingDepartment : saida.setor
+
   // ── Encaminhamento: quem vai cuidar desse cliente quando a equipe voltar ──
   let vendedoraId = contato.assignedUserId
   let status = contato.chatStatus
   if (!vendedoraId) {
-    if (saida.setor === "VENDAS") {
+    if (setorFinal === "VENDAS") {
       // 1) Já foi cliente de uma vendedora ativa → volta pra ela.
       // 2) Disse qual vendedora o atende → ela.
       // 3) Disse que não tem (ou já respondemos antes e ele não disse) → rodízio.
@@ -564,7 +571,7 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
     if (!vendedoraId && (status === ChatStatus.IDLE || status === ChatStatus.WAITING_AGENT)) {
       // Outros setores (ou ainda sem assunto claro): fila de espera, pra
       // ninguém ficar esquecido de manhã.
-      const setor = saida.setor === "INDEFINIDO" ? undefined : saida.setor
+      const setor = setorFinal === "INDEFINIDO" ? undefined : setorFinal
       if (status === ChatStatus.IDLE || setor) await markWaitingForAgent(contactId, setor)
       status = ChatStatus.WAITING_AGENT
     }
@@ -577,16 +584,16 @@ async function responder(contactId: string, periodo: Periodo): Promise<boolean> 
   // Outro setor: o cliente fica na fila do setor, mas o retorno sempre tem UMA
   // responsável (balanceado entre as pessoas do setor), combinando horário ou não.
   let donoRetorno = vendedoraId
-  if (!donoRetorno && saida.setor !== "INDEFINIDO" && saida.setor !== "VENDAS") {
-    donoRetorno = await donoDoSetor(saida.setor, contactId)
+  if (!donoRetorno && setorFinal !== "INDEFINIDO" && setorFinal !== "VENDAS") {
+    donoRetorno = await donoDoSetor(setorFinal, contactId)
   }
 
   // ── Retorno pra equipe (um só por cliente, atualizado a cada resposta) ──
   if (donoRetorno) {
     let quando = saida.agendar
     const combinado = Boolean(quando && quando > agora && (dias.length === 0 || dentroDoExpediente(quando, dias)))
-    if (!combinado) quando = janela?.inicio ?? new Date(agora.getTime() + 12 * 60 * 60 * 1000)
-    const nota = `${MARCA_RETORNO} ${combinado ? "Cliente pediu contato neste horário" : "Atendido pelo assistente fora do horário"}${saida.resumo ? ` — ${saida.resumo}` : ""}`.slice(0, 500)
+    if (!combinado) quando = periodo === "AUSENCIA" ? new Date(agora.getTime() + 45 * 60_000) : janela?.inicio ?? new Date(agora.getTime() + 12 * 60 * 60 * 1000)
+    const nota = `${MARCA_RETORNO} ${combinado ? "Cliente pediu contato neste horário" : periodo === "AUSENCIA" ? "Atendido pelo assistente enquanto o setor/atendente estava ausente" : "Atendido pelo assistente fora do horário"}${saida.resumo ? ` — ${saida.resumo}` : ""}`.slice(0, 500)
 
     const aberto = await prisma.contactReminder.findFirst({
       where: { contactId, doneAt: null, note: { startsWith: MARCA_RETORNO } },

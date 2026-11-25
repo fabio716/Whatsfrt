@@ -20,6 +20,7 @@ import { idsOnline } from "@/lib/presence"
 import { PREFIXO_PEDIDO_NOTA, primeiraRespostaHumana } from "@/lib/retornoAtendido"
 import { redis } from "@/lib/redis"
 import { parecerDoRetorno, type Parecer } from "@/lib/gerenteParecer"
+import { tentarAtendenteVirtual } from "@/lib/atendenteVirtual"
 
 export const TOLERANCIA_ESPERA_MS = 60_000 // cliente esperando: 1 min
 export const TOLERANCIA_RETORNO_MS = 5 * 60_000 // retorno agendado: 5 min depois do horário
@@ -83,6 +84,40 @@ async function clientesSemResposta(desdeMin: Date): Promise<LinhaEspera[]> {
       AND c."excludeFromReports" = false AND (h.em IS NULL OR m."createdAt" > h.em)
     GROUP BY c.id
     HAVING GREATEST(MIN(m."createdAt"), ${desdeMin}) <= ${new Date(Date.now() - TOLERANCIA_ESPERA_MS)}`)
+}
+
+// Clientes da fila de um setor em que TODOS estão ausentes (botão Ausente). Para eles o
+// assistente virtual assume na hora: responde uma vez e agenda o retorno com o setor.
+export async function clientesDeSetorAusente(desdeMin: Date): Promise<{ contactId: string; whatsappId: string; refId: string }[]> {
+  const ausentes = await idsAusentes()
+  if (ausentes.size === 0) return []
+  const espera = (await clientesSemResposta(desdeMin)).filter((e) => !e.userId)
+  if (espera.length === 0) return []
+  const [contatos, equipe] = await Promise.all([
+    prisma.contact.findMany({ where: { id: { in: espera.map((e) => e.contactId) } }, select: { id: true, whatsappId: true, pendingDepartment: true } }),
+    prisma.user.findMany({ where: { role: "AGENT", isActive: true, department: { not: null } }, select: { id: true, department: true } }),
+  ])
+  const porSetor = new Map<string, string[]>()
+  for (const u of equipe) porSetor.set(String(u.department), [...(porSetor.get(String(u.department)) ?? []), u.id])
+  const dados = new Map(contatos.map((c) => [c.id, c]))
+  const saida: { contactId: string; whatsappId: string; refId: string }[] = []
+  for (const e of espera) {
+    const c = dados.get(e.contactId)
+    const membros = c?.pendingDepartment ? porSetor.get(c.pendingDepartment) : undefined
+    if (c && membros && membros.length > 0 && membros.every((id) => ausentes.has(id))) saida.push({ contactId: c.id, whatsappId: c.whatsappId, refId: e.refId })
+  }
+  return saida
+}
+
+async function iaAssumirSetorAusente(cfg: UraConfigFull): Promise<void> {
+  for (const c of (await clientesDeSetorAusente(new Date(inicioDoExpediente(cfg))).catch(() => [])).slice(0, 5)) {
+    // Uma vez por mensagem sem resposta; se a IA não puder entrar (desligada, lista de teste…), libera para tentar depois.
+    const chave = `gerente:ia-ausencia:${c.refId}`
+    if ((await redis.incr(chave)) !== 1) continue
+    await redis.expire(chave, 24 * 3600)
+    const assumiu = await tentarAtendenteVirtual({ id: c.contactId, whatsappId: c.whatsappId }, "AUSENCIA", async () => {}).catch(() => false)
+    if (!assumiu) await redis.del(chave)
+  }
 }
 
 async function abrirOcorrencias(cfg: UraConfigFull): Promise<void> {
@@ -671,6 +706,7 @@ export async function verificarGerente(): Promise<void> {
     const cfg = await getUraConfigCached()
     if (cfg.isActive && isBusinessHour(cfg) !== "OPEN") return
     await abrirOcorrencias(cfg)
+    await iaAssumirSetorAusente(cfg)
     await avisarDiretoria()
     await relembrarDiretoria()
     await conferirRetornosAutomatico()

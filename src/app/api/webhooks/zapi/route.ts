@@ -699,7 +699,13 @@ async function handleReceived(p: ZapiTextPayload): Promise<void> {
     const expediente = await BusinessHoursValidator.check()
     // Atendente "ausente" (banheiro, saiu da posição…): o assistente avisa o cliente UMA vez.
     if (expediente.isOpen && !expediente.isLunchTime) {
-      await avisarAusencia(contact).catch((e: unknown) => console.error("[ausência] aviso falhou:", e instanceof Error ? e.message : e))
+      // Atendente escolhida ausente: o assistente virtual assume, conversa e agenda o retorno.
+      // Se ele estiver desligado ou não puder, vale o aviso simples de sempre.
+      const ausente = contact.assignedUserId ? await ausenciaDe(contact.assignedUserId) : null
+      const iaAssumiu = ausente
+        ? await tentarAtendenteVirtual(contact, "AUSENCIA", () => avisarAusencia(contact)).catch(() => false)
+        : false
+      if (!iaAssumiu) await avisarAusencia(contact).catch((e: unknown) => console.error("[ausência] aviso falhou:", e instanceof Error ? e.message : e))
     }
     if (!expediente.isOpen || expediente.isLunchTime) {
       const assumiu = await tentarAtendenteVirtual(
