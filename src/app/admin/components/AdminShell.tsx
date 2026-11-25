@@ -11,7 +11,6 @@ import GerenteAlerta from "./GerenteAlerta"
 import TarefaAlerta from "./TarefaAlerta"
 import AvisoAlerta from "./AvisoAlerta"
 import ConcluirRetorno from "./ConcluirRetorno"
-import AusenciaControle from "./AusenciaControle"
 import AlertaRetornosAtrasados from "./AlertaRetornosAtrasados"
 import ResumoAtendenteVirtual from "./ResumoAtendenteVirtual"
 import MeusRetornos from "./MeusRetornos"
@@ -74,7 +73,6 @@ export default function AdminShell({
       <TarefaAlerta />
       <AvisoAlerta />
       <ConcluirRetorno />
-      <AusenciaControle />
       {userRole === "ADMIN" && <ResumoAtendenteVirtual />}
       {userRole === "AGENT" && <MeusRetornos />}
       <MascoteVivo />

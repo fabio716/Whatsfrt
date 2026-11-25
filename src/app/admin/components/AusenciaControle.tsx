@@ -50,23 +50,21 @@ export default function AusenciaControle() {
 
   if (!st) return null
 
+  // Fica no menu lateral (rodapé), para nunca cobrir os botões da conversa.
   if (st.ausente && st.desde && st.ate) {
     const fora = Math.max(0, Math.round((agora - st.desde) / 60_000))
     return (
-      <div role="status" className="fixed left-1/2 top-3 z-[75] flex -translate-x-1/2 items-center gap-3 rounded-full border border-amber-300 bg-amber-50 py-1.5 pl-4 pr-1.5 text-[12.5px] font-semibold text-amber-900 shadow-lg">
-        <span>🚪 Ausente desde {hora(st.desde)} · {fora} min</span>
-        <button type="button" onClick={() => void voltei()} disabled={ocupado} className="rounded-full bg-amber-600 px-3 py-1 text-white hover:bg-amber-700 disabled:opacity-50">Voltei</button>
+      <div role="status" className="mb-1 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[12px] font-semibold text-amber-900">
+        <p>🚪 Ausente desde {hora(st.desde)} · {fora} min</p>
+        <button type="button" onClick={() => void voltei()} disabled={ocupado} className="mt-1.5 w-full rounded-lg bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700 disabled:opacity-50">Voltei</button>
       </div>
     )
   }
 
   return (
-    <div className="fixed right-4 top-3 z-[75]">
-      <button type="button" onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-zinc-700 shadow hover:bg-zinc-50">
-        🚪 Ausente
-      </button>
+    <div className="mb-1">
       {aberto && (
-        <form className="mt-2 w-72 space-y-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl" onSubmit={(e) => { e.preventDefault(); void sair() }}>
+        <form className="mb-2 space-y-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm" onSubmit={(e) => { e.preventDefault(); void sair() }}>
           <p className="text-[11.5px] leading-snug text-zinc-500">Você sai por alguns minutos: o gerente não cobra e o assistente virtual avisa seus clientes que você já volta. O tempo até voltar fica registrado (máx. {st.prazoMin} min).</p>
           <label className="block text-[12px] font-semibold text-zinc-700">
             Motivo <span className="font-normal text-zinc-400">(opcional)</span>
@@ -77,6 +75,10 @@ export default function AusenciaControle() {
           <button type="submit" disabled={ocupado} className="w-full rounded-xl bg-[#002d6b] px-3 py-2 text-[13px] font-semibold text-white hover:bg-[#0b3f8a] disabled:opacity-50">{ocupado ? "Registrando…" : "Ficar ausente"}</button>
         </form>
       )}
+      <button type="button" onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800">
+        <span aria-hidden className="flex h-4 w-4 items-center justify-center text-[13px] leading-none">🚪</span>
+        Ausente
+      </button>
     </div>
   )
 }

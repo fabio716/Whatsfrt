@@ -7,6 +7,7 @@ import { EVENTO_ABRIR_NOVIDADES } from "./Novidades"
 import { EVENTO_CHAMAR, EVENTO_PREFS, gravarPrefs, lerPrefs } from "./MascoteVivo"
 import type { NotifyPrefs } from "./GlobalNotifier"
 import Mascote from "@/components/ui/Mascote"
+import AusenciaControle from "./AusenciaControle"
 
 
 type Role = "ADMIN" | "AGENT"
@@ -449,6 +450,7 @@ export default function AdminNav({
             ▶ Chamar agora
           </button>
         )}
+        <AusenciaControle />
         <button
           type="button"
           onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_NOVIDADES))}
