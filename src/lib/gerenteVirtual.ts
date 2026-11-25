@@ -270,9 +270,17 @@ export async function resolverOcorrencias(): Promise<void> {
     ? await prisma.contactReminder.findMany({ where: { contactId: { in: [...new Set(esperas.map((e) => e.contactId))] }, doneAt: null }, select: { contactId: true, createdAt: true } })
     : []
   const lembretes = abertas.filter((a) => a.tipo === "RETORNO_ATRASADO").map((a) => a.refId.split(":")[0])
-  const feitos = new Map((await prisma.contactReminder.findMany({
-    where: { id: { in: lembretes } }, select: { id: true, doneAt: true },
-  })).map((r) => [r.id, r.doneAt]))
+  const lembretesAtuais = new Map((await prisma.contactReminder.findMany({
+    where: { id: { in: lembretes } }, select: { id: true, doneAt: true, dueAt: true },
+  })).map((r) => [r.id, r]))
+  const feitos = new Map([...lembretesAtuais].map(([id, r]) => [id, r.doneAt]))
+  // O retorno foi ADIADO (horário mudou) ou APAGADO: o atraso daquele horário não vale mais.
+  const naoVale = (o: { tipo: string; refId: string }) => {
+    if (o.tipo !== "RETORNO_ATRASADO") return false
+    const [id, dueMs] = o.refId.split(":")
+    const r = lembretesAtuais.get(id)
+    return !r || (Boolean(dueMs) && r.dueAt.getTime() !== Number(dueMs))
+  }
 
   for (const o of abertas) {
     const resp = respostas.find((r) => r.contactId === o.contactId && r.createdAt > o.desde)
@@ -282,6 +290,7 @@ export async function resolverOcorrencias(): Promise<void> {
     if (resp) { fim = resp.createdAt; por = resp.agentId }
     else if (o.tipo === "ESPERA_CLIENTE" && retornosAbertos.some((r) => r.contactId === o.contactId && r.createdAt >= (mensagensEspera.get(o.refId) ?? o.desde))) fim = new Date()
     else if (o.tipo === "RETORNO_ATRASADO" && feitos.get(o.refId.split(":")[0])) fim = feitos.get(o.refId.split(":")[0]) ?? null
+    else if (naoVale(o)) fim = new Date()
     else if (!c || c.deletedAt || (o.tipo === "ESPERA_CLIENTE" && c.chatStatus !== "WAITING_AGENT")) fim = new Date()
     else if (agora - o.abertaEm.getTime() > 24 * 60 * 60_000) fim = new Date()
     if (!fim) continue
