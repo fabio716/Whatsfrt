@@ -46,10 +46,11 @@ export const SUB_MENU_BY_DEPARTMENT: Record<string, SubMenuConfig> = {
   },
   TECNICOS_ASSISTENCIA: {
     title: "🔧 Perfeito! Com qual atendente da Assistência você quer falar?",
-    departments: ["TECNICOS_ASSISTENCIA", "SECRETARIA_ASSISTENCIA"],
+    departments: ["TECNICOS_ASSISTENCIA", "SECRETARIA_ASSISTENCIA", "SUPORTE"],
     prefixByDept: {
       TECNICOS_ASSISTENCIA: "Técnico ",
       SECRETARIA_ASSISTENCIA: "Secretária ",
+      SUPORTE: "Suporte ",
     },
   },
 }
@@ -115,6 +116,7 @@ export function buildSubMenu(
     cfg.title +
     "\n\n" +
     linhas +
+    "\n0️⃣  Voltar ao menu principal" +
     "\n\nResponda com o número da opção."
   )
 }

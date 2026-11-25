@@ -166,9 +166,10 @@ export async function handleInboundForUra(
     const awaitingDepartments = await getAwaitingSubMenu(contact.whatsappId)
     if (awaitingDepartments) {
       // Reconstroi a config do sub-menu a partir do primeiro dept guardado.
+      // Tolerante a menu antigo (guardado antes de um departamento entrar na lista).
       const cfgKey = Object.keys(SUB_MENU_BY_DEPARTMENT).find((k) =>
-        SUB_MENU_BY_DEPARTMENT[k].departments.every(
-          (d) => awaitingDepartments.includes(d),
+        awaitingDepartments.every(
+          (d) => SUB_MENU_BY_DEPARTMENT[k].departments.includes(d),
         ),
       )
       const subCfg = cfgKey ? SUB_MENU_BY_DEPARTMENT[cfgKey] : null
@@ -181,6 +182,12 @@ export async function handleInboundForUra(
           contact,
           "✅ Recebido!\nUm de nossos atendentes já vai te responder. 🙏",
         )
+        return
+      }
+      // "0" = voltar: abandona o sub-menu e mostra de novo o menu principal.
+      if (inboundText.trim() === "0") {
+        await clearAwaitingSubMenu(contact.whatsappId)
+        await sendUraMessage(contact, cfg.greetingText)
         return
       }
       const picked = pickAgentByDigit(agents, inboundText)
