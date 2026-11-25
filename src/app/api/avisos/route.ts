@@ -23,9 +23,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const nomes = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
   return NextResponse.json({
     avisos: avisos.map((a) => ({
-      id: a.id, titulo: a.titulo, texto: a.texto, imagemUrl: a.imagemUrl, criadoEm: a.createdAt.toISOString(), deNome: nomes.get(a.criadoPorId) ?? "—",
+      id: a.id, titulo: a.titulo, texto: a.texto, imagemUrl: a.imagemUrl, exigeResposta: a.exigeResposta, criadoEm: a.createdAt.toISOString(), deNome: nomes.get(a.criadoPorId) ?? "—",
       minhaCiencia: a.destinatarios.find((d) => d.userId === auth.id)?.cienteAt?.toISOString() ?? null,
-      destinatarios: todos ? a.destinatarios.map((d) => ({ id: d.userId, nome: nomes.get(d.userId) ?? "—", cienteAt: d.cienteAt?.toISOString() ?? null })) : undefined,
+      minhaResposta: a.destinatarios.find((d) => d.userId === auth.id)?.resposta ?? null,
+      // Só o administrador vê as respostas de todos; cada pessoa vê só a própria.
+      destinatarios: todos ? a.destinatarios.map((d) => ({ id: d.userId, nome: nomes.get(d.userId) ?? "—", cienteAt: d.cienteAt?.toISOString() ?? null, resposta: d.resposta })) : undefined,
     })),
   })
 }
@@ -35,7 +37,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession(request)
   if (isErrorResponse(auth)) return auth
   if (auth.role !== "ADMIN") return NextResponse.json({ erro: "Só o administrador cria avisos." }, { status: 403 })
-  const c = (await request.json().catch(() => null)) as { titulo?: unknown; texto?: unknown; userIds?: unknown; todos?: unknown; imagemUrl?: unknown } | null
+  const c = (await request.json().catch(() => null)) as { titulo?: unknown; texto?: unknown; userIds?: unknown; todos?: unknown; imagemUrl?: unknown; exigeResposta?: unknown } | null
   const titulo = typeof c?.titulo === "string" ? c.titulo.trim() : ""
   const texto = typeof c?.texto === "string" ? c.texto.trim() : ""
   if (titulo.length < 3 || titulo.length > 120) return NextResponse.json({ erro: "Escreva o título do aviso (3 a 120 caracteres)." }, { status: 400 })
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   })
   if (pessoas.length === 0) return NextResponse.json({ erro: "Escolha pelo menos uma pessoa para receber o aviso." }, { status: 400 })
   const aviso = await prisma.aviso.create({
-    data: { titulo, texto, imagemUrl, criadoPorId: auth.id, destinatarios: { create: pessoas.map((p) => ({ userId: p.id })) } },
+    data: { titulo, texto, imagemUrl, exigeResposta: c?.exigeResposta === true, criadoPorId: auth.id, destinatarios: { create: pessoas.map((p) => ({ userId: p.id })) } },
   })
   await avisarNovoAviso(pessoas.map((p) => p.id), aviso.id, titulo, auth.name)
   return NextResponse.json({ ok: true, id: aviso.id, destinatarios: pessoas.length })

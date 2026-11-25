@@ -881,6 +881,8 @@ model Aviso {
   criadoPorId  String
   // Imagem anexada (colada ou enviada): /api/media/<arquivo>. Opcional.
   imagemUrl    String?
+  // Aviso que é uma PERGUNTA: a pessoa só dá o ciente depois de escrever a resposta.
+  exigeResposta Boolean  @default(false)
   createdAt    DateTime @default(now())
   destinatarios AvisoDestinatario[]
 
@@ -893,6 +895,8 @@ model AvisoDestinatario {
   avisoId  String
   userId   String
   cienteAt DateTime?
+  // Resposta escrita pela pessoa (obrigatória só se o aviso for pergunta; senão, comentário opcional).
+  resposta String?
   aviso    Aviso     @relation(fields: [avisoId], references: [id], onDelete: Cascade)
 
   @@unique([avisoId, userId])

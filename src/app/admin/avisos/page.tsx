@@ -7,8 +7,8 @@ import { useCallback, useEffect, useState } from "react"
 // quem já deu ciência. Cada pessoa vê os seus avisos e a data da ciência.
 
 interface Aviso {
-  id: string; titulo: string; texto: string; imagemUrl: string | null; criadoEm: string; deNome: string; minhaCiencia: string | null
-  destinatarios?: { id: string; nome: string; cienteAt: string | null }[]
+  id: string; titulo: string; texto: string; imagemUrl: string | null; exigeResposta: boolean; criadoEm: string; deNome: string; minhaCiencia: string | null; minhaResposta: string | null
+  destinatarios?: { id: string; nome: string; cienteAt: string | null; resposta: string | null }[]
 }
 interface Pessoa { id: string; name: string }
 
@@ -22,6 +22,7 @@ export default function AvisosPage() {
   const [titulo, setTitulo] = useState("")
   const [texto, setTexto] = useState("")
   const [imagem, setImagem] = useState<string | null>(null)
+  const [pergunta, setPergunta] = useState(false)
   const [subindo, setSubindo] = useState(false)
   const [erro, setErro] = useState("")
   const [ok, setOk] = useState("")
@@ -77,11 +78,11 @@ export default function AvisosPage() {
     if (escolhidos.size === 0) { setErro("Escolha pelo menos uma pessoa para receber o aviso."); return }
     setEnviando(true)
     try {
-      const r = await fetch("/api/avisos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ titulo, texto, userIds: [...escolhidos], imagemUrl: imagem }) })
+      const r = await fetch("/api/avisos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ titulo, texto, userIds: [...escolhidos], imagemUrl: imagem, exigeResposta: pergunta }) })
       const d = (await r.json().catch(() => ({}))) as { erro?: string; destinatarios?: number }
       if (!r.ok) { setErro(d.erro ?? "Não foi possível enviar o aviso."); return }
       setOk(`Aviso enviado para ${d.destinatarios} pessoa(s). Ele aparece na tela de cada uma.`)
-      setTitulo(""); setTexto(""); setImagem(null); setEscolhidos(new Set())
+      setTitulo(""); setTexto(""); setImagem(null); setPergunta(false); setEscolhidos(new Set())
       await carregar(true)
     } catch { setErro("Falha de conexão. O aviso não foi enviado.") }
     finally { setEnviando(false) }
@@ -131,6 +132,10 @@ export default function AvisosPage() {
               </label>
             )}
           </div>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 px-3 py-2.5 text-[13px] text-zinc-700">
+            <input type="checkbox" checked={pergunta} onChange={(e) => setPergunta(e.target.checked)} className="mt-0.5 h-4 w-4 accent-sky-600" />
+            <span><b>Este aviso é uma pergunta</b> — a pessoa só consegue dar o ciente depois de escrever a resposta. Sem marcar, ela pode comentar se quiser.</span>
+          </label>
           <fieldset>
             <legend className="mb-1.5 flex w-full items-center justify-between text-[13px] font-medium text-zinc-700">
               <span>Quem vai receber? ({escolhidos.size} escolhida{escolhidos.size === 1 ? "" : "s"})</span>
@@ -160,7 +165,7 @@ export default function AvisosPage() {
               <div key={a.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <p className="text-[15px] font-semibold text-zinc-800">{a.titulo}</p>
+                    <p className="text-[15px] font-semibold text-zinc-800">{a.exigeResposta ? "❓ " : ""}{a.titulo}</p>
                     <p className="text-[12px] text-zinc-500">{ehAdmin ? "" : `De ${a.deNome} · `}{quando(a.criadoEm)}{!ehAdmin && (a.minhaCiencia ? ` · ciente em ${quando(a.minhaCiencia)} ✓` : " · aguardando a sua ciência")}</p>
                   </div>
                   {ehAdmin && (
@@ -171,6 +176,7 @@ export default function AvisosPage() {
                   )}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-[13px] text-zinc-600">{a.texto}</p>
+                {!ehAdmin && a.minhaResposta && <p className="mt-2 rounded-lg bg-sky-50 px-2.5 py-1.5 text-[13px] text-sky-900">Sua resposta: {a.minhaResposta}</p>}
                 {a.imagemUrl && (
                   <a href={a.imagemUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block">
                     {/* eslint-disable-next-line @next/next/no-img-element -- miniatura da imagem do aviso */}
@@ -183,10 +189,13 @@ export default function AvisosPage() {
                       <div className="h-2 w-32 overflow-hidden rounded-full bg-zinc-200"><div className="h-full bg-emerald-500" style={{ width: `${total ? (cientes / total) * 100 : 0}%` }} /></div>
                       <span className="text-[12px] font-medium text-zinc-600">{cientes} de {total} deram ciência</span>
                     </div>
-                    <ul className="flex flex-wrap gap-1.5">
+                    <ul className="space-y-1.5">
                       {a.destinatarios.map((d) => (
-                        <li key={d.id} className={`rounded-full px-2.5 py-1 text-[12px] ${d.cienteAt ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                          {d.cienteAt ? "✅" : "⏳"} {d.nome}{d.cienteAt ? ` · ${quando(d.cienteAt)}` : " · falta"}
+                        <li key={d.id} className="text-[12px]">
+                          <span className={`inline-block rounded-full px-2.5 py-1 ${d.cienteAt ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+                            {d.cienteAt ? "✅" : "⏳"} {d.nome}{d.cienteAt ? ` · ${quando(d.cienteAt)}` : " · falta"}
+                          </span>
+                          {d.resposta && <p className="ml-2 mt-1 whitespace-pre-wrap rounded-lg bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700">💬 {d.resposta}</p>}
                         </li>
                       ))}
                     </ul>

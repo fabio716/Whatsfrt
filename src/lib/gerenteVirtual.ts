@@ -716,6 +716,16 @@ export async function avisarNovoAviso(userIds: string[], avisoId: string, titulo
     .catch((e: unknown) => console.error("[avisos] push falhou:", e instanceof Error ? e.message : e))
 }
 
+// Avisa quem criou o aviso de que alguém respondeu (chat interno + push).
+export async function avisarRespostaDeAviso(avisoId: string, criadoPorId: string, quemNome: string, titulo: string, resposta: string): Promise<void> {
+  const criador = await prisma.user.findFirst({ where: { id: criadoPorId, isActive: true }, select: { id: true } })
+  if (!criador) return
+  const resumo = resposta.length > 160 ? `${resposta.slice(0, 160)}…` : resposta
+  await mensagemAosAdmins([criador.id], `💬 ${primeiroNome(quemNome)} respondeu ao aviso “${titulo}”: ${resumo} — Veja todas em /admin/avisos`)
+  sendPushToUsers([criador.id], { title: "💬 Resposta ao seu aviso", body: `${primeiroNome(quemNome)}: ${resumo}`, tag: `aviso-resposta-${avisoId}`, url: "/admin/avisos" })
+    .catch((e: unknown) => console.error("[avisos] push resposta falhou:", e instanceof Error ? e.message : e))
+}
+
 export async function verificarGerente(): Promise<void> {
   if (rodando) return
   rodando = true
