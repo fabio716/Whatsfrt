@@ -182,6 +182,15 @@ async function avisarPessoa(tipo: TipoOcorrencia, userId: string | null, contact
       : null
     const ausentes = await idsAusentes()
     alvo = (equipe ?? [...(await idsOnline())]).filter((id) => !ausentes.has(id))
+    // Setor existe, mas ninguém dele está disponível (todos ausentes): só um administrador
+    // pode agir (a Fila não deixa outro setor assumir), então o aviso vai a ele já.
+    if (alvo.length === 0 && equipe && tipo === "ESPERA_CLIENTE") {
+      const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
+      await mensagemAosAdmins(admins, `⚠️ Gerente virtual: ${nome} está na fila do setor ${rotuloSetor(pd as string)} há ${minutos(Date.now() - desde.getTime())} min e ninguém do setor está disponível agora (ausente). Assuma ou redirecione: /admin/chats?contact=${contactId}`)
+      sendPushToUsers(admins, { title: `⚠️ ${nome} sem ninguém no setor`, body: `Fila do ${rotuloSetor(pd as string)}: ninguém disponível.`, tag: `gerente-setor-${contactId}`, url: `/admin/chats?contact=${contactId}` })
+        .catch((e: unknown) => console.error("[gerente] push setor falhou:", e instanceof Error ? e.message : e))
+      return
+    }
   }
   if (alvo.length === 0) return
   const espera = tipo === "ESPERA_CLIENTE"
@@ -345,6 +354,31 @@ async function avisarDiretoria(): Promise<void> {
         tag: `gerente-pessoa-${o.id}`, url: `/admin/chats?contact=${o.contactId}`,
       }).catch((e: unknown) => console.error("[gerente] push pessoa falhou:", e instanceof Error ? e.message : e))
     }
+  }
+}
+
+// Quem já foi informado e continua sem atendimento: o administrador recebe um lembrete
+// a cada 30 min (até 8 por caso), para um cliente não ficar horas esquecido.
+const LEMBRETE_DIRETORIA_MS = 30 * 60_000
+async function relembrarDiretoria(): Promise<void> {
+  const agora = Date.now()
+  const abertas = await prisma.gerenteOcorrencia.findMany({
+    where: { resolvidaEm: null, escaladaEm: { lte: new Date(agora - LEMBRETE_DIRETORIA_MS) } }, take: 20, orderBy: { desde: "asc" },
+  })
+  if (abertas.length === 0) return
+  const admins = (await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } })).map((a) => a.id)
+  const contatos = await prisma.contact.findMany({ where: { id: { in: abertas.map((o) => o.contactId) } }, select: { id: true, name: true, pendingDepartment: true } })
+  const info = new Map(contatos.map((c) => [c.id, c]))
+  for (const o of abertas) {
+    const janela = Math.floor((agora - (o.escaladaEm as Date).getTime()) / LEMBRETE_DIRETORIA_MS)
+    if (janela < 1 || janela > 8) continue
+    const chave = `gerente:relembrar:${o.id}:${janela}`
+    if ((await redis.incr(chave)) !== 1) continue
+    await redis.expire(chave, 3 * 3600)
+    const c = info.get(o.contactId)
+    const setor = c?.pendingDepartment ? ` (setor ${rotuloSetor(c.pendingDepartment)})` : ""
+    const motivo = o.tipo === "ESPERA_CLIENTE" ? "sem atendimento" : "com o retorno atrasado"
+    await mensagemAosAdmins(admins, `⏳ Gerente virtual: ${c?.name ?? "cliente"}${setor} continua ${motivo} há ${minutos(agora - o.desde.getTime())} min. Conversa: /admin/chats?contact=${o.contactId}`)
   }
 }
 
@@ -638,6 +672,7 @@ export async function verificarGerente(): Promise<void> {
     if (cfg.isActive && isBusinessHour(cfg) !== "OPEN") return
     await abrirOcorrencias(cfg)
     await avisarDiretoria()
+    await relembrarDiretoria()
     await conferirRetornosAutomatico()
     await cobrarTarefasAtrasadas()
   } catch (err) {
