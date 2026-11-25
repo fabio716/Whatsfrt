@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react"
 
 interface Item { id: string; titulo: string; detalhes: string | null; prazoEm: string; deNome: string }
 
-const CHECAR_A_CADA_MS = 8_000
+const CHECAR_A_CADA_MS = 15_000 // aba escondida não pergunta (menos carga no servidor)
 const ADIAR_MS = 10 * 60_000
 
 const dataHora = (d: Date) => d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
@@ -33,6 +33,7 @@ export default function TarefaAlerta() {
   const [agora, setAgora] = useState(() => Date.now())
 
   const carregar = useCallback(async () => {
+    if (document.hidden) return
     try {
       const r = await fetch("/api/tarefas?aresponder=1", { cache: "no-store" })
       if (!r.ok) return
@@ -43,7 +44,9 @@ export default function TarefaAlerta() {
   useEffect(() => {
     void (async () => { await carregar() })()
     const t = setInterval(() => { void carregar(); setAgora(Date.now()) }, CHECAR_A_CADA_MS)
-    return () => clearInterval(t)
+    const aoVoltar = () => { if (document.visibilityState === "visible") void carregar() }
+    document.addEventListener("visibilitychange", aoVoltar)
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", aoVoltar) }
   }, [carregar])
 
   const atual = itens.find((i) => (adiadas[i.id] ?? 0) < agora)

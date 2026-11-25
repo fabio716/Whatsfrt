@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react"
 
 interface Item { id: string; titulo: string; texto: string; deNome: string; criadoEm: string }
 
-const CHECAR_A_CADA_MS = 8_000
+const CHECAR_A_CADA_MS = 15_000 // aba escondida não pergunta (menos carga no servidor)
 const ADIAR_MS = 10 * 60_000
 
 export default function AvisoAlerta() {
@@ -20,6 +20,7 @@ export default function AvisoAlerta() {
   const [erro, setErro] = useState("")
 
   const carregar = useCallback(async () => {
+    if (document.hidden) return
     try {
       const r = await fetch("/api/avisos?pendentes=1", { cache: "no-store" })
       if (!r.ok) return
@@ -30,7 +31,9 @@ export default function AvisoAlerta() {
   useEffect(() => {
     void (async () => { await carregar() })()
     const t = setInterval(() => { void carregar(); setAgora(Date.now()) }, CHECAR_A_CADA_MS)
-    return () => clearInterval(t)
+    const aoVoltar = () => { if (document.visibilityState === "visible") void carregar() }
+    document.addEventListener("visibilitychange", aoVoltar)
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", aoVoltar) }
   }, [carregar])
 
   const visiveis = itens.filter((i) => (adiados[i.id] ?? 0) < agora)
